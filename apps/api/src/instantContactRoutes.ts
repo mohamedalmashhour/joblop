@@ -15,12 +15,13 @@ import {
 } from "./instantContact";
 import { outsideAiApiKey } from "./outsideAi";
 import type { AssistantService } from "./assistant/assistantService";
-import type { EmailSender } from "./mailer/emailSender";
+import type { EmailMessage, EmailSender } from "./mailer/emailSender";
 import type { SmsSender } from "./mailer/smsSender";
 import { pushToWorkers, type PushSender } from "./notifications/pushSender";
 import { sendsText } from "./notifications/noticeChannels";
 import { noticeSms } from "./notifications/smsBrand";
 import { isWorksiteAddressVisible } from "./worksiteAddress";
+import { resolveWorkerLanguage, type WorkerLanguage } from "./notifications/workerLanguage";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -131,9 +132,9 @@ async function employerFacts(prisma: PrismaClient, organizationId: string | null
 }
 
 export function createPrismaContactStore(prisma: PrismaClient): ContactStore {
-  const requesterName = async (userId: string): Promise<{ name: string; email: string | null }> => {
-    const user = await prisma.user.findUnique({ where: { id: userId }, select: { displayName: true, emailNormalized: true } });
-    return { name: user?.displayName ?? "Unknown", email: user?.emailNormalized ?? null };
+  const requesterName = async (userId: string): Promise<{ name: string; email: string | null; language: string | null }> => {
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { displayName: true, emailNormalized: true, primaryLanguage: true } });
+    return { name: user?.displayName ?? "Unknown", email: user?.emailNormalized ?? null, language: user?.primaryLanguage ?? null };
   };
   return {
     async resolveRequester(userId, side) {
@@ -242,6 +243,17 @@ export function createPrismaContactStore(prisma: PrismaClient): ContactStore {
 }
 
 /** Best-effort alerts. They name no message content, so nothing private sits in an inbox or a text. */
+/** "Joblop replied to your message", in the person's language (French when none is stored). */
+export function contactRepliedEmail(to: string, language: WorkerLanguage): EmailMessage {
+  if (language === "fr") {
+    return { to, subject: "Joblop a répondu à votre message", text: "L'équipe Joblop a répondu à votre message. Connectez-vous à Joblop et ouvrez « Contacter Joblop » pour le lire." };
+  }
+  if (language === "ar") {
+    return { to, subject: "ردّت Joblop على رسالتك", text: "ردّ فريق Joblop على رسالتك. سجّل الدخول إلى Joblop وافتح «تواصل مع Joblop» لقراءته." };
+  }
+  return { to, subject: "Joblop replied to your message", text: "The Joblop team replied to your message. Sign in to Joblop and open Contact Joblop to read it." };
+}
+
 export function createContactNotices(deps: {
   emailSender: EmailSender;
   smsSender: SmsSender;
@@ -254,27 +266,27 @@ export function createContactNotices(deps: {
     async adminNeeded({ conversation, urgent }) {
       const label = urgent ? "URGENT: " : "";
       if (deps.adminEmail) {
+        // The staff inbox has no single reader's language, so the alert carries EN, FR and AR.
+        const worker = conversation.requesterKind === "worker";
+        const fr = `${worker ? "Un travailleur" : "Un employeur"} (sujet : ${conversation.topic}) a besoin d'une personne. Ouvrez le bureau de contact dans l'admin Joblop.`;
+        const ar = `${worker ? "عامل" : "صاحب عمل"} (الموضوع: ${conversation.topic}) يحتاج إلى شخص. افتح مكتب التواصل في إدارة Joblop.`;
         await deps.emailSender.send({
           to: deps.adminEmail,
-          subject: `${label}Joblop contact desk: a person is needed`,
-          text: `${describe(conversation)} needs a person. Open the Contact desk in Joblop admin.`
+          subject: `${label}Joblop contact desk: a person is needed / une personne est demandée / مطلوب شخص`,
+          text: `${describe(conversation)} needs a person. Open the Contact desk in Joblop admin.\n\n— — —\n\n${fr}\n\n— — —\n\n${ar}`
         });
       }
       if (deps.adminPhone && sendsText("staff_needed", { urgent })) {
         await deps.smsSender.send({ to: deps.adminPhone, text: noticeSms("en", `URGENT: ${describe(conversation)} needs a person. Open the Contact desk.`) });
       }
     },
-    async adminReplied({ conversation, email }) {
+    async adminReplied({ conversation, email, language }) {
       // Workers also get a push on the phone app; it never blocks the email.
       if (conversation.requesterKind === "worker") {
         await pushToWorkers(deps.pushSender, [conversation.requesterUserId], "staff_replied", { conversationId: conversation.id });
       }
       if (!email) return;
-      await deps.emailSender.send({
-        to: email,
-        subject: "Joblop replied to your message",
-        text: "The Joblop team replied to your message. Sign in to Joblop and open Contact Joblop to read it."
-      });
+      await deps.emailSender.send(contactRepliedEmail(email, resolveWorkerLanguage(language)));
     }
   };
 }

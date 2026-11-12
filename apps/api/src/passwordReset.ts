@@ -1,10 +1,40 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { hashPassword, normalizeEmail } from "@rwos/auth";
-import type { EmailSender } from "./mailer/emailSender";
+import type { EmailMessage, EmailSender } from "./mailer/emailSender";
 import type { SmsSender } from "./mailer/smsSender";
-import { codeSms } from "./notifications/smsBrand";
+import { passwordResetSms } from "./notifications/smsBrand";
+import { resolveWorkerLanguage, type WorkerLanguage } from "./notifications/workerLanguage";
 
 export const passwordResetExpiryMinutes = 30;
+
+/** The reset link email, in the account's language (French when none is stored). */
+export function passwordResetEmail(input: { to: string; language: WorkerLanguage; resetUrl: string; minutes: number }): EmailMessage {
+  if (input.language === "fr") {
+    return {
+      to: input.to,
+      subject: "Réinitialiser votre mot de passe Joblop",
+      text:
+        `Utilisez ce lien à usage unique dans les ${input.minutes} minutes pour réinitialiser votre mot de passe : ` +
+        `${input.resetUrl}\n\nSi vous n'avez rien demandé, vous pouvez ignorer ce message.`
+    };
+  }
+  if (input.language === "ar") {
+    return {
+      to: input.to,
+      subject: "إعادة تعيين كلمة مرور Joblop",
+      text:
+        `استخدم هذا الرابط (صالح لمرة واحدة) خلال ${input.minutes} دقيقة لإعادة تعيين كلمة المرور: ` +
+        `${input.resetUrl}\n\nإذا لم تطلب ذلك، يمكنك تجاهل هذه الرسالة.`
+    };
+  }
+  return {
+    to: input.to,
+    subject: "Reset your Joblop password",
+    text:
+      `Use this single-use link within ${input.minutes} minutes to reset your password: ` +
+      `${input.resetUrl}\n\nIf you did not request this, you can ignore this message.`
+  };
+}
 export const passwordResetAccepted = Object.freeze({
   status: "accepted" as const,
   message: "If an account matches that email, password reset instructions will be sent."
@@ -17,7 +47,7 @@ export const passwordResetFailure = Object.freeze({
 export interface PasswordResetRepository {
   findEligibleUser(
     emailNormalized: string
-  ): Promise<{ id: string; publicId: string; phone?: string | null } | null>;
+  ): Promise<{ id: string; publicId: string; phone?: string | null; language?: string | null } | null>;
   createToken(input: {
     userId: string;
     tokenHash: string;
@@ -72,19 +102,14 @@ export function createPasswordResetService(
 
       const resetUrl = new URL("/reset-password", input.resetBaseUrl);
       resetUrl.searchParams.set("token", token);
-      await emailSender.send({
-        to: input.email,
-        subject: "Reset your Joblop password",
-        text:
-          `Use this single-use link within ${passwordResetExpiryMinutes} minutes to reset your password: ` +
-          `${resetUrl.toString()}\n\nIf you did not request this, you can ignore this message.`
-      });
+      const language = resolveWorkerLanguage(user.language);
+      await emailSender.send(passwordResetEmail({ to: input.email, language, resetUrl: resetUrl.toString(), minutes: passwordResetExpiryMinutes }));
       // SMS twin (fail-soft, money-gated in the sender): text the reset link when a phone is on file.
       if (options.smsSender && user.phone) {
         await options.smsSender
           .send({
             to: user.phone,
-            text: codeSms(`password reset (valid ${passwordResetExpiryMinutes} min): ${resetUrl.toString()}`)
+            text: passwordResetSms(language, resetUrl.toString(), passwordResetExpiryMinutes)
           })
           .catch(() => undefined);
       }

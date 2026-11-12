@@ -36,7 +36,8 @@ describe("email verification service", () => {
     await expect(
       service.issue({
         userId: user.id,
-        emailNormalized: user.emailNormalized
+        emailNormalized: user.emailNormalized,
+        language: "en"
       })
     ).resolves.toEqual({ status: "accepted" });
 
@@ -45,6 +46,11 @@ describe("email verification service", () => {
       to: "worker@example.test",
       subject: "Your Joblop verification code"
     });
+    // In the account's language; French (Québec default) when none is stored.
+    await service.issue({ userId: user.id, emailNormalized: user.emailNormalized, language: "ar" });
+    expect(sender.messages[1]?.subject).toBe("رمز التحقق من Joblop");
+    await service.issue({ userId: user.id, emailNormalized: user.emailNormalized });
+    expect(sender.messages[2]?.subject).toBe("Votre code de vérification Joblop");
     expect(sender.messages[0]?.text).toContain("123456");
     expect(repository.active?.codeHash).toBe(hashEmailVerificationCode("123456"));
     expect(repository.active?.codeHash).not.toContain("123456");

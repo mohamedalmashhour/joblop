@@ -1,6 +1,7 @@
 import { createHash, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import type { SmsSender } from "./mailer/smsSender";
-import { codeSms } from "./notifications/smsBrand";
+import { signInCodeSms } from "./notifications/smsBrand";
+import { resolveWorkerLanguage } from "./notifications/workerLanguage";
 // Sign-in codes go by text only; see notifications/noticeChannels.ts.
 
 const CODE_TTL_MS = 10 * 60_000;
@@ -14,6 +15,7 @@ type StaffPhonePrisma = {
       readonly {
         id: string;
         emailNormalized: string;
+        primaryLanguage?: string | null;
         memberships?: readonly unknown[];
         workerIdentity?: unknown;
       }[]
@@ -54,6 +56,7 @@ async function findClientUser(prisma: StaffPhonePrisma, phone: string, audience:
     select: {
       id: true,
       emailNormalized: true,
+      primaryLanguage: true,
       memberships: { where: { status: "active" }, select: { id: true }, take: 1 },
       workerIdentity: { select: { id: true } }
     }
@@ -69,7 +72,7 @@ async function findClientUser(prisma: StaffPhonePrisma, phone: string, audience:
 async function findStaffUser(prisma: StaffPhonePrisma, phone: string) {
   const users = await prisma.user.findMany({
     where: { phone, status: "active" },
-    select: { id: true, emailNormalized: true }
+    select: { id: true, emailNormalized: true, primaryLanguage: true }
   });
   if (users.length === 0) return null;
   const grant = await prisma.platformAccessGrant.findFirst({
@@ -112,7 +115,7 @@ export async function requestStaffPhoneCode(
   });
   const sent = await sms.send({
     to: input.phone,
-    text: codeSms(`your ${audience === "staff" ? "staff " : ""}sign-in code is ${code}. It expires in 10 minutes. Never share it.`)
+    text: signInCodeSms(resolveWorkerLanguage(user.primaryLanguage), code, audience === "staff")
   });
   return sent.status === "sent" ? "sent" : "not_sent";
 }

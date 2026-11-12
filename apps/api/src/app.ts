@@ -2187,12 +2187,13 @@ export function buildApi(options: BuildApiOptions = {}) {
 
     // Look up the account's phone so the verification code can also be texted (SMS is money-gated).
     const phoneRow = prisma
-      ? await prisma.user.findUnique({ where: { id: session.user.id }, select: { phone: true } }).catch(() => null)
+      ? await prisma.user.findUnique({ where: { id: session.user.id }, select: { phone: true, primaryLanguage: true } }).catch(() => null)
       : null;
     const result = await emailVerificationService.issue({
       userId: session.user.id,
       emailNormalized: session.user.emailNormalized,
-      recipientPhone: phoneRow?.phone ?? null
+      recipientPhone: phoneRow?.phone ?? null,
+      language: phoneRow?.primaryLanguage ?? null
     });
     return reply.code(202).send(result);
   });
@@ -9171,17 +9172,31 @@ export function buildApi(options: BuildApiOptions = {}) {
     await notifyClient(prisma, emailSender, { jobRequestId: result.jobRequestId, kind: "worker_cancelled" }).catch(() => undefined);
     if (staffAlertEmail) {
       const job = await prisma.jobRequest.findUnique({ where: { id: result.jobRequestId }, select: { jobRequestNumber: true, title: true } }).catch(() => null);
+      // The staff inbox has no single reader's language, so the alert carries EN, FR and AR.
+      const code = job?.jobRequestNumber ?? result.jobRequestId;
+      const hours = penalty.hoursBeforeStart.toFixed(1);
+      const late = penalty.penalty !== "none";
+      const repeat = penalty.penalty === "permanent_close";
+      const en =
+        `A worker cancelled their shift "${job?.title ?? ""}" (${code}), ${hours} h before the start. The place is open again on the job board.\n` +
+        (late
+          ? `Under 24 h: the 7-day suspension was applied automatically.${repeat ? " This is a repeat late cancellation: the policy recommends closing the account (staff decision)." : ""}`
+          : "More than 24 h before the start: no penalty.");
+      const fr =
+        `Un travailleur a annulé son quart « ${job?.title ?? ""} » (${code}), ${hours} h avant le début. La place est de nouveau ouverte au tableau des emplois.\n` +
+        (late
+          ? `Moins de 24 h : la suspension de 7 jours a été appliquée automatiquement.${repeat ? " C'est une annulation tardive répétée : la politique recommande de fermer le compte (décision du personnel)." : ""}`
+          : "Plus de 24 h avant le début : aucune pénalité.");
+      const ar =
+        `ألغى عامل مناوبته «${job?.title ?? ""}» (${code}) قبل البداية بـ${hours} ساعة. أصبح المكان متاحًا من جديد على لوحة الوظائف.\n` +
+        (late
+          ? `أقل من 24 ساعة: طُبّق الإيقاف لمدة 7 أيام تلقائيًا.${repeat ? " هذا إلغاء متأخر متكرر: توصي السياسة بإغلاق الحساب (قرار الفريق)." : ""}`
+          : "أكثر من 24 ساعة قبل البداية: لا عقوبة.");
       await emailSender
         .send({
           to: staffAlertEmail,
-          subject: `Joblop — a worker cancelled ${job?.jobRequestNumber ?? "a shift"}${penalty.penalty !== "none" ? " (under 24 h)" : ""}`,
-          text:
-            `A worker cancelled their shift "${job?.title ?? ""}" (${job?.jobRequestNumber ?? result.jobRequestId}), ` +
-            `${penalty.hoursBeforeStart.toFixed(1)} h before the start. The place is open again on the job board.\n` +
-            (penalty.penalty === "none"
-              ? "More than 24 h before the start: no penalty.\n"
-              : `Under 24 h: the 7-day suspension was applied automatically.${penalty.penalty === "permanent_close" ? " This is a repeat late cancellation: the policy recommends closing the account (staff decision)." : ""}\n`) +
-            `\n— Joblop`
+          subject: `Joblop — a worker cancelled / un travailleur a annulé / ألغى عامل ${code}${late ? " (< 24 h)" : ""}`,
+          text: `${en}\n\n— — —\n\n${fr}\n\n— — —\n\n${ar}\n\n— Joblop`
         })
         .catch(() => undefined);
     }

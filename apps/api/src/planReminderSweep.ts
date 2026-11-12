@@ -47,7 +47,8 @@ export function dueReminderStage(
 const PLAN_LABEL: Record<string, string> = { shift_pro: "Shift Pro", shift_business: "Shift Business" };
 
 function day(at: Date, language: NotificationLanguage): string {
-  return at.toLocaleDateString(language === "en" ? "en-CA" : "fr-CA", { timeZone: "America/Toronto", year: "numeric", month: "long", day: "numeric" });
+  const locale = language === "en" ? "en-CA" : language === "ar" ? "ar-u-nu-latn" : "fr-CA";
+  return at.toLocaleDateString(locale, { timeZone: "America/Toronto", year: "numeric", month: "long", day: "numeric" });
 }
 
 export type ReminderSubject = Readonly<{ kind: "plan"; plan: string } | { kind: "listing"; jobTitle: string }>;
@@ -83,6 +84,28 @@ export function planEndingEmail(params: {
         `If you do nothing, workers stop seeing the job. No charge is made.\n\n— Joblop`
     };
   }
+  if (params.language === "ar") {
+    const whenAr = params.stage === 1 ? "غدًا" : `في ${date}`;
+    if (s.kind === "plan") {
+      const name = PLAN_LABEL[s.plan] ?? s.plan;
+      return {
+        to: params.to,
+        subject: `Joblop — تنتهي باقتك ${name} ${whenAr}`,
+        text:
+          `باقتك ${name} مدفوعة حتى ${date}.\n\n` +
+          `الباقات لا تتجدد تلقائيًا. للحفاظ على خصمك، سجّل الدخول إلى Joblop وافتح «الباقات» واضغط «تجديد شهر واحد — Interac».\n\n` +
+          `إذا لم تفعل شيئًا، تعود إلى الدفع عن كل مناوبة. لا تُقتطع أي رسوم.\n\n— Joblop`
+      };
+    }
+    return {
+      to: params.to,
+      subject: `Joblop — ينتهي إعلان وظيفتك ${whenAr}`,
+      text:
+        `وظيفتك طويلة الأمد «${s.jobTitle}» معروضة حتى ${date}.\n\n` +
+        `الإعلانات لا تتجدد تلقائيًا. لتبقى ظاهرة للعمال، سجّل الدخول إلى Joblop وافتح وظائفك طويلة الأمد واضغط «تجديد شهر واحد».\n\n` +
+        `إذا لم تفعل شيئًا، يتوقف العمال عن رؤية الوظيفة. لا تُقتطع أي رسوم.\n\n— Joblop`
+    };
+  }
   const when = params.stage === 1 ? "demain" : `le ${date}`;
   if (s.kind === "plan") {
     const name = PLAN_LABEL[s.plan] ?? s.plan;
@@ -112,6 +135,11 @@ export function planEndingSmsText(params: { language: NotificationLanguage; subj
     return s.kind === "plan"
       ? noticeSms("en", `your ${PLAN_LABEL[s.plan] ?? s.plan} plan ends tomorrow (${date}). To renew: Joblop > Plans.`)
       : noticeSms("en", `your job listing "${s.jobTitle}" ends tomorrow (${date}). To renew: Joblop > long-term jobs.`);
+  }
+  if (params.language === "ar") {
+    return s.kind === "plan"
+      ? noticeSms("ar", `تنتهي باقتك ${PLAN_LABEL[s.plan] ?? s.plan} غدًا (${date}). للتجديد: Joblop > الباقات.`)
+      : noticeSms("ar", `ينتهي إعلانك «${s.jobTitle}» غدًا (${date}). للتجديد: Joblop > الوظائف طويلة الأمد.`);
   }
   return s.kind === "plan"
     ? noticeSms("fr", `votre forfait ${PLAN_LABEL[s.plan] ?? s.plan} se termine demain (${date}). Pour renouveler: Joblop > Forfaits.`)

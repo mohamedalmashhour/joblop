@@ -199,7 +199,8 @@ export async function findOrganizationContact(prisma: PrismaClient, organization
 }
 
 function day(at: Date, language: NotificationLanguage): string {
-  return at.toLocaleDateString(language === "en" ? "en-CA" : "fr-CA", { timeZone: "America/Toronto", year: "numeric", month: "long", day: "numeric" });
+  const locale = language === "en" ? "en-CA" : language === "ar" ? "ar-u-nu-latn" : "fr-CA";
+  return at.toLocaleDateString(locale, { timeZone: "America/Toronto", year: "numeric", month: "long", day: "numeric" });
 }
 
 /** The receipt email (French by default, English when the user reads English). The PDF is attached. */
@@ -223,6 +224,19 @@ export function paymentReceiptEmail(params: {
         `Receipt ${receipt.receiptNumber}\n${item}\nPeriod: ${period}\n` +
         `Subtotal ${formatCadMinor(receipt.subtotalMinor)} + GST ${formatCadMinor(receipt.gstMinor)} + QST ${formatCadMinor(receipt.qstMinor)} = ${total}\n\n` +
         `${params.pdf ? "The receipt is attached. " : ""}You can also see it on the Plans page in Joblop.\n\n— Joblop`,
+      ...attachments
+    };
+  }
+  if (params.language === "ar") {
+    const itemAr = receipt.kind === "job_listing" ? `إعلان وظيفة طويلة الأمد: ${receipt.itemLabel}` : `باقة ${receipt.itemLabel}`;
+    return {
+      to: params.to,
+      subject: `Joblop — إيصال ${receipt.receiptNumber}`,
+      text:
+        `شكرًا لك. استلمنا دفعتك البالغة ${total}.\n\n` +
+        `الإيصال ${receipt.receiptNumber}\n${itemAr}\nالفترة: ${period}\n` +
+        `المجموع الفرعي ${formatCadMinor(receipt.subtotalMinor)} + GST ${formatCadMinor(receipt.gstMinor)} + QST ${formatCadMinor(receipt.qstMinor)} = ${total}\n\n` +
+        `${params.pdf ? "الإيصال مرفق. " : ""}يمكنك أيضًا رؤيته في صفحة «الباقات» على Joblop.\n\n— Joblop`,
       ...attachments
     };
   }

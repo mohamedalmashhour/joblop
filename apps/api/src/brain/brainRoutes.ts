@@ -56,9 +56,19 @@ export async function maybeSendDailySummary(input: {
   const summary = await buildBrainSummary(input.store, input.now);
   // Phase 2 hook: an outside-AI narrative could be passed as the third argument, ONLY through the
   // privacy filter (apps/api/src/aiPrivacyFilter.ts). Phase 1 stays deterministic: no narrator.
-  const [en, fr] = await Promise.all([renderBrainSummaryText(summary, summaryCopy("en")), renderBrainSummaryText(summary, summaryCopy("fr"))]);
+  // The staff inbox has no single reader's language, so (like the unfilled-shift alert) the summary
+  // carries English, French and Arabic.
+  const [en, fr, ar] = await Promise.all([
+    renderBrainSummaryText(summary, summaryCopy("en")),
+    renderBrainSummaryText(summary, summaryCopy("fr")),
+    renderBrainSummaryText(summary, summaryCopy("ar"))
+  ]);
   const result = await input.emailSender
-    .send({ to: input.staffEmail, subject: `${summaryCopy("en").subject} / ${summaryCopy("fr").subject}`, text: `${en}\n\n——————\n\n${fr}` })
+    .send({
+      to: input.staffEmail,
+      subject: `${summaryCopy("en").subject} / ${summaryCopy("fr").subject} / ${summaryCopy("ar").subject}`,
+      text: `${en}\n\n——————\n\n${fr}\n\n——————\n\n${ar}`
+    })
     .catch(() => ({ status: "error" as const }));
   return result.status === "sent" ? "sent" : result.status === "error" ? "failed" : "off";
 }

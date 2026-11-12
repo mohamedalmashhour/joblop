@@ -112,7 +112,7 @@ describe("every SMS: brand, opt-out, length", () => {
       for (const call of sendCalls(source)) {
         if (!/\btext:/.test(call) || /\bsubject:/.test(call)) continue;
         checked += 1;
-        expect(call, file).toMatch(/codeSms\(|noticeSms\(/);
+        expect(call, file).toMatch(/codeSms\(|noticeSms\(|signInCodeSms\(|verificationCodeSms\(|passwordResetSms\(/);
       }
     }
     expect(checked).toBeGreaterThanOrEqual(4);

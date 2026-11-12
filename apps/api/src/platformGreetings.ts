@@ -18,17 +18,17 @@ export type Recipient = Readonly<{
   kind: RecipientKind;
   name: string;
   email: string | null;
-  language: "en" | "fr";
+  language: "en" | "fr" | "ar";
 }>;
 
 // Certificate catalogue. Each award has bilingual default titles and a serial prefix. "custom" lets an
 // admin title it themselves. Country-neutral — these are platform awards, not tied to any jurisdiction.
 export const CERTIFICATE_KINDS = {
-  super_worker: { en: "Super Worker", fr: "Super Travailleur", prefix: "SW" },
-  most_reliable: { en: "Most Reliable", fr: "Le plus fiable", prefix: "MR" },
-  employee_of_month: { en: "Employee of the Month", fr: "Employé du mois", prefix: "EM" },
-  top_employer: { en: "Top Employer", fr: "Employeur de choix", prefix: "TE" },
-  custom: { en: "Certificate of Appreciation", fr: "Certificat de reconnaissance", prefix: "CT" }
+  super_worker: { en: "Super Worker", fr: "Super Travailleur", ar: "العامل المتميز", prefix: "SW" },
+  most_reliable: { en: "Most Reliable", fr: "Le plus fiable", ar: "الأكثر موثوقية", prefix: "MR" },
+  employee_of_month: { en: "Employee of the Month", fr: "Employé du mois", ar: "موظف الشهر", prefix: "EM" },
+  top_employer: { en: "Top Employer", fr: "Employeur de choix", ar: "صاحب العمل المتميز", prefix: "TE" },
+  custom: { en: "Certificate of Appreciation", fr: "Certificat de reconnaissance", ar: "شهادة تقدير", prefix: "CT" }
 } as const;
 
 export type CertificateKind = keyof typeof CERTIFICATE_KINDS;
@@ -38,7 +38,7 @@ export function isCertificateKind(value: string): value is CertificateKind {
 }
 
 /** Default bilingual title for a certificate kind. */
-export function certificateTitle(kind: CertificateKind, language: "en" | "fr"): string {
+export function certificateTitle(kind: CertificateKind, language: "en" | "fr" | "ar"): string {
   return CERTIFICATE_KINDS[kind][language];
 }
 
@@ -57,7 +57,7 @@ function generateSerial(kind: CertificateKind): string {
 }
 
 // ── recipient resolution ───────────────────────────────────────────────────────────────────────────
-const lang = (pref: string | null | undefined): "en" | "fr" => (pref === "fr" ? "fr" : "en");
+const lang = (pref: string | null | undefined): "en" | "fr" | "ar" => (pref === "fr" ? "fr" : pref === "ar" ? "ar" : "en");
 
 async function resolveWorkers(prisma: PrismaClient): Promise<Recipient[]> {
   const rows = await prisma.workerIdentity.findMany({
@@ -167,18 +167,30 @@ export async function searchRecipients(
 
 // ── email copy ───────────────────────────────────────────────────────────────────────────────────
 export function greetingEmail(recipient: Recipient, title: string, message: string): { subject: string; text: string } {
-  const hi = recipient.language === "fr" ? `Bonjour ${recipient.name},` : `Hi ${recipient.name},`;
-  const sign = recipient.language === "fr" ? "— L'équipe Joblop" : "— The Joblop team";
+  const { language } = recipient;
+  const hi = language === "fr" ? `Bonjour ${recipient.name},` : language === "ar" ? `مرحبًا ${recipient.name}،` : `Hi ${recipient.name},`;
+  const sign = language === "fr" ? "— L'équipe Joblop" : language === "ar" ? "— فريق Joblop" : "— The Joblop team";
   return { subject: title, text: `${hi}\n\n${message}\n\n${sign}` };
 }
 
 export function certificateEmail(recipient: Recipient, title: string, serial: string, note: string | null): { subject: string; text: string } {
-  const fr = recipient.language === "fr";
-  const subject = fr ? `Votre certificat : ${title}` : `Your certificate: ${title}`;
-  const body = fr
-    ? `Félicitations ${recipient.name} !\n\nVous avez reçu le certificat « ${title} » de la part de Joblop.${note ? `\n\n${note}` : ""}\n\nNº de série : ${serial}\n\nConnectez-vous à votre compte pour le voir et l'imprimer.\n\n— L'équipe Joblop`
-    : `Congratulations ${recipient.name}!\n\nYou've been awarded the "${title}" certificate by Joblop.${note ? `\n\n${note}` : ""}\n\nSerial: ${serial}\n\nSign in to your account to view and print it.\n\n— The Joblop team`;
-  return { subject, text: body };
+  const extra = note ? `\n\n${note}` : "";
+  if (recipient.language === "fr") {
+    return {
+      subject: `Votre certificat : ${title}`,
+      text: `Félicitations ${recipient.name} !\n\nVous avez reçu le certificat « ${title} » de la part de Joblop.${extra}\n\nNº de série : ${serial}\n\nConnectez-vous à votre compte pour le voir et l'imprimer.\n\n— L'équipe Joblop`
+    };
+  }
+  if (recipient.language === "ar") {
+    return {
+      subject: `شهادتك: ${title}`,
+      text: `تهانينا ${recipient.name}!\n\nمنحتك Joblop شهادة «${title}».${extra}\n\nالرقم التسلسلي: ${serial}\n\nسجّل الدخول إلى حسابك لرؤيتها وطباعتها.\n\n— فريق Joblop`
+    };
+  }
+  return {
+    subject: `Your certificate: ${title}`,
+    text: `Congratulations ${recipient.name}!\n\nYou've been awarded the "${title}" certificate by Joblop.${extra}\n\nSerial: ${serial}\n\nSign in to your account to view and print it.\n\n— The Joblop team`
+  };
 }
 
 // ── send / issue ─────────────────────────────────────────────────────────────────────────────────

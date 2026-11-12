@@ -33,7 +33,7 @@ export function checkInReminderSmsText(params: { language: WorkerLanguage; title
 /** Employer email: hours from a finished shift are waiting for their confirmation. */
 export function timesheetReminderEmail(params: {
   to: string;
-  language: "en" | "fr";
+  language: WorkerLanguage;
   jobCode: string;
   title: string;
   shiftStart: Date;
@@ -49,6 +49,15 @@ export function timesheetReminderEmail(params: {
         `Sign in to Joblop and open Timesheets. If something is wrong, you can say so there.\n\n— Joblop`
     };
   }
+  if (params.language === "ar") {
+    return {
+      to: params.to,
+      subject: `Joblop — يُرجى تأكيد الساعات (${params.jobCode})`,
+      text:
+        `يُرجى تأكيد ساعات العامل لـ«${params.title}» يوم ${day} (رمز المهمة ${params.jobCode}).\n\n` +
+        `سجّل الدخول إلى Joblop وافتح «كشوف الدوام». إذا كان هناك خطأ، يمكنك الإبلاغ عنه هناك.\n\n— Joblop`
+    };
+  }
   return {
     to: params.to,
     subject: `Joblop — veuillez confirmer les heures (${params.jobCode})`,
@@ -61,7 +70,7 @@ export function timesheetReminderEmail(params: {
 /** Employer email: their booked worker has not checked in yet, and Joblop is on it. */
 export function noShowEmployerEmail(params: {
   to: string;
-  language: "en" | "fr";
+  language: WorkerLanguage;
   jobCode: string;
   title: string;
   startAt: Date;
@@ -77,6 +86,15 @@ export function noShowEmployerEmail(params: {
         `Joblop is on it: we are contacting the worker and will keep you posted. No need to do anything for now.\n\n— Joblop`
     };
   }
+  if (params.language === "ar") {
+    return {
+      to: params.to,
+      subject: `Joblop — لم يسجّل عاملك وصوله بعد (${params.jobCode})`,
+      text:
+        `العامل المحجوز لـ«${params.title}» (البداية ${time}، رمز المهمة ${params.jobCode}) لم يسجّل وصوله بعد.\n\n` +
+        `Joblop تتابع الأمر: نتواصل مع العامل وسنُبقيك على اطلاع. لا داعي لأي إجراء منك الآن.\n\n— Joblop`
+    };
+  }
   return {
     to: params.to,
     subject: `Joblop — votre travailleur n'a pas encore fait son arrivée (${params.jobCode})`,
@@ -88,7 +106,7 @@ export function noShowEmployerEmail(params: {
 
 /** Worker email: their own hours from a finished shift are waiting for their confirmation. */
 export function workerTimesheetReminderEmail(params: { to: string; language: WorkerLanguage; title: string; shiftStart: Date; timezone: string }): EmailMessage {
-  const language = params.language === "en" ? "en" : "fr";
+  const language = params.language;
   const day = formatWhen(params.shiftStart, language, params.timezone, "date");
   if (language === "en") {
     return {
@@ -97,6 +115,15 @@ export function workerTimesheetReminderEmail(params: { to: string; language: Wor
       text:
         `Please confirm your hours for "${params.title}" on ${day}.\n\n` +
         `Sign in to Joblop and open Timesheets. If something is wrong, you can say so there.\n\n— Joblop`
+    };
+  }
+  if (language === "ar") {
+    return {
+      to: params.to,
+      subject: "Joblop — يُرجى تأكيد ساعاتك",
+      text:
+        `يُرجى تأكيد ساعاتك لـ«${params.title}» يوم ${day}.\n\n` +
+        `سجّل الدخول إلى Joblop وافتح «كشوف الدوام». إذا كان هناك خطأ، يمكنك الإبلاغ عنه هناك.\n\n— Joblop`
     };
   }
   return {
@@ -116,45 +143,47 @@ export function workerTimesheetReminderSmsText(params: { language: WorkerLanguag
   return noticeSms("fr", `veuillez confirmer vos heures pour "${params.title}" le ${day}, dans l'app sous Feuilles de temps.`);
 }
 
-export const RULE_TITLES: Record<string, { en: string; fr: string }> = {
-  job_unfilled_soon: { en: "Approved job starting soon with open places", fr: "Mission approuvée bientôt, places libres" },
-  worker_not_checked_in: { en: "Worker not checked in 10 min after start", fr: "Travailleur sans arrivée 10 min après le début" },
-  delivery_failed: { en: "Email or text that failed", fr: "Courriel ou texto non envoyé" },
-  request_waiting_review: { en: "Request waiting for staff review", fr: "Demande en attente de révision" },
-  timesheet_unconfirmed: { en: "Hours not confirmed after 24 h (worker or employer)", fr: "Heures non confirmées après 24 h (travailleur ou employeur)" },
-  hours_not_prepared: { en: "Shift ended over 2 h ago with no hours prepared", fr: "Quart terminé depuis plus de 2 h sans heures préparées" },
-  timesheet_ready: { en: "Hours ready for approval", fr: "Heures prêtes à approuver" },
-  invoice_overdue: { en: "Overdue invoice", fr: "Facture en retard" },
-  job_missing_info: { en: "Job submitted with missing information", fr: "Mission soumise avec des informations manquantes" },
+type Titles = Readonly<{ en: string; fr: string; ar: string }>;
+
+export const RULE_TITLES: Record<string, Titles> = {
+  job_unfilled_soon: { en: "Approved job starting soon with open places", fr: "Mission approuvée bientôt, places libres", ar: "مهمة موافَق عليها تبدأ قريبًا وفيها أماكن شاغرة" },
+  worker_not_checked_in: { en: "Worker not checked in 10 min after start", fr: "Travailleur sans arrivée 10 min après le début", ar: "عامل لم يسجّل وصوله بعد 10 دقائق من البداية" },
+  delivery_failed: { en: "Email or text that failed", fr: "Courriel ou texto non envoyé", ar: "بريد أو رسالة نصية لم تُرسَل" },
+  request_waiting_review: { en: "Request waiting for staff review", fr: "Demande en attente de révision", ar: "طلب ينتظر مراجعة الفريق" },
+  timesheet_unconfirmed: { en: "Hours not confirmed after 24 h (worker or employer)", fr: "Heures non confirmées après 24 h (travailleur ou employeur)", ar: "ساعات غير مؤكدة بعد 24 ساعة (العامل أو صاحب العمل)" },
+  hours_not_prepared: { en: "Shift ended over 2 h ago with no hours prepared", fr: "Quart terminé depuis plus de 2 h sans heures préparées", ar: "مناوبة انتهت منذ أكثر من ساعتين دون تحضير الساعات" },
+  timesheet_ready: { en: "Hours ready for approval", fr: "Heures prêtes à approuver", ar: "ساعات جاهزة للموافقة" },
+  invoice_overdue: { en: "Overdue invoice", fr: "Facture en retard", ar: "فاتورة متأخرة" },
+  job_missing_info: { en: "Job submitted with missing information", fr: "Mission soumise avec des informations manquantes", ar: "مهمة أُرسلت بمعلومات ناقصة" },
   // Phase 2: one row per action card the assistant showed (resolved at once; not a problem).
-  assistant: { en: "Assistant action cards shown", fr: "Cartes d'action de l'assistant affichées" }
+  assistant: { en: "Assistant action cards shown", fr: "Cartes d'action de l'assistant affichées", ar: "بطاقات إجراءات المساعد المعروضة" }
 };
 
-export const ACTION_TITLES: Record<string, { en: string; fr: string }> = {
-  resend_failed_message: { en: "Re-send a failed email or text", fr: "Renvoyer un courriel ou texto non envoyé" },
-  remind_worker_check_in: { en: "Text a worker to check in", fr: "Texter un travailleur pour qu'il fasse son arrivée" },
-  remind_employer_timesheet: { en: "Email an employer to confirm hours", fr: "Écrire à un employeur pour confirmer les heures" },
-  remind_worker_timesheet: { en: "Remind a worker to confirm their hours", fr: "Rappeler à un travailleur de confirmer ses heures" },
-  offer_employer_bonus: { en: "Offer the employer a bonus for an unfilled job", fr: "Proposer une prime à l'employeur pour une mission non pourvue" },
-  auto_approve_request: { en: "Approve a request that passes every check", fr: "Approuver une demande qui passe toutes les vérifications" },
-  auto_approve_timesheet: { en: "Approve hours with check-in and check-out and no problems", fr: "Approuver des heures avec arrivée, départ et aucun problème" },
-  daily_summary_email: { en: "Daily summary email to staff", fr: "Résumé quotidien par courriel au personnel" },
+export const ACTION_TITLES: Record<string, Titles> = {
+  resend_failed_message: { en: "Re-send a failed email or text", fr: "Renvoyer un courriel ou texto non envoyé", ar: "إعادة إرسال بريد أو رسالة لم تُرسَل" },
+  remind_worker_check_in: { en: "Text a worker to check in", fr: "Texter un travailleur pour qu'il fasse son arrivée", ar: "مراسلة عامل ليسجّل وصوله" },
+  remind_employer_timesheet: { en: "Email an employer to confirm hours", fr: "Écrire à un employeur pour confirmer les heures", ar: "مراسلة صاحب عمل لتأكيد الساعات" },
+  remind_worker_timesheet: { en: "Remind a worker to confirm their hours", fr: "Rappeler à un travailleur de confirmer ses heures", ar: "تذكير عامل بتأكيد ساعاته" },
+  offer_employer_bonus: { en: "Offer the employer a bonus for an unfilled job", fr: "Proposer une prime à l'employeur pour une mission non pourvue", ar: "اقتراح مكافأة على صاحب العمل لمهمة غير مغطاة" },
+  auto_approve_request: { en: "Approve a request that passes every check", fr: "Approuver une demande qui passe toutes les vérifications", ar: "الموافقة على طلب اجتاز كل الفحوص" },
+  auto_approve_timesheet: { en: "Approve hours with check-in and check-out and no problems", fr: "Approuver des heures avec arrivée, départ et aucun problème", ar: "الموافقة على ساعات فيها تسجيل وصول وانصراف دون مشاكل" },
+  daily_summary_email: { en: "Daily summary email to staff", fr: "Résumé quotidien par courriel au personnel", ar: "ملخص يومي بالبريد إلى الفريق" },
   // Phase 2: actions a person confirmed on an assistant card.
-  "assistant.claim_open_job": { en: "Assistant: worker claimed a job", fr: "Assistant : un travailleur a pris une mission" },
-  "assistant.cancel_my_shift": { en: "Assistant: worker cancelled a shift", fr: "Assistant : un travailleur a annulé un quart" },
-  "assistant.confirm_shift": { en: "Assistant: worker confirmed a shift", fr: "Assistant : un travailleur a confirmé un quart" },
-  "assistant.create_draft_request": { en: "Assistant: employer created a draft request", fr: "Assistant : un employeur a créé un brouillon" },
-  "assistant.submit_draft": { en: "Assistant: employer submitted a request", fr: "Assistant : un employeur a soumis une demande" },
-  "assistant.confirm_timesheet": { en: "Assistant: employer confirmed hours", fr: "Assistant : un employeur a confirmé des heures" },
-  "assistant.duplicate_request": { en: "Assistant: employer copied a request", fr: "Assistant : un employeur a copié une demande" },
-  "assistant.brain_do_it": { en: "Assistant: staff ran a Brain action", fr: "Assistant : le personnel a lancé une action du cerveau" },
-  "assistant.approve_request": { en: "Assistant: staff approved a request", fr: "Assistant : le personnel a approuvé une demande" },
-  "assistant.approve_timesheet": { en: "Assistant: staff approved hours", fr: "Assistant : le personnel a approuvé des heures" }
+  "assistant.claim_open_job": { en: "Assistant: worker claimed a job", fr: "Assistant : un travailleur a pris une mission", ar: "المساعد: عامل أخذ مهمة" },
+  "assistant.cancel_my_shift": { en: "Assistant: worker cancelled a shift", fr: "Assistant : un travailleur a annulé un quart", ar: "المساعد: عامل ألغى مناوبة" },
+  "assistant.confirm_shift": { en: "Assistant: worker confirmed a shift", fr: "Assistant : un travailleur a confirmé un quart", ar: "المساعد: عامل أكّد مناوبة" },
+  "assistant.create_draft_request": { en: "Assistant: employer created a draft request", fr: "Assistant : un employeur a créé un brouillon", ar: "المساعد: صاحب عمل أنشأ مسودة طلب" },
+  "assistant.submit_draft": { en: "Assistant: employer submitted a request", fr: "Assistant : un employeur a soumis une demande", ar: "المساعد: صاحب عمل أرسل طلبًا" },
+  "assistant.confirm_timesheet": { en: "Assistant: employer confirmed hours", fr: "Assistant : un employeur a confirmé des heures", ar: "المساعد: صاحب عمل أكّد الساعات" },
+  "assistant.duplicate_request": { en: "Assistant: employer copied a request", fr: "Assistant : un employeur a copié une demande", ar: "المساعد: صاحب عمل نسخ طلبًا" },
+  "assistant.brain_do_it": { en: "Assistant: staff ran a Brain action", fr: "Assistant : le personnel a lancé une action du cerveau", ar: "المساعد: الفريق شغّل إجراءً من العقل" },
+  "assistant.approve_request": { en: "Assistant: staff approved a request", fr: "Assistant : le personnel a approuvé une demande", ar: "المساعد: الفريق وافق على طلب" },
+  "assistant.approve_timesheet": { en: "Assistant: staff approved hours", fr: "Assistant : le personnel a approuvé des heures", ar: "المساعد: الفريق وافق على الساعات" }
 };
 
-const title = (table: Record<string, { en: string; fr: string }>, key: string, language: "en" | "fr") => table[key]?.[language] ?? key;
+const title = (table: Record<string, Titles>, key: string, language: WorkerLanguage) => table[key]?.[language] ?? key;
 
-const MODE_LINE: Record<"en" | "fr", Record<BrainMode, string>> = {
+const MODE_LINE: Record<WorkerLanguage, Record<BrainMode, string>> = {
   en: {
     off: "The brain is OFF (kill switch): it only lists problems.",
     watch: "The brain is in WATCH mode: it records what it would have done and does nothing.",
@@ -164,22 +193,48 @@ const MODE_LINE: Record<"en" | "fr", Record<BrainMode, string>> = {
     off: "Le cerveau est ARRÊTÉ (arrêt d'urgence) : il ne fait que lister les problèmes.",
     watch: "Le cerveau est en mode OBSERVATION : il note ce qu'il aurait fait et ne fait rien.",
     live: "Le cerveau est ACTIF : il agit seulement là où son interrupteur est allumé."
+  },
+  ar: {
+    off: "العقل متوقف (زر الإيقاف): يكتفي بعرض المشاكل.",
+    watch: "العقل في وضع المراقبة: يسجّل ما كان سيفعله ولا يفعل شيئًا.",
+    live: "العقل يعمل: يتصرف فقط حيث يكون مفتاحه مفعّلًا."
   }
 };
 
-export function summaryCopy(language: "en" | "fr"): SummaryCopy {
-  const en = language === "en";
+const SUMMARY_WORDS: Record<WorkerLanguage, Readonly<{ subject: string; intro: string; found: string; done: string; simulated: string; failed: string; needs: string; none: string; open: (count: number) => string }>> = {
+  en: {
+    subject: "Joblop brain — daily summary",
+    intro: "Here is what the brain found and did in the last 24 hours.",
+    found: "Found", done: "Done", simulated: "Would have done (watch mode)", failed: "Failed", needs: "Needs a person", none: "nothing",
+    open: (count) => `Open issues now: ${count}. Open the Brain page in the staff site.`
+  },
+  fr: {
+    subject: "Cerveau Joblop — résumé quotidien",
+    intro: "Voici ce que le cerveau a trouvé et fait au cours des 24 dernières heures.",
+    found: "Trouvé", done: "Fait", simulated: "Aurait fait (mode observation)", failed: "Échoué", needs: "Demande une personne", none: "rien",
+    open: (count) => `Problèmes ouverts : ${count}. Ouvrez la page Cerveau du site du personnel.`
+  },
+  ar: {
+    subject: "عقل Joblop — الملخص اليومي",
+    intro: "هذا ما وجده العقل وما فعله خلال آخر 24 ساعة.",
+    found: "ما وُجد", done: "ما أُنجز", simulated: "ما كان سيفعله (وضع المراقبة)", failed: "ما فشل", needs: "يحتاج إلى شخص", none: "لا شيء",
+    open: (count) => `المشاكل المفتوحة الآن: ${count}. افتح صفحة العقل في موقع الفريق.`
+  }
+};
+
+export function summaryCopy(language: WorkerLanguage): SummaryCopy {
+  const words = SUMMARY_WORDS[language];
   return {
-    subject: en ? "Joblop brain — daily summary" : "Cerveau Joblop — résumé quotidien",
-    intro: en ? "Here is what the brain found and did in the last 24 hours." : "Voici ce que le cerveau a trouvé et fait au cours des 24 dernières heures.",
+    subject: words.subject,
+    intro: words.intro,
     modeLine: (mode) => MODE_LINE[language][mode],
-    foundHeading: en ? "Found" : "Trouvé",
-    doneHeading: en ? "Done" : "Fait",
-    simulatedHeading: en ? "Would have done (watch mode)" : "Aurait fait (mode observation)",
-    failedHeading: en ? "Failed" : "Échoué",
-    needsHeading: en ? "Needs a person" : "Demande une personne",
-    none: en ? "nothing" : "rien",
-    openLine: (count) => (en ? `Open issues now: ${count}. Open the Brain page in the staff site.` : `Problèmes ouverts : ${count}. Ouvrez la page Cerveau du site du personnel.`),
+    foundHeading: words.found,
+    doneHeading: words.done,
+    simulatedHeading: words.simulated,
+    failedHeading: words.failed,
+    needsHeading: words.needs,
+    none: words.none,
+    openLine: words.open,
     ruleTitle: (key) => title(RULE_TITLES, key, language),
     actionTitle: (key) => title(ACTION_TITLES, key, language),
     closing: "— Joblop"

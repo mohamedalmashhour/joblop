@@ -9,10 +9,14 @@ import type { EmailMessage, EmailSender } from "../mailer/emailSender";
 // creator, sends through the gated email capsule, and NEVER throws into the governed path — a missing
 // recipient or an unconfigured mailer is a quiet skip, not a failure. No money, no DB writes.
 
-export type NotificationLanguage = "fr" | "en";
+export type NotificationLanguage = "fr" | "en" | "ar";
 
+// The person's own language: English, Arabic, or French (the Québec default).
 export function resolveLanguage(primaryLanguage: string | null | undefined): NotificationLanguage {
-  return primaryLanguage?.toLowerCase().startsWith("en") ? "en" : "fr";
+  const value = primaryLanguage?.toLowerCase() ?? "";
+  if (value.startsWith("en")) return "en";
+  if (value.startsWith("ar")) return "ar";
+  return "fr";
 }
 
 export function jobCodeEmail(params: {
@@ -30,6 +34,16 @@ export function jobCodeEmail(params: {
         `Good news — your staffing request "${title}" has been approved and is now open to workers.\n\n` +
         `Your job code is ${jobCode}. Keep it to track this request and find it in your calendar.\n\n` +
         `We'll let you know as soon as a worker accepts.\n\n— Joblop`
+    };
+  }
+  if (params.language === "ar") {
+    return {
+      to,
+      subject: `Joblop — تمت الموافقة على طلبك (${jobCode})`,
+      text:
+        `خبر سار: تمت الموافقة على طلب العمال «${title}» وأصبح الآن متاحًا للعمال.\n\n` +
+        `رمز المهمة هو ${jobCode}. احتفظ به لمتابعة هذا الطلب والعثور عليه في تقويمك.\n\n` +
+        `سنُعلمك فور قبول أحد العمال.\n\n— Joblop`
     };
   }
   return {
@@ -58,6 +72,15 @@ export function workerAcceptedEmail(params: {
         `The shift is now confirmed and appears in the worker's schedule. You'll see it in your calendar too.\n\n— Joblop`
     };
   }
+  if (params.language === "ar") {
+    return {
+      to,
+      subject: `Joblop — قبل أحد العمال طلبك (${jobCode})`,
+      text:
+        `قبل أحد العمال طلبك «${title}» (رمز المهمة ${jobCode}).\n\n` +
+        `المناوبة مؤكدة الآن وتظهر في جدول العامل، وستراها في تقويمك أيضًا.\n\n— Joblop`
+    };
+  }
   return {
     to,
     subject: `Joblop — un travailleur a accepté (${jobCode})`,
@@ -84,6 +107,15 @@ export function workerCancelledEmail(params: {
         `The place is open again and Joblop is looking for another worker. You don't need to do anything; we'll tell you when someone takes it.\n\n— Joblop`
     };
   }
+  if (params.language === "ar") {
+    return {
+      to,
+      subject: `Joblop — ألغى أحد العمال مناوبته (${jobCode})`,
+      text:
+        `ألغى العامل المحجوز لطلبك «${title}» (رمز المهمة ${jobCode}) مناوبته.\n\n` +
+        `أصبح المكان متاحًا من جديد وJoblop تبحث عن عامل آخر. لا داعي لأي إجراء منك، وسنُعلمك عندما يأخذه أحد.\n\n— Joblop`
+    };
+  }
   return {
     to,
     subject: `Joblop — un travailleur a annulé (${jobCode})`,
@@ -97,7 +129,7 @@ export type BonusOfferKind = "hourly" | "transport" | "one_time";
 
 function formatCad(amountMinor: number, language: NotificationLanguage): string {
   const dollars = (amountMinor / 100).toFixed(2);
-  return language === "en" ? `$${dollars}` : `${dollars.replace(".", ",")} $`;
+  return language === "fr" ? `${dollars.replace(".", ",")} $` : `$${dollars}`;
 }
 
 // Joblop suggests a bonus to help fill an approved job that is still open. The employer accepts or
@@ -135,6 +167,23 @@ export function bonusOfferEmail(params: {
         `Sign in to Joblop and open this request to accept or decline.
 
 — Joblop`
+    };
+  }
+  if (params.language === "ar") {
+    const whatAr =
+      params.bonusKind === "hourly"
+        ? `${amount} إضافية عن كل ساعة عمل`
+        : params.bonusKind === "transport"
+          ? `${amount} بدل نقل لكل عامل عن كل مناوبة`
+          : `مبلغ ${amount} لمرة واحدة لكل عامل عن كل مناوبة`;
+    return {
+      to,
+      subject: `Joblop — مكافأة قد تساعد في تغطية طلبك (${jobCode})`,
+      text:
+        `ما زالت هناك أماكن شاغرة في طلبك «${title}» (رمز المهمة ${jobCode}).\n\n` +
+        `لجذب العمال بسرعة أكبر، تقترح Joblop مكافأة: ${whatAr}.\n\n` +
+        `إذا قبلت، تُضاف المكافأة إلى فاتورة هذه المهمة (مع الضرائب). وإذا رفضت، لا يتغير شيء.\n\n` +
+        `سجّل الدخول إلى Joblop وافتح هذا الطلب للقبول أو الرفض.\n\n— Joblop`
     };
   }
   const what =
@@ -177,6 +226,16 @@ export function invoiceSentEmail(params: {
       text:
         `Your invoice ${params.invoiceNumber} is ready.${params.pdf ? " A copy is attached." : ""}\n\n` +
         `Sign in to Joblop and open Invoices to see it and pay.\n\n— Joblop`,
+      ...attachments
+    };
+  }
+  if (params.language === "ar") {
+    return {
+      to: params.to,
+      subject: `Joblop — الفاتورة ${params.invoiceNumber} جاهزة`,
+      text:
+        `فاتورتك ${params.invoiceNumber} جاهزة.${params.pdf ? " نسخة منها مرفقة." : ""}\n\n` +
+        `سجّل الدخول إلى Joblop وافتح «الفواتير» للاطلاع عليها ودفعها.\n\n— Joblop`,
       ...attachments
     };
   }
