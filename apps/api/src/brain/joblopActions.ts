@@ -11,7 +11,9 @@ export const JOBLOP_ACTION_KEYS = [
   "remind_worker_timesheet",
   "offer_employer_bonus",
   "auto_approve_request",
-  "auto_approve_timesheet"
+  "auto_approve_timesheet",
+  "notify_worker_report_hours",
+  "close_unreported_shift"
 ] as const;
 export type JoblopActionKey = (typeof JOBLOP_ACTION_KEYS)[number];
 
@@ -91,6 +93,28 @@ export const autoApproveTimesheetAction: BrainAction<JoblopBrainContext> = {
   }
 };
 
+// "Report my hours" (12-hour window, HOURS_REPORT_WINDOW_HOURS): a shift ended with no check-in.
+export const notifyWorkerReportHoursAction: BrainAction<JoblopBrainContext> = {
+  key: "notify_worker_report_hours",
+  movesMoney: false,
+  dailyCap: 200,
+  undoHint: "A sent message cannot be taken back. Contact the worker if it was wrong.",
+  describe: (issue) =>
+    issue.inputs.stage === "last"
+      ? "send the worker one last reminder (email + text) to report their hours before the deadline"
+      : "tell the worker (email + text) they have 12 hours to report their hours, with a link to the shift",
+  run: (issue, { effects }) => effects.notifyWorkerToReportHours(issue.subjectId, issue.inputs.stage === "last" ? "last" : "notice")
+};
+
+export const closeUnreportedShiftAction: BrainAction<JoblopBrainContext> = {
+  key: "close_unreported_shift",
+  movesMoney: false,
+  dailyCap: 100,
+  undoHint: "Staff can still enter the hours: Timesheets → Enter hours for a shift (a reason is required). The employer email stays sent.",
+  describe: () => "mark the shift not recorded (missed, no timesheet) and email the employer that it will not be invoiced",
+  run: (issue, { effects }) => effects.closeUnreportedShift(issue.subjectId)
+};
+
 export const JOBLOP_BRAIN_ACTIONS: readonly BrainAction<JoblopBrainContext>[] = [
   resendFailedMessageAction,
   remindWorkerCheckInAction,
@@ -98,5 +122,7 @@ export const JOBLOP_BRAIN_ACTIONS: readonly BrainAction<JoblopBrainContext>[] = 
   remindWorkerTimesheetAction,
   offerEmployerBonusAction,
   autoApproveRequestAction,
-  autoApproveTimesheetAction
+  autoApproveTimesheetAction,
+  notifyWorkerReportHoursAction,
+  closeUnreportedShiftAction
 ];

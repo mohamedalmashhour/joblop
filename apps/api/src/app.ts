@@ -11286,6 +11286,10 @@ export function buildApi(options: BuildApiOptions = {}) {
     async requestTimesheetCorrection({ timesheetId, expectedVersion, reason, actorUserId }) {
       const { session, roles } = await requireBrainSession(actorUserId);
       await timesheetService.requestCorrection({ session, roles, timesheetId, expectedVersion, reason });
+    },
+    async markAttendanceMissed({ attendanceRecordId, expectedVersion, reason, actorUserId }) {
+      const { session, roles } = await requireBrainSession(actorUserId);
+      await attendanceService.markMissed({ session, roles, attendanceRecordId, expectedVersion, reason });
     }
   };
   // Logs carry plain values only (counts, keys), never message text or personal details.
@@ -11310,7 +11314,8 @@ export function buildApi(options: BuildApiOptions = {}) {
             rawSmsSender,
             actorUserId: brainActorUserId,
             domain: brainDomain,
-            now: () => new Date()
+            now: () => new Date(),
+            workerWebOrigin: offerCtaOrigin
           }),
           extraSwitches: assistantSwitchKeys(),
           log: brainLog

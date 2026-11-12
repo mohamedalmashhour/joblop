@@ -38,6 +38,7 @@ FINDING WORK
 WORKING A SHIFT
 - My schedule (/schedule) lists shifts. Press Check in at the start and Check out at the end; Joblop records the time. Workers cannot edit times.
 - If check-in fails, refresh, then use "Ask about this" on the shift. If the shift is now, treat it as urgent.
+- Missed check-in (the worker worked but did not check in or out): after the shift ends, the shift card in My schedule (/schedule) and in the phone app shows "Report my hours". The worker enters the arrival and departure times and a short reason, and Joblop approves them. This must be done within 12 hours of the scheduled end of the shift (the card shows the exact deadline, Eastern time). After 12 hours the shift is not recorded or paid; only the Joblop team can still enter the hours, so tell the worker to write to Joblop at once. Never promise the hours will be approved.
 - The exact address shows on the shift in My schedule once the worker is assigned. Before that, only the area shows.
 - There is no cancel button. Cancelling a confirmed job goes through the Joblop team. Staff may apply a suspension for cancelling within 24 hours, so never promise an outcome.
 - If an employer or Joblop cancels or changes a shift, the worker gets a text and an email right away, and it shows in red on My calendar. When an employer cancels less than 24 hours before the start, Joblop reviews each case with the worker; never promise cancellation pay.

@@ -74,6 +74,19 @@ describe("Brain page labels cover everything the API registers", () => {
     expect(panel).toContain("copy.ruleHelp[issue.ruleKey]");
   });
 
+  it("labels and explains the 'Report my hours' switches and problems (12-hour rule) in every language", () => {
+    expect(switchKeys).toEqual(expect.arrayContaining(["notify_worker_report_hours", "close_unreported_shift"]));
+    expect(ruleKeys).toEqual(expect.arrayContaining(["hours_not_reported", "shift_not_recorded"]));
+    for (const locale of ["en", "fr", "ar"] as const) {
+      const copy = brainText[locale];
+      for (const key of ["notify_worker_report_hours", "close_unreported_shift"]) {
+        expect(copy.switchNames[key], `${locale}:${key}`).toBeTruthy();
+        expect(copy.switchHelp[key], `${locale}:${key}`).toMatch(/12/);
+      }
+      for (const key of ["hours_not_reported", "shift_not_recorded"]) expect(copy.ruleHelp[key], `${locale}:${key}`).toMatch(/12/);
+    }
+  });
+
   it("explains the round-7 Brain changes in every language", () => {
     for (const locale of ["en", "fr", "ar"] as const) {
       const copy = brainText[locale];

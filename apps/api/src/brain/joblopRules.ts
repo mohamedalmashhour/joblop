@@ -1,5 +1,6 @@
 import type { ActionOutcome, BrainRule, DetectedIssue } from "@rwos/brain";
 import { ATTENDANCE_DEVIATION_FLAGS, attendanceDeviationFlags } from "@rwos/shared";
+import { hoursReportDeadline } from "../hoursReport";
 import { unfilledThreshold } from "../unfilledShiftAlerts";
 
 // Joblop's deterministic rules for the brain. Each rule reads candidate rows through the data adapter
@@ -15,6 +16,10 @@ export const TIMESHEET_CONFIRM_HOURS = 24;
 /** A finished shift should have its hours prepared within this many hours of its end. */
 export const HOURS_PREPARE_GRACE_HOURS = 2;
 export const DELIVERY_FAILURE_WINDOW_HOURS = 24;
+/** "Report my hours": one last reminder this many hours before the 12-hour window closes. */
+export const REPORT_LAST_REMINDER_HOURS = 2;
+/** A shift whose report window closed more than this long ago is never closed by the brain (first run). */
+export const CLOSE_LOOKBACK_HOURS = 24;
 /** A request must start at least this far ahead to be approved without a person. */
 export const AUTO_APPROVE_MIN_LEAD_HOURS = 2;
 
@@ -46,6 +51,14 @@ export type FinishedShiftRow = Readonly<{
   checkedIn: boolean;
   /** The worker reported their hours ("Report my hours") and the report is with staff. */
   hoursReportPending?: boolean;
+}>;
+
+/** A finished shift with no check-in, no check-out, no timesheet and no pending/approved hours report. */
+export type UnreportedShiftRow = Readonly<{
+  attendanceRecordId: string;
+  jobRequestNumber: string;
+  title: string;
+  scheduledEndAt: Date;
 }>;
 
 export type CheckInRow = Readonly<{
@@ -119,6 +132,8 @@ export interface JoblopBrainData {
   overdueInvoices(now: Date): Promise<readonly InvoiceRow[]>;
   /** Shifts that ended (in the last 14 days) and still have no timesheet; cancelled shifts excluded. */
   finishedShiftsWithoutTimesheet(now: Date): Promise<readonly FinishedShiftRow[]>;
+  /** Shifts that ended (inside the report window or closed in the last 24 h) with no check-in and no hours. */
+  unreportedShifts(now: Date): Promise<readonly UnreportedShiftRow[]>;
 }
 
 // ── Effects adapter: what the actions do (implemented with the existing Joblop senders and flows) ──
@@ -133,6 +148,10 @@ export interface JoblopBrainEffects {
   approveTimesheet(timesheetId: string): Promise<ActionOutcome>;
   withdrawBonusOffer(bonusId: string, staffUserId: string): Promise<Readonly<{ ok: boolean; detail: string }>>;
   reopenTimesheet(timesheetId: string, staffUserId: string): Promise<Readonly<{ ok: boolean; detail: string }>>;
+  /** "Report my hours": tell the worker (email + text) they have until the deadline. Once per shift and stage. */
+  notifyWorkerToReportHours(attendanceRecordId: string, stage: "notice" | "last"): Promise<ActionOutcome>;
+  /** The window closed with no hours: mark the shift missed (not recorded) and tell the employer once. */
+  closeUnreportedShift(attendanceRecordId: string): Promise<ActionOutcome>;
 }
 
 export type JoblopBrainContext = Readonly<{ data: JoblopBrainData; effects: JoblopBrainEffects }>;
@@ -378,6 +397,8 @@ export const hoursNotPreparedRule: BrainRule<JoblopBrainContext> = {
     for (const row of await data.finishedShiftsWithoutTimesheet(now)) {
       // The worker reported their hours and staff have the report: nothing to chase meanwhile.
       if (row.hoursReportPending) continue;
+      // No check-in, and the worker still has time to report the hours: hours_not_reported handles it.
+      if (!row.checkedIn && now.getTime() <= hoursReportDeadline(row.scheduledEndAt).getTime()) continue;
       const since = now.getTime() - row.scheduledEndAt.getTime();
       if (since <= HOURS_PREPARE_GRACE_HOURS * HOUR_MS) continue;
       const hours = Math.floor(since / HOUR_MS);
@@ -393,6 +414,68 @@ export const hoursNotPreparedRule: BrainRule<JoblopBrainContext> = {
         inputs: { jobRequestNumber: row.jobRequestNumber, assignmentId: row.assignmentId, shiftEndedAt: iso(row.scheduledEndAt), checkedIn: row.checkedIn },
         // Preparing hours is a staff decision (check the times, a no-show, a missing check-out).
         recommendedAction: null
+      });
+    }
+    return out;
+  }
+};
+
+/**
+ * Where a no-check-in shift stands in the "Report my hours" window (HOURS_REPORT_WINDOW_HOURS after
+ * the end): the first notice, the last reminder (2 h before the deadline), closed (the deadline passed,
+ * for 24 h, so an old shift is never picked up on a first run), or nothing.
+ */
+export function unreportedStage(scheduledEndAt: Date, now: Date): "notice" | "last" | "closed" | null {
+  const end = scheduledEndAt.getTime();
+  const deadline = hoursReportDeadline(scheduledEndAt).getTime();
+  const t = now.getTime();
+  if (t < end) return null;
+  if (t < deadline - REPORT_LAST_REMINDER_HOURS * HOUR_MS) return "notice";
+  if (t <= deadline) return "last";
+  if (t - deadline <= CLOSE_LOOKBACK_HOURS * HOUR_MS) return "closed";
+  return null;
+}
+
+export const hoursNotReportedRule: BrainRule<JoblopBrainContext> = {
+  key: "hours_not_reported",
+  async detect({ data }, now) {
+    const out: DetectedIssue[] = [];
+    for (const row of await data.unreportedShifts(now)) {
+      const stage = unreportedStage(row.scheduledEndAt, now);
+      if (stage !== "notice" && stage !== "last") continue;
+      const deadline = hoursReportDeadline(row.scheduledEndAt);
+      out.push({
+        ruleKey: "hours_not_reported",
+        // One issue per shift and stage: the notice and the last reminder are each sent once.
+        fingerprint: `hours_not_reported:${row.attendanceRecordId}:${stage}`,
+        subjectType: "attendance_record",
+        subjectId: row.attendanceRecordId,
+        severity: stage === "last" ? "urgent" : "warning",
+        summary: `${row.title} (${row.jobRequestNumber}) ended with no check-in. The worker can report the hours until ${iso(deadline)}; after that the shift is not recorded.`,
+        inputs: { jobRequestNumber: row.jobRequestNumber, shiftEndedAt: iso(row.scheduledEndAt), deadline: iso(deadline), stage },
+        recommendedAction: "notify_worker_report_hours"
+      });
+    }
+    return out;
+  }
+};
+
+export const shiftNotRecordedRule: BrainRule<JoblopBrainContext> = {
+  key: "shift_not_recorded",
+  async detect({ data }, now) {
+    const out: DetectedIssue[] = [];
+    for (const row of await data.unreportedShifts(now)) {
+      if (unreportedStage(row.scheduledEndAt, now) !== "closed") continue;
+      const deadline = hoursReportDeadline(row.scheduledEndAt);
+      out.push({
+        ruleKey: "shift_not_recorded",
+        fingerprint: `shift_not_recorded:${row.attendanceRecordId}`,
+        subjectType: "attendance_record",
+        subjectId: row.attendanceRecordId,
+        severity: "info",
+        summary: `Not recorded: no hours reported in time for ${row.title} (${row.jobRequestNumber}); the window closed at ${iso(deadline)}. No hours, no pay, no invoice unless staff enter the hours.`,
+        inputs: { jobRequestNumber: row.jobRequestNumber, shiftEndedAt: iso(row.scheduledEndAt), deadline: iso(deadline) },
+        recommendedAction: "close_unreported_shift"
       });
     }
     return out;
@@ -451,6 +534,8 @@ export const JOBLOP_BRAIN_RULES: readonly BrainRule<JoblopBrainContext>[] = [
   jobMissingInfoRule,
   timesheetUnconfirmedRule,
   hoursNotPreparedRule,
+  hoursNotReportedRule,
+  shiftNotRecordedRule,
   timesheetReadyRule,
   invoiceOverdueRule
 ];

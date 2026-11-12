@@ -4,6 +4,8 @@ import type { FastifyInstance } from "fastify";
 import { canadaAddressAdapter } from "@rwos/country-canada";
 import { createPrismaClient } from "@rwos/database";
 import { buildApi, remainingOpenings } from "../../apps/api/src/app";
+import { createMemoryBrainStore } from "@rwos/brain";
+import { createJoblopBrain } from "../../apps/api/src/brain/joblopBrain";
 import { createPrismaJoblopBrainData } from "../../apps/api/src/brain/joblopData";
 import { createJoblopBrainEffects } from "../../apps/api/src/brain/joblopEffects";
 import {
@@ -1022,6 +1024,46 @@ suite("real-life scenarios (Laval Farm worker, legal rate, controlled clock)", (
       const audit = await prisma.auditEvent.findMany({ where: { entityType: "attendance_hours_report", entityId: entered.json().hoursReport.id } });
       expect(audit.map((a) => a.action)).toEqual(["attendance_hours_report.staff_entered"]);
       expect((await entry({ reason: "Twice." })).statusCode).toBe(409);
+    });
+
+    it("Brain (switches on): one notice right after the end, then 'not recorded' + employer email after 12 h", async () => {
+      const DAY27 = "2027-02-27";
+      setNow(et("2027-02-25", "09:00"));
+      const job = await publishJob({ startAt: et(DAY27, "08:00"), endAt: et(DAY27, "14:00") });
+      const worker = await makeWorker("report-brain");
+      const phone = `+1438${String(Math.floor(Math.random() * 10_000_000)).padStart(7, "0")}`;
+      await prisma.user.update({ where: { id: worker.id }, data: { phone } });
+      const assignmentId = await claim(worker, job.id);
+      const { attendanceRecordId } = await scheduleItem(worker, assignmentId);
+      const store = createMemoryBrainStore({ mode: "live", switches: { notify_worker_report_hours: true, close_unreported_shift: true } });
+      const engine = createJoblopBrain({ store, data: brain().data, effects: brain().effects, now: () => new Date() });
+
+      // 14:05, right after the end with no check-in: one email and one text, never twice.
+      setNow(et(DAY27, "14:05"));
+      emails.length = 0;
+      texts.length = 0;
+      await engine.sweep();
+      await engine.sweep();
+      expect(emails.filter((m) => m.to === worker.email)).toHaveLength(1);
+      expect(texts.filter((t) => t.to === phone)).toHaveLength(1);
+      expect(texts.find((t) => t.to === phone)?.text).toMatch(/^Joblop: /);
+      expect(store.issues.find((i) => i.ruleKey === "hours_not_reported" && i.subjectId === attendanceRecordId)?.inputs).toMatchObject({
+        stage: "notice",
+        deadline: et("2027-02-28", "02:00").toISOString()
+      });
+
+      // 02:01 the next day: the window closed with no report → not recorded, the employer is told once.
+      setNow(et("2027-02-28", "02:01"));
+      emails.length = 0;
+      await engine.sweep();
+      await engine.sweep();
+      const closed = store.issues.find((i) => i.ruleKey === "shift_not_recorded" && i.subjectId === attendanceRecordId);
+      expect(closed?.summary).toContain("Not recorded: no hours reported in time");
+      const toEmployer = emails.filter((m) => m.to === employer.email);
+      expect(toEmployer).toHaveLength(1);
+      expect(toEmployer[0]?.subject).toMatch(/not recorded|non enregistré|غير مسجّلة/);
+      expect(await prisma.timesheet.count({ where: { attendanceRecordId } })).toBe(0);
+      expect((await report(worker, attendanceRecordId)).json().reason).toBe("window_closed");
     });
 
     it("rejects times that are not on the shift day or end before they start", async () => {

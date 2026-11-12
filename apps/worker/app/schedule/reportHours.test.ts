@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { attendanceCopyFor } from "../../../mobile/src/features/worker-attendance/attendanceScheduleContent";
 import { dictionaries } from "../i18n/messages";
@@ -33,6 +34,14 @@ describe("report my hours on the schedule card", () => {
     expect(dictionaries["en-CA"]["sched.reportDeadlineNotice"]).toBe(
       "No check-in recorded. You have until {deadline} to report your hours. After that, this shift will not be recorded or paid."
     );
+  });
+
+  it("the worker FAQ states the 12-hour rule in English, French and Arabic", () => {
+    const faq = readFileSync(new URL("../how-it-works/HowItWorks.tsx", import.meta.url), "utf8");
+    expect(faq).toContain("I forgot to check in. What now?");
+    expect(faq).toContain("J'ai oublié de pointer. Que faire?");
+    expect(faq).toContain("نسيت تسجيل حضوري. ماذا أفعل؟");
+    expect(faq.match(/12 (hours|heures|ساعة)/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
   });
 
   it("maps every refusal the API gives to a message", () => {

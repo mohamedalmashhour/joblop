@@ -6,7 +6,17 @@ import type { SmsSender } from "../mailer/smsSender";
 import { resolveLanguage } from "../notifications/clientNotifications";
 import { sendsEmail, sendsText } from "../notifications/noticeChannels";
 import { resolveWorkerLanguage } from "../notifications/workerLanguage";
-import { checkInReminderSmsText, noShowEmployerEmail, timesheetReminderEmail, workerTimesheetReminderEmail, workerTimesheetReminderSmsText } from "./brainText";
+import { hoursReportDeadline } from "../hoursReport";
+import {
+  checkInReminderSmsText,
+  noShowEmployerEmail,
+  reportHoursNoticeEmail,
+  reportHoursNoticeSmsText,
+  shiftNotRecordedEmployerEmail,
+  timesheetReminderEmail,
+  workerTimesheetReminderEmail,
+  workerTimesheetReminderSmsText
+} from "./brainText";
 import type { JoblopBrainEffects } from "./joblopRules";
 import { requestReadiness, timesheetReadyForApproval } from "./joblopRules";
 
@@ -16,6 +26,7 @@ import { requestReadiness, timesheetReadyForApproval } from "./joblopRules";
 // re-reads the row first, so a problem fixed since the sweep is left alone.
 
 const LIVE_ASSIGNMENT = new Set(["confirmed", "worker_acknowledged", "ready_for_attendance", "in_attendance_window", "attendance_handoff"]);
+const CANCELLED_ASSIGNMENT = new Set(["worker_withdrawn", "employer_cancelled", "platform_cancelled"]);
 
 /** Governed flows, each refusing (throwing) exactly as it does for staff. */
 export type JoblopBrainDomain = Readonly<{
@@ -25,6 +36,8 @@ export type JoblopBrainDomain = Readonly<{
   approveTimesheet(input: { timesheetId: string; expectedVersion: number; actorUserId: string }): Promise<void>;
   /** The staff "request correction" step (used to undo a brain approval). */
   requestTimesheetCorrection(input: { timesheetId: string; expectedVersion: number; reason: string; actorUserId: string }): Promise<void>;
+  /** The staff "mark missed" attendance step (audited): a shift not recorded after the 12-hour window. */
+  markAttendanceMissed(input: { attendanceRecordId: string; expectedVersion: number; reason: string; actorUserId: string }): Promise<void>;
 }>;
 
 export type JoblopEffectsDeps = Readonly<{
@@ -39,6 +52,8 @@ export type JoblopEffectsDeps = Readonly<{
   actorUserId: string | null;
   domain: JoblopBrainDomain | null;
   now: () => Date;
+  /** The worker website origin, for the "report your hours" link (…/schedule). */
+  workerWebOrigin?: string | null;
 }>;
 
 const NO_ACTOR = "The brain staff account is not set (BRAIN_ACTOR_USER_ID), so it changes no records.";
@@ -80,6 +95,28 @@ export function createJoblopBrainEffects(deps: JoblopEffectsDeps): JoblopBrainEf
       )
       .catch(() => ({ status: "error" as const }));
     return result.status === "sent";
+  }
+
+  /** A finished shift still with no check-in, no hours and no pending/approved report (re-read now). */
+  async function loadUnreported(attendanceRecordId: string) {
+    const a = await prisma.attendanceRecord.findUnique({
+      where: { id: attendanceRecordId },
+      select: {
+        status: true, version: true, scheduledStartAt: true, scheduledEndAt: true, timezone: true, checkInAt: true, checkOutAt: true,
+        assignment: { select: { status: true } },
+        timesheet: { select: { id: true } },
+        hoursReports: { where: { status: { in: ["pending", "approved"] } }, select: { id: true } },
+        jobRequest: { select: { status: true, jobRequestNumber: true, title: true, createdByUserId: true, roleDefinition: { select: { displayLabel: true } } } },
+        workerIdentity: { select: { preferredLanguage: true, user: { select: { emailNormalized: true, phone: true, primaryLanguage: true } } } }
+      }
+    });
+    if (!a) return { ok: false as const, detail: "The shift is gone." };
+    if (a.status === "cancelled" || CANCELLED_ASSIGNMENT.has(a.assignment.status) || a.jobRequest.status === "cancelled") return { ok: false as const, detail: "The shift was cancelled." };
+    if (a.checkInAt || a.checkOutAt || a.timesheet) return { ok: false as const, detail: "The shift has hours since." };
+    if (a.hoursReports.length > 0) return { ok: false as const, detail: "The worker reported the hours since." };
+    if (a.status !== "pending_start" && a.status !== "missed") return { ok: false as const, detail: "The shift is no longer waiting for hours." };
+    if (deps.now().getTime() < a.scheduledEndAt.getTime()) return { ok: false as const, detail: "The shift has not ended." };
+    return { ok: true as const, a };
   }
 
   return {
@@ -345,6 +382,95 @@ export function createJoblopBrainEffects(deps: JoblopEffectsDeps): JoblopBrainEf
         return { ok: false, detail: errorDetail(error) };
       }
       return { ok: true, detail: "Sent the hours back for correction." };
+    },
+
+    async notifyWorkerToReportHours(attendanceRecordId, stage): Promise<ActionOutcome> {
+      const row = await loadUnreported(attendanceRecordId);
+      if (!row.ok) return { status: "skipped", detail: row.detail };
+      const { a } = row;
+      const now = deps.now();
+      const deadline = hoursReportDeadline(a.scheduledEndAt);
+      if (now.getTime() > deadline.getTime()) return { status: "skipped", detail: "The 12-hour window has closed." };
+      // Once per shift and stage, even across a staff retry: the first claim of the marker wins.
+      try {
+        await prisma.brainMarker.create({ data: { marker: `hours_report_notice:${attendanceRecordId}:${stage}`, createdAt: now } });
+      } catch {
+        return { status: "skipped", detail: "The worker was already told about this shift." };
+      }
+      const user = a.workerIdentity.user;
+      const language = resolveWorkerLanguage(user?.primaryLanguage, a.workerIdentity.preferredLanguage);
+      const origin = deps.workerWebOrigin?.trim().replace(/\/+$/, "");
+      const copy = { language, title: a.jobRequest.roleDefinition?.displayLabel?.trim() || a.jobRequest.title, deadline, link: origin ? `${origin}/schedule` : null, last: stage === "last" };
+      const sent: string[] = [];
+      let failed = false;
+      if (user?.emailNormalized && sendsEmail("hours_report_deadline")) {
+        const result = await deps.emailSender
+          .send(reportHoursNoticeEmail({ ...copy, to: user.emailNormalized, shiftStart: a.scheduledStartAt, timezone: a.timezone || "America/Toronto" }))
+          .catch(() => ({ status: "error" as const }));
+        if (result.status === "sent") sent.push("emailed");
+        if (result.status === "error") failed = true;
+      }
+      if (user?.phone && deps.smsSender && sendsText("hours_report_deadline")) {
+        const result = await deps.smsSender.send({ to: user.phone, text: reportHoursNoticeSmsText(copy) }).catch(() => ({ status: "error" as const }));
+        if (result.status === "sent") sent.push("texted");
+        if (result.status === "error") failed = true;
+      }
+      if (sent.length > 0) return { status: "done", detail: `${sent.join(" and ")} the worker to report their hours before ${deadline.toISOString()}.` };
+      return failed
+        ? { status: "failed", detail: "The message failed to send. A person should contact the worker." }
+        : { status: "skipped", detail: "The worker has no email or phone number, or sending is off. A person must contact them." };
+    },
+
+    async closeUnreportedShift(attendanceRecordId): Promise<ActionOutcome> {
+      const row = await loadUnreported(attendanceRecordId);
+      if (!row.ok) return { status: "skipped", detail: row.detail };
+      const { a } = row;
+      const now = deps.now();
+      if (now.getTime() <= hoursReportDeadline(a.scheduledEndAt).getTime()) return { status: "skipped", detail: "The worker can still report the hours." };
+      // Not recorded: the attendance is marked missed through the normal staff step (audited), so no
+      // timesheet, pay or invoice follows. Without the brain staff account it is left for a person.
+      let marked = "";
+      if (a.status === "pending_start") {
+        if (deps.actorUserId && deps.domain) {
+          try {
+            await deps.domain.markAttendanceMissed({ attendanceRecordId, expectedVersion: a.version, reason: "not_recorded_no_hours_reported", actorUserId: deps.actorUserId });
+            marked = " Marked missed.";
+          } catch (error) {
+            return { status: "failed", detail: errorDetail(error) };
+          }
+        } else {
+          marked = ` ${NO_ACTOR}`;
+        }
+      }
+      // The employer hears once per shift that it will not be invoiced.
+      let told = "";
+      const employerUserId = a.jobRequest.createdByUserId;
+      if (employerUserId && sendsEmail("shift_not_recorded_employer")) {
+        const employer = await prisma.user.findUnique({ where: { id: employerUserId }, select: { emailNormalized: true, primaryLanguage: true } });
+        let first = false;
+        try {
+          await prisma.brainMarker.create({ data: { marker: `shift_not_recorded_employer:${attendanceRecordId}`, createdAt: now } });
+          first = true;
+        } catch {
+          first = false;
+        }
+        if (employer?.emailNormalized && first) {
+          const result = await deps.emailSender
+            .send(
+              shiftNotRecordedEmployerEmail({
+                to: employer.emailNormalized,
+                language: resolveLanguage(employer.primaryLanguage),
+                jobCode: a.jobRequest.jobRequestNumber,
+                title: a.jobRequest.title,
+                shiftStart: a.scheduledStartAt,
+                timezone: a.timezone || "America/Toronto"
+              })
+            )
+            .catch(() => ({ status: "error" as const }));
+          told = result.status === "sent" ? " Told the employer it will not be invoiced." : " The employer email did not send.";
+        }
+      }
+      return { status: "done", detail: `Not recorded: no hours reported in time.${marked}${told}` };
     }
   };
 }
