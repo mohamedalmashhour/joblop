@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, type CSSProperties } from "react";
+import { calendarDayKey } from "@rwos/shared";
 import { usePageText } from "../i18n/pageText";
 import { calendarText } from "./text";
 
@@ -25,13 +26,21 @@ export type CalendarEntry = Readonly<{
 
 export type CalendarLegendItem = Readonly<{ label: string; tone: CalendarTone }>;
 
-function isoDay(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+/**
+ * The Québec (America/Toronto) day an entry lands on, "YYYY-MM-DD". A date-only string is already a
+ * day (reading it as an instant would move it to the evening before in Toronto); any other value is an
+ * instant, placed on its Toronto day whatever the staff member's device time zone is.
+ */
+export function entryDayKey(value: Date | string): string | null {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const d = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(d.getTime())) return null;
+  return calendarDayKey(d) || null;
 }
 
-function toDate(value: Date | string): Date | null {
-  const d = typeof value === "string" ? new Date(value) : value;
-  return Number.isNaN(d.getTime()) ? null : d;
+/** Blank cells before day 1 when weeks start on Monday (Québec convention, like every other calendar). */
+export function mondayFirstOffset(first: Date): number {
+  return (first.getDay() + 6) % 7;
 }
 
 export function MonthCalendar({
@@ -51,9 +60,8 @@ export function MonthCalendar({
   const byDay = useMemo(() => {
     const map = new Map<string, CalendarEntry[]>();
     for (const entry of entries) {
-      const d = toDate(entry.date);
-      if (!d) continue;
-      const key = isoDay(d);
+      const key = entryDayKey(entry.date);
+      if (!key) continue;
       const list = map.get(key) ?? [];
       list.push(entry);
       map.set(key, list);
@@ -62,7 +70,7 @@ export function MonthCalendar({
   }, [entries]);
 
   const first = new Date(view.year, view.month, 1);
-  const startOffset = first.getDay();
+  const startOffset = mondayFirstOffset(first);
   const daysInMonth = new Date(view.year, view.month + 1, 0).getDate();
   const cells: (number | null)[] = [];
   for (let i = 0; i < startOffset; i += 1) cells.push(null);
@@ -70,7 +78,9 @@ export function MonthCalendar({
   while (cells.length % 7 !== 0) cells.push(null);
 
   const monthTitle = first.toLocaleDateString(t.dateLocale, { month: "long", year: "numeric" });
-  const todayKey = isoDay(today);
+  const todayKey = entryDayKey(today);
+  // The text tables list weekdays from Sunday; the grid starts on Monday.
+  const weekdays = [...t.weekdays.slice(1), t.weekdays[0]];
   const prev = () => setView((v) => (v.month === 0 ? { year: v.year - 1, month: 11 } : { year: v.year, month: v.month - 1 }));
   const next = () => setView((v) => (v.month === 11 ? { year: v.year + 1, month: 0 } : { year: v.year, month: v.month + 1 }));
 
@@ -83,7 +93,7 @@ export function MonthCalendar({
       </div>
 
       <div style={styles.weekRow}>
-        {t.weekdays.map((w) => (
+        {weekdays.map((w) => (
           <span key={w} style={styles.weekday}>{w}</span>
         ))}
       </div>

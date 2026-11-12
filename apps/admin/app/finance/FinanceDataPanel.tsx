@@ -191,7 +191,7 @@ function FinanceResults({
             <span>{invoice.status.replaceAll("_", " ")}</span>
             <span>{formatMoney(invoice.totalMinor, invoice.currency)}</span>
             <small>Reference: {invoice.id}</small>
-            <small>Due: {invoice.dueAt ? new Date(invoice.dueAt).toLocaleDateString() : "Not set"}</small>
+            <small>Due: {invoice.dueAt ? new Date(invoice.dueAt).toLocaleDateString("en-CA", { timeZone: "America/Toronto" }) : "Not set"}</small>
           </article>
         ))}
       </section>

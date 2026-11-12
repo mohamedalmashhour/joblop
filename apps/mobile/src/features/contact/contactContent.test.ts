@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dictionaries } from "../../i18n/strings";
+import { dictionaries, LOCALES, translate } from "../../i18n/strings";
 import {
   QUICK_TOPICS,
   applyQuickTopic,
@@ -23,12 +23,12 @@ describe("contact content", () => {
     expect(quickTopicOf({ topic: "documents", urgent: false })).toBeNull();
   });
 
-  it("uses the owner's chip wording for each status", () => {
-    const en = dictionaries.en;
-    expect(en[statusKey("ai")]).toBe("Assistant");
-    expect(en[statusKey("needs_admin")]).toBe("Waiting for Joblop staff");
-    expect(en[statusKey("admin_replied")]).toBe("Staff replied");
-    expect(en[statusKey("solved")]).toBe("Solved");
+  // The chips now use the website's words (owner rule: the app copies the website), round 7.
+  it("uses the website's chip wording for each status", () => {
+    expect(translate("en", statusKey("ai"))).toBe("With AI assistant");
+    expect(translate("en", statusKey("needs_admin"))).toBe("Waiting for the Joblop team");
+    expect(translate("en", statusKey("admin_replied"))).toBe("Joblop team replied");
+    expect(translate("en", statusKey("solved"))).toBe("Solved");
     expect(statusTone("needs_admin")).toBe("warning");
   });
 
@@ -48,8 +48,9 @@ describe("contact content", () => {
 
   it("has a translation for every topic and quick topic key in all locales", () => {
     const keys = [...QUICK_TOPICS.map(quickTopicKey), topicKey("documents"), topicKey("other"), topicKey("unknown")];
-    for (const dict of Object.values(dictionaries)) {
-      for (const key of keys) expect(dict[key]).toBeTruthy();
+    // Some topics now come from the website's words (WEB_COPY), so check what the app shows.
+    for (const locale of LOCALES) {
+      for (const key of keys) expect(translate(locale, key), `${locale} ${key}`).not.toBe(key);
     }
     expect(topicKey("unknown")).toBe("contact.topic.other");
   });

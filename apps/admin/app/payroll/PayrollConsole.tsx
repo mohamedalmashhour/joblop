@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { usePageText } from "../i18n/pageText";
+import { useLocale } from "../i18n/LocaleProvider";
+import { ADMIN_TIME_ZONE, adminMoney } from "../i18n/adminFormat";
+import { fmtLocale, type AdminLocale } from "../i18n/config";
 import { payrollText } from "./text";
 
 // ── Types (mirror the payroll API serializers) ──
@@ -19,8 +22,10 @@ type Detail = Calc & Readonly<{ earningLines: Line[]; deductionLines: Line[]; em
 type AiFinding = Readonly<{ code: string; title: string; explanation: string; severity: string; evidenceRef: string }>;
 type AiReview = Readonly<{ status: "ready" | "review_unavailable"; summary: string; findings: AiFinding[]; versioning: { model: string; promptVersion: string; providerKey: string; providerVersion: string }; synthetic: boolean }>;
 
-const money = (minor: number, currency: string) => new Intl.NumberFormat(undefined, { style: "currency", currency }).format(minor / 100);
-const day = (iso: string, tz = "UTC") => new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: tz });
+// Money and dates in the admin's language (not the browser's); dates in the period's time zone, Toronto by default.
+const moneyIn = (locale: AdminLocale) => (minor: number, currency: string) => adminMoney(minor, currency, locale);
+const dayIn = (locale: AdminLocale) => (iso: string, tz: string = ADMIN_TIME_ZONE) =>
+  new Date(iso).toLocaleString(fmtLocale(locale), { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: tz || ADMIN_TIME_ZONE });
 
 async function api(path: string, method: "GET" | "POST" = "GET", body?: unknown): Promise<{ ok: boolean; status: number; data: Record<string, unknown> }> {
   const res = await fetch(`/api/payroll/${path}`, { method, cache: "no-store", ...(body ? { headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {}) });
@@ -30,6 +35,9 @@ async function api(path: string, method: "GET" | "POST" = "GET", body?: unknown)
 
 export function PayrollConsole({ showTestBadge = true }: Readonly<{ showTestBadge?: boolean }> = {}) {
   const t = usePageText(payrollText);
+  const adminLocale = useLocale();
+  const money = moneyIn(adminLocale);
+  const day = dayIn(adminLocale);
   const [periods, setPeriods] = useState<Period[] | null>(null);
   const [periodId, setPeriodId] = useState<string | null>(null);
   const [calcs, setCalcs] = useState<Calc[] | null>(null);
@@ -286,6 +294,7 @@ function Row({ k, v, strong, mono }: { k: string; v: string; strong?: boolean; m
   return (<><dt style={s.dt}>{k}</dt><dd style={{ ...s.dd, ...(strong ? { fontWeight: 700 } : {}), ...(mono ? s.mono : {}) }}>{v}</dd></>);
 }
 function LineTable({ title, lines, currency }: { title: string; lines: Line[]; currency: string }) {
+  const money = moneyIn(useLocale());
   if (!lines || lines.length === 0) return null;
   return (
     <table style={s.table}>

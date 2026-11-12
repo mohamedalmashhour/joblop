@@ -5,7 +5,8 @@ import type { MessageKey } from "../i18n/messages";
 // once confirmed workers cover every requested seat, so "Confirmed – N coming" uses the requested count.
 // "in_progress" can start before the shift (the attendance window opens early), so "Working now" is shown
 // only between the shift's start and end.
-export type RequestPhase = "draft" | "review" | "looking" | "confirmed" | "working" | "done" | "cancelled";
+// "unfilled": the shift is over and no worker was ever confirmed (it was still in review or looking).
+export type RequestPhase = "draft" | "review" | "looking" | "confirmed" | "working" | "done" | "cancelled" | "unfilled";
 
 export type RequestPhaseInput = Readonly<{
   status: string;
@@ -19,9 +20,9 @@ export function requestPhase(request: RequestPhaseInput, now: Date = new Date())
       return "draft";
     case "submitted":
     case "under_review":
-      return "review";
+      return ended(request, now) ? "unfilled" : "review";
     case "published":
-      return "looking";
+      return ended(request, now) ? "unfilled" : "looking";
     case "cancelled":
       return "cancelled";
     case "completed":
@@ -39,9 +40,15 @@ export function requestPhase(request: RequestPhaseInput, now: Date = new Date())
   }
 }
 
-// Cancelled or finished: nothing left to change, only "Duplicate request".
+/** True once the shift's end (or, without an end, its start) has passed. */
+function ended(request: RequestPhaseInput, now: Date): boolean {
+  const end = Date.parse(request.endAt ?? request.startAt);
+  return !Number.isNaN(end) && now.getTime() >= end;
+}
+
+// Cancelled, finished or ended unfilled: nothing left to change, only "Duplicate request".
 export function isClosedPhase(phase: RequestPhase): boolean {
-  return phase === "done" || phase === "cancelled";
+  return phase === "done" || phase === "cancelled" || phase === "unfilled";
 }
 
 export function requestPhaseLabel(
@@ -64,6 +71,8 @@ export function requestPhaseLabel(
       return { key: "status.done" };
     case "cancelled":
       return { key: "status.cancelled" };
+    case "unfilled":
+      return { key: "status.unfilled" };
   }
 }
 
@@ -77,6 +86,7 @@ export function requestPhaseTone(phase: RequestPhase): Readonly<{ color: string;
     case "review":
       return { color: "#f8b808", border: "rgba(248, 184, 8, 0.45)", background: "rgba(248, 184, 8, 0.1)" };
     case "cancelled":
+    case "unfilled":
       return { color: "#f2a7a7", border: "rgba(242, 167, 167, 0.45)", background: "rgba(242, 167, 167, 0.08)" };
     case "done":
     case "draft":

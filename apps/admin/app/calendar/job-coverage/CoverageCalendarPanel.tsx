@@ -1,7 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { calendarDayKey } from "@rwos/shared";
 import { usePageText } from "../../i18n/pageText";
+import { useLocale } from "../../i18n/LocaleProvider";
+import { ADMIN_TIME_ZONE } from "../../i18n/adminFormat";
+import { fmtLocale, type AdminLocale } from "../../i18n/config";
 import { BonusSection, bonusAmountLabel, formatMoney, isActiveBonus, type BonusSuggestion, type JobBonus } from "./BonusSection";
 import {
   CREAM,
@@ -95,13 +99,14 @@ function monthGrid(month: Date): Date[] {
   return Array.from({ length: 42 }, (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i));
 }
 
-function rate(minor: number | null, notSet: string, perHour: string): string {
+function rate(minor: number | null, notSet: string, perHour: string, locale: AdminLocale): string {
   if (minor === null || minor === undefined) return notSet;
-  return `${formatMoney(minor)} ${perHour}`;
+  return `${formatMoney(minor, locale)} ${perHour}`;
 }
 
-function time(iso: string): string {
-  return new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+// Shift times in Québec time, in the admin's language (not the browser's zone or locale).
+function time(iso: string, locale: AdminLocale): string {
+  return new Date(iso).toLocaleTimeString(fmtLocale(locale), { hour: "2-digit", minute: "2-digit", timeZone: ADMIN_TIME_ZONE });
 }
 
 function needsWorkers(job: CoverageJob, now: number): boolean {
@@ -132,7 +137,8 @@ function humanize(code: string): string {
 function groupByDay<T>(list: readonly T[], startOf: (item: T) => string): Map<string, T[]> {
   const map = new Map<string, T[]>();
   for (const item of list) {
-    const key = dayKey(new Date(startOf(item)));
+    // The Québec (Toronto) day, so a late shift never moves to the next day on a device elsewhere.
+    const key = calendarDayKey(startOf(item));
     const bucket = map.get(key) ?? [];
     bucket.push(item);
     map.set(key, bucket);
@@ -143,11 +149,12 @@ function groupByDay<T>(list: readonly T[], startOf: (item: T) => string): Map<st
 
 export function CoverageCalendarPanel() {
   const t = usePageText(coverageText);
+  const adminLocale = useLocale();
   const [month, setMonth] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
-  const [selected, setSelected] = useState<string | null>(() => dayKey(new Date()));
+  const [selected, setSelected] = useState<string | null>(() => calendarDayKey(new Date()));
   const [state, setState] = useState<State>({ status: "loading" });
   const [hub, setHub] = useState<HubState>({ status: "loading" });
   const [layers, setLayers] = useState<Readonly<Record<Layer, boolean>>>(ALL_LAYERS_ON);
@@ -394,12 +401,12 @@ export function CoverageCalendarPanel() {
                 <span style={{ ...styles.badge, background: color.bg, color: color.fg }}>{t.coverage[job.coverage] ?? job.coverage}</span>
                 {urgent ? <span style={styles.urgent}>{t.needsWorkers}</span> : null}
                 {isActiveBonus(job.bonus) && job.bonus ? (
-                  <span style={styles.bonusBadge}>★ {t.bonusChip} {bonusAmountLabel(job.bonus.kind, job.bonus.amountMinor, t)}</span>
+                  <span style={styles.bonusBadge}>★ {t.bonusChip} {bonusAmountLabel(job.bonus.kind, job.bonus.amountMinor, t, adminLocale)}</span>
                 ) : null}
               </div>
               <p style={styles.meta}>
                 {job.employer ?? t.employerFallback}
-                {job.areaLabel ? ` · ${job.areaLabel}` : ""} · {time(job.startAt)}–{time(job.endAt)}
+                {job.areaLabel ? ` · ${job.areaLabel}` : ""} · {time(job.startAt, adminLocale)}–{time(job.endAt, adminLocale)}
               </p>
               <p style={styles.meta}>
                 <strong style={styles.strong}>{t.places(job.placesTaken, job.placesAsked)}</strong> · {t.placesLeft(job.placesLeft)}
@@ -408,7 +415,7 @@ export function CoverageCalendarPanel() {
                 <p style={styles.meta}>{t.priceOnApproval}</p>
               ) : (
                 <p style={styles.meta}>
-                  {t.employerRate}: {rate(job.employerRateMinor, t.notSet, t.perHour)} · {t.workerPay}: {rate(job.workerRateMinor, t.notSet, t.perHour)}
+                  {t.employerRate}: {rate(job.employerRateMinor, t.notSet, t.perHour, adminLocale)} · {t.workerPay}: {rate(job.workerRateMinor, t.notSet, t.perHour, adminLocale)}
                   {job.rateIsEstimate ? ` ${t.estimateNote}` : ""}
                 </p>
               )}
@@ -460,9 +467,9 @@ export function CoverageCalendarPanel() {
               </h3>
               {item.subtitle ? <p style={styles.extraMeta}>{item.subtitle}</p> : null}
               <p style={styles.extraMeta}>
-                {time(item.startAt)}
-                {item.endAt ? `–${time(item.endAt)}` : ""}
-                {item.amountMinor !== null ? ` · ${t.amount}: ${formatMoney(item.amountMinor)}` : ""}
+                {time(item.startAt, adminLocale)}
+                {item.endAt ? `–${time(item.endAt, adminLocale)}` : ""}
+                {item.amountMinor !== null ? ` · ${t.amount}: ${formatMoney(item.amountMinor, adminLocale)}` : ""}
               </p>
               {href ? (
                 <a href={href} style={styles.extraLink}>{t.openDetail[item.type] ?? t.open}</a>

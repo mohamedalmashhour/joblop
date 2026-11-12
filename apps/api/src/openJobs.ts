@@ -1,5 +1,11 @@
 import type { Prisma } from "@rwos/database";
-import { LONG_TERM_LISTING_MARKER, MINIMUM_WAGE_CURRENCY, quebecMinimumWageAt } from "@rwos/shared";
+import {
+  LONG_TERM_LISTING_MARKER,
+  MINIMUM_WAGE_CURRENCY,
+  isBelowMinimumWage,
+  minimumWagePeriods,
+  quebecMinimumWageAt
+} from "@rwos/shared";
 import { listedJobWhere } from "./jobListingVisibility";
 import { isEmployerPlansEnabled } from "./employerPlanRepository";
 
@@ -8,8 +14,9 @@ import { isEmployerPlansEnabled } from "./employerPlanRepository";
 // show the same set of jobs:
 //   - staff approved it (approved_for_dispatch) and left it open on the shared calendar (openClaim),
 //   - it is priced (an approval snapshot exists, so the worker's own hourly pay is known),
-//   - that pay is at least the Québec minimum wage (payMeetsMinimumWageWhere; long-term listings,
-//     which hold no hourly pay, are exempt), so old below-minimum data never shows to anyone,
+//   - that pay is at least the Québec minimum wage in force ON THE JOB'S DATE (payMeetsMinimumWageOnJobDateWhere;
+//     long-term listings, which hold no hourly pay, are exempt), so a job starting after a May 1
+//     increase is held to the new rate even when searched before it,
 //   - it has not started yet,
 //   - its site is active,
 //   - and, for long-term jobs with employer plans on, it is listed (listedJobWhere).
@@ -32,26 +39,79 @@ export type OpenJobWhereInput = Readonly<{
  * `now`. Long-term listings (no hourly pay through Joblop) and non-CAD jobs are not held to it.
  */
 export function payMeetsMinimumWageWhere(now: Date): Prisma.RequestPricingSnapshotWhereInput {
+  return payAtLeastWhere(quebecMinimumWageAt(now).hourlyMinor);
+}
+
+function payAtLeastWhere(hourlyMinor: number): Prisma.RequestPricingSnapshotWhereInput {
   return {
     OR: [
-      { workerHourlyRateMinor: { gte: quebecMinimumWageAt(now).hourlyMinor } },
+      { workerHourlyRateMinor: { gte: hourlyMinor } },
       { employerPlanCode: LONG_TERM_LISTING_MARKER },
       { currency: { not: MINIMUM_WAGE_CURRENCY } }
     ]
   };
 }
 
+/**
+ * Job condition: the worker's pay meets the minimum wage in force on the day the job STARTS (one
+ * branch per rate period of the shared table). Periods that end before `from` are left out.
+ */
+export function payMeetsMinimumWageOnJobDateWhere(from: Date): Prisma.JobRequestWhereInput {
+  const periods = minimumWagePeriods().filter((period) => period.to === null || period.to.getTime() > from.getTime());
+  return {
+    OR: periods.map((period) => ({
+      startAt: { ...(period.from ? { gte: period.from } : {}), ...(period.to ? { lt: period.to } : {}) },
+      pricingSnapshot: { is: payAtLeastWhere(period.hourlyMinor) }
+    }))
+  };
+}
+
+export type ClaimBlockReason = "job_started" | "below_minimum_wage";
+
+/**
+ * Why a worker may not take this job right now, or null. Used by the claim itself and by the job
+ * page's claimable flag, so the two never disagree: a job that has started, or that pays the worker
+ * less than the minimum wage in force on its date, is never claimable (long-term listings are exempt
+ * from the wage rule; they are never claimed anyway).
+ */
+export function claimBlockReason(
+  job: Readonly<{
+    startAt: Date;
+    jobLength?: string | null;
+    pricingSnapshot: Readonly<{ workerHourlyRateMinor: number; currency: string | null; employerPlanCode?: string | null }> | null;
+  }>,
+  now: Date
+): ClaimBlockReason | null {
+  if (job.startAt.getTime() <= now.getTime()) return "job_started";
+  const snapshot = job.pricingSnapshot;
+  if (
+    snapshot &&
+    isBelowMinimumWage({
+      workerHourlyRateMinor: snapshot.workerHourlyRateMinor,
+      currency: snapshot.currency,
+      isLongTermListing: job.jobLength === "long_term" || snapshot.employerPlanCode === LONG_TERM_LISTING_MARKER,
+      at: job.startAt
+    })
+  ) {
+    return "below_minimum_wage";
+  }
+  return null;
+}
+
 export function openJobWhere(input: OpenJobWhereInput, plansEnabled: boolean = isEmployerPlansEnabled()): Prisma.JobRequestWhereInput {
   const from = input.startFrom && input.startFrom.getTime() > input.now.getTime() ? input.startFrom : input.now;
+  const extra = input.extra ?? {};
+  const extraAnd = extra.AND === undefined ? [] : Array.isArray(extra.AND) ? extra.AND : [extra.AND];
   return listedJobWhere(
     {
-      ...(input.extra ?? {}),
+      ...extra,
       status: "approved_for_dispatch",
       openClaim: true,
-      // "is" also requires the snapshot to exist (priced), as before.
-      pricingSnapshot: { is: payMeetsMinimumWageWhere(input.now) },
+      // Priced (the snapshot exists); the wage branch below also requires it.
+      pricingSnapshot: { isNot: null },
       startAt: { gte: from, ...(input.startTo ? { lte: input.startTo } : {}) },
-      residence: { ...(input.residence ?? {}), status: "active" }
+      residence: { ...(input.residence ?? {}), status: "active" },
+      AND: [...extraAnd, payMeetsMinimumWageOnJobDateWhere(from)]
     },
     input.now,
     plansEnabled
