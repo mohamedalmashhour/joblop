@@ -8,6 +8,7 @@ export const JOBLOP_ACTION_KEYS = [
   "resend_failed_message",
   "remind_worker_check_in",
   "remind_employer_timesheet",
+  "remind_worker_timesheet",
   "offer_employer_bonus",
   "auto_approve_request",
   "auto_approve_timesheet"
@@ -42,6 +43,15 @@ export const remindEmployerTimesheetAction: BrainAction<JoblopBrainContext> = {
   undoHint: "An email cannot be taken back. Write to the employer if needed.",
   describe: () => "email the employer to confirm the hours",
   run: (issue, { effects }) => effects.remindEmployerToConfirmHours(issue.subjectId)
+};
+
+export const remindWorkerTimesheetAction: BrainAction<JoblopBrainContext> = {
+  key: "remind_worker_timesheet",
+  movesMoney: false,
+  dailyCap: 100,
+  undoHint: "A reminder cannot be taken back. Contact the worker if needed.",
+  describe: () => "remind the worker to confirm their hours (email, or a text when they have no email)",
+  run: (issue, { effects }) => effects.remindWorkerToConfirmHours(issue.subjectId)
 };
 
 export const offerEmployerBonusAction: BrainAction<JoblopBrainContext> = {
@@ -85,6 +95,7 @@ export const JOBLOP_BRAIN_ACTIONS: readonly BrainAction<JoblopBrainContext>[] = 
   resendFailedMessageAction,
   remindWorkerCheckInAction,
   remindEmployerTimesheetAction,
+  remindWorkerTimesheetAction,
   offerEmployerBonusAction,
   autoApproveRequestAction,
   autoApproveTimesheetAction

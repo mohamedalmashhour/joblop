@@ -16,7 +16,10 @@ export const DEFAULT_REMINDER_BATCH = 100;
 const MAX_REMINDER_BATCH = 500;
 
 // Only shifts that are still going to happen deserve a reminder — never withdrawn/cancelled/closed/expired.
-const REMINDABLE_STATUSES = ["confirmed", "worker_acknowledged", "ready_for_attendance"] as const;
+// "attendance_handoff" is the status of every claimed or staff-assigned shift on a worker's schedule, so
+// it must be here: without it no booked worker was ever reminded. A shift whose attendance record or
+// job was cancelled is never reminded (see the query).
+export const REMINDABLE_STATUSES = ["confirmed", "worker_acknowledged", "ready_for_attendance", "in_attendance_window", "attendance_handoff"] as const;
 
 export type ShiftReminderSweepMetrics = Readonly<{
   scanned: number;
@@ -31,6 +34,8 @@ export async function runShiftReminderSweep(deps: {
   smsSender?: SmsSender;
   pushSender?: PushSender;
   now?: () => Date;
+  /** Worker website origin: the reminder links to the job page (details and map), like "you got the job". */
+  workerWebOrigin?: string | null;
   windowHours?: number;
   batchSize?: number;
 }): Promise<ShiftReminderSweepMetrics> {
@@ -43,7 +48,9 @@ export async function runShiftReminderSweep(deps: {
     where: {
       shiftReminderSentAt: null,
       status: { in: [...REMINDABLE_STATUSES] },
-      confirmedStartAt: { gte: now, lte: until }
+      confirmedStartAt: { gte: now, lte: until },
+      NOT: { attendanceRecord: { is: { status: "cancelled" } } },
+      jobRequest: { status: { not: "cancelled" } }
     },
     select: {
       id: true,
@@ -58,6 +65,7 @@ export async function runShiftReminderSweep(deps: {
     take: batchSize
   });
 
+  const origin = deps.workerWebOrigin?.trim().replace(/\/+$/, "") || null;
   let reminded = 0;
   let skipped = 0;
   let failed = 0;
@@ -72,16 +80,17 @@ export async function runShiftReminderSweep(deps: {
         continue;
       }
       const language = resolveWorkerLanguage(user?.primaryLanguage);
+      const jobUrl = origin ? `${origin}/jobs/${encodeURIComponent(assignment.jobRequestId)}` : null;
       if (email) {
         await deps.emailSender.send(
-          shiftReminderEmail({ to: email, language, title: assignment.confirmedTitle, startAt: assignment.confirmedStartAt })
+          shiftReminderEmail({ to: email, language, title: assignment.confirmedTitle, startAt: assignment.confirmedStartAt, jobUrl })
         );
       }
       if (textable && deps.smsSender && user?.phone) {
         await deps.smsSender
           .send({
             to: user.phone,
-            text: shiftReminderSmsText({ language, title: assignment.confirmedTitle, startAt: assignment.confirmedStartAt })
+            text: shiftReminderSmsText({ language, title: assignment.confirmedTitle, startAt: assignment.confirmedStartAt, jobUrl })
           })
           .catch(() => undefined);
       }

@@ -326,9 +326,18 @@ import { matchingRoleIds } from "./roleSearch";
 import { WORKER_PAY_SELECT, isLongTermListingJob, longTermPaySentence, workerPay } from "./longTermWorkerPay";
 import { LONG_TERM_NO_TIMESHEETS_BODY, clockInFields, isLongTermAssignment, isLongTermAttendance } from "./longTermNoTimesheets";
 import { checkInTooEarly, checkInTooEarlyBody } from "./checkInWindow";
+import {
+  BOOKED_ASSIGNMENT_STATUSES,
+  cancelBookedShift,
+  cancelledShiftReason,
+  SHIFT_ALREADY_STARTED_BODY,
+  SHIFT_CANCELLED_BODY,
+  type BookedShiftCanceller
+} from "./cancelBookedShift";
 import { isEmployerPlansEnabled } from "./employerPlanRepository";
 import { createMarketingContactSync, type MarketingContactSync } from "./mailer/brevoContacts";
 import { runShiftReminderSweep } from "./shiftReminderSweep";
+import { searchDateBound } from "./localDay";
 import { registerBrainRoutes } from "./brain/brainRoutes";
 import { createPrismaDeliveryFailureRecorder, purgeOldDeliveryBodies, withEmailFailureRecording, withSmsFailureRecording } from "./brain/deliveryFailures";
 import { createJoblopBrain } from "./brain/joblopBrain";
@@ -1766,7 +1775,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!prisma) {
       return reply.code(503).send({ error: "RWOS_SWEEP_UNAVAILABLE", message: "Database unavailable." });
     }
-    const metrics = await runShiftReminderSweep({ prisma, emailSender, smsSender, pushSender });
+    const metrics = await runShiftReminderSweep({ prisma, emailSender, smsSender, pushSender, workerWebOrigin: offerCtaOrigin });
     logger.info("api.shift_reminder.sweep", { ...metrics });
     // Same hourly run: warn staff about approved short-term shifts still unfilled under 24 h and under
     // 4 h before the start (once per threshold). A failure here never fails the reminder sweep.
@@ -3272,6 +3281,29 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   );
 
+  // The one cancel-a-booked-shift path (cancelBookedShift.ts) against the real database.
+  const bookedShiftDeps = () => ({
+    assignmentRepository: createPrismaAssignmentRepository(prisma!),
+    attendanceRepository: createPrismaAttendanceRepository(prisma!)
+  });
+  // Cancellation port for a whole request: release every still-booked worker (assignment + attendance).
+  // A worker who has already checked in is not released here; that counts as a failure, which leaves
+  // the cancellation in requires_reconciliation for staff.
+  const releaseBookedShiftsPort = (actorUserId: string, by: BookedShiftCanceller): AssignmentCancelPort => ({
+    async cancelConfirmedAssignments({ organizationId, jobRequestId, reason }) {
+      const rows = await prisma!.assignment.findMany({
+        where: { organizationId, jobRequestId, status: { in: [...BOOKED_ASSIGNMENT_STATUSES] } },
+        select: { id: true }
+      });
+      let cancelled = 0;
+      for (const row of rows) {
+        const released = await cancelBookedShift(bookedShiftDeps(), { assignmentId: row.id, by, actorUserId, reason, now: new Date() }).catch(() => null);
+        if (released?.status === "cancelled") cancelled += 1;
+      }
+      return { attempted: rows.length, cancelled, failed: rows.length - cancelled };
+    }
+  });
+
   // Employer: read-only authoritative cancellation consequence. No amount/rate/count
   // from the browser — everything is derived server-side.
   app.post(
@@ -3344,6 +3376,17 @@ export function buildApi(options: BuildApiOptions = {}) {
             confirmed
           });
         }
+        // Release the booked workers now through the one cancel-a-booked-shift path: each assignment and
+        // its attendance record are cancelled (the shift leaves the worker's schedule), then the request
+        // itself is cancelled. A worker already checked in stays for staff (requires_reconciliation).
+        let cancellation = result.cancellation;
+        if (prisma && cancellation.status === "assignment_cancellation_pending") {
+          const handed = await employerCancellationService.completeHandoff({
+            cancellationId: cancellation.id,
+            assignmentCancelPort: releaseBookedShiftsPort(session.user.id, "employer")
+          });
+          cancellation = handed.cancellation;
+        }
         // The workers are told now, when the employer cancels. Staff completing the assignment
         // handoff later does not tell them again. The notice never promises cancellation pay (owner
         // decision 2026-11-09: Joblop reviews each case with the worker).
@@ -3352,7 +3395,7 @@ export function buildApi(options: BuildApiOptions = {}) {
           cancelledBy: "employer",
           workers: holders.map((holder) => ({ userId: holder.userId }))
         });
-        return reply.code(200).send({ ...result, preview: employerSafePreview(result.preview) });
+        return reply.code(200).send({ ...result, cancellation, preview: employerSafePreview(result.preview) });
       } catch (error) {
         return sendCancellationError(reply, error);
       }
@@ -3375,38 +3418,10 @@ export function buildApi(options: BuildApiOptions = {}) {
           .code(403)
           .send({ error: "RWOS_CANCELLATION_DENIED", message: "Platform authority is required." });
       }
-      // Port bound to THIS platform actor: list still-confirmed assignments for the
-      // request and cancel each via the governed path. Idempotent — already-cancelled
-      // assignments drop out of the active-status list, so re-runs converge.
-      const port: AssignmentCancelPort = {
-        async cancelConfirmedAssignments({ organizationId, jobRequestId, reason }) {
-          const assignments = await assignmentService.listAssignments({
-            session,
-            roles,
-            organizationId,
-            jobRequestId,
-            statuses: [...CONFIRMED_ASSIGNMENT_STATUSES] as AssignmentStatus[]
-          });
-          let cancelled = 0;
-          let failed = 0;
-          for (const assignment of assignments) {
-            try {
-              await assignmentService.cancel({
-                session,
-                roles,
-                assignmentId: assignment.id,
-                expectedVersion: assignment.versionToken,
-                reason,
-                status: "employer_cancelled"
-              });
-              cancelled += 1;
-            } catch {
-              failed += 1;
-            }
-          }
-          return { attempted: assignments.length, cancelled, failed };
-        }
-      };
+      // Port bound to THIS platform actor: release every still-booked worker on the request through
+      // the one cancel-a-booked-shift path (assignment + attendance). Idempotent — released workers
+      // drop out of the booked list, so re-runs converge.
+      const port = releaseBookedShiftsPort(session.user.id, "employer");
       try {
         const result = await employerCancellationService.completeHandoff({
           cancellationId: readRouteParam(request.params, "cancellationId"),
@@ -4735,8 +4750,11 @@ export function buildApi(options: BuildApiOptions = {}) {
     const radiusKm = radiusRaw && radiusRaw > 0 ? Math.min(radiusRaw, 500) : undefined; // omit → any distance
     const roleFilter = (readOptionalString(body, "role") ?? "").trim().slice(0, 80);
     // Additional server-authoritative filters. All optional; the browser can only NARROW.
-    const dateFrom = parseIsoDate(readOptionalString(body, "dateFrom"));
-    const dateTo = parseIsoDate(readOptionalString(body, "dateTo"));
+    // Plain days are local days where the jobs are (America/Toronto for Canada), the last day included:
+    // "2027-01-22" to "2027-01-22" is all of that day, not midnight UTC (19:00 the evening before).
+    const searchZone = options.countryTimezone ?? "America/Toronto";
+    const dateFrom = searchDateBound(readOptionalString(body, "dateFrom"), "from", searchZone);
+    const dateTo = searchDateBound(readOptionalString(body, "dateTo"), "to", searchZone);
     const minOpeningsRaw = readOptionalNumber(body, "minOpenings");
     const minOpenings = minOpeningsRaw && minOpeningsRaw > 0 ? Math.floor(minOpeningsRaw) : undefined;
     const verifiedOnly = body.verifiedOnly === true;
@@ -7744,6 +7762,27 @@ export function buildApi(options: BuildApiOptions = {}) {
   // worker-withdraw endpoint surfaces. "suspend" disables the account for 7 days (auto-reinstated at
   // sign-in once suspended_until passes); "permanent_close" closes it. Admin-gated; the worker is
   // emailed. No money moves. Closure is irreversible, which is why only an admin can do it.
+  // The 7-day suspension for a cancellation less than 24 h before the start (owner policy): disable
+  // the account until the end date, revoke its sessions, and send the existing penalty notice. Used by
+  // staff (below) and applied automatically when a worker cancels their own shift too late.
+  const suspendWorkerForLateCancellation = async (input: { workerIdentityId: string; userId: string; now: Date }) => {
+    const until = new Date(input.now.getTime() + WORKER_SUSPENSION_DAYS * 86_400_000);
+    await prisma!.user.update({
+      where: { id: input.userId },
+      data: { status: "disabled", disabledAt: input.now, suspendedUntil: until }
+    });
+    await prisma!.session.updateMany({
+      where: { userId: input.userId, status: "active" },
+      data: { status: "revoked", revokedAt: input.now }
+    });
+    const notified = await notifyWorkerAccountPenalty(prisma!, emailSender, {
+      workerIdentityId: input.workerIdentityId,
+      penalty: "suspend",
+      suspensionDays: WORKER_SUSPENSION_DAYS
+    });
+    return { reinstatesAt: until, workerNotification: notified.status };
+  };
+
   app.post("/platform/workers/:workerIdentityId/apply-cancellation-penalty", async (request, reply) => {
     const session = await authService.validateSession(readBearerToken(request.headers.authorization));
     if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
@@ -7763,32 +7802,22 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!identity) return reply.code(404).send({ error: "RWOS_WORKER_NOT_FOUND", message: "Worker not found." });
 
     const nowDate = new Date();
+    if (action === "suspend") {
+      const suspended = await suspendWorkerForLateCancellation({ workerIdentityId, userId: identity.userId, now: nowDate });
+      return reply.code(200).send({
+        applied: "suspend",
+        suspensionDays: WORKER_SUSPENSION_DAYS,
+        reinstatesAt: suspended.reinstatesAt.toISOString(),
+        workerNotification: suspended.workerNotification
+      });
+    }
     // Kick the worker out immediately: revoke every active session so a signed-in worker can't keep
-    // acting during the suspension/closure (new sign-ins are already blocked by the status gate).
+    // acting during the closure (new sign-ins are already blocked by the status gate).
     const revokeActiveSessions = () =>
       prisma.session.updateMany({
         where: { userId: identity.userId, status: "active" },
         data: { status: "revoked", revokedAt: nowDate }
       });
-    if (action === "suspend") {
-      const until = new Date(nowDate.getTime() + WORKER_SUSPENSION_DAYS * 86_400_000);
-      await prisma.user.update({
-        where: { id: identity.userId },
-        data: { status: "disabled", disabledAt: nowDate, suspendedUntil: until }
-      });
-      await revokeActiveSessions();
-      const notified = await notifyWorkerAccountPenalty(prisma, emailSender, {
-        workerIdentityId,
-        penalty: "suspend",
-        suspensionDays: WORKER_SUSPENSION_DAYS
-      });
-      return reply.code(200).send({
-        applied: "suspend",
-        suspensionDays: WORKER_SUSPENSION_DAYS,
-        reinstatesAt: until.toISOString(),
-        workerNotification: notified.status
-      });
-    }
     await prisma.user.update({
       where: { id: identity.userId },
       data: { status: "closed", closedAt: nowDate, suspendedUntil: null }
@@ -8913,16 +8942,29 @@ export function buildApi(options: BuildApiOptions = {}) {
     const body = asRecord(request.body);
     const assignmentId = readRouteParam(request.params, "assignmentId");
     const cancelStatus = readAssignmentStatus(readOptionalString(body, "status")) ?? "platform_cancelled";
+    // A shift on the worker's schedule can be cancelled only before the worker has checked in.
+    const attendanceBefore = prisma
+      ? await prisma.attendanceRecord.findUnique({ where: { assignmentId }, select: { status: true } }).catch(() => null)
+      : null;
+    if (attendanceBefore && attendanceBefore.status !== "pending_start" && attendanceBefore.status !== "cancelled") {
+      return reply.code(409).send(SHIFT_ALREADY_STARTED_BODY);
+    }
     // The worker holding this assignment, read before the cancel changes its status.
     const holders = prisma ? await readShiftHolders(prisma, { assignmentIds: [assignmentId] }).catch(() => [] as ShiftHolder[]) : [];
+    const reason = readRequiredString(body, "reason") ?? "";
     const assignment = await assignmentService.cancel({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
       assignmentId,
       expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
-      reason: readRequiredString(body, "reason") ?? "",
+      reason,
       status: cancelStatus
     });
+    // The same cancel-a-booked-shift path as the worker and the employer: the attendance record goes
+    // too, so the shift leaves the worker's schedule (the assignment half is already done above).
+    if (prisma && attendanceBefore?.status === "pending_start") {
+      await cancelBookedShift(bookedShiftDeps(), { assignmentId, by: "staff", actorUserId: session.user.id, reason, now: new Date() });
+    }
     // Staff act here; an employer_cancelled status records that the employer asked for it. No
     // late-cancellation pay is computed on this path, so none is mentioned.
     for (const [jobRequestId, onJob] of groupShiftHoldersByJob(holders)) {
@@ -9082,6 +9124,90 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ assignment: serializeWorkerAssignment(assignment) });
   });
 
+  // Worker self-cancel of a booked shift (worker website + phone app). The one cancel-a-booked-shift
+  // path: the assignment and the attendance record are cancelled together, so the shift leaves the
+  // worker's schedule and the place reopens on the job board at once. More than 24 h before the start
+  // it is free; later, the existing 7-day suspension is applied automatically with its notice (a repeat
+  // late cancel is flagged as "permanent_close" for staff, who decide on closure). The employer and
+  // staff are told. The response carries no rate.
+  const workerCancelBookedShift = async (reply: FastifyReply, userId: string, assignmentId: string) => {
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+    const identity = await prisma.workerIdentity.findUnique({ where: { userId }, select: { id: true } });
+    const owned = identity && isCanonicalUuid(assignmentId)
+      ? await prisma.assignment.findUnique({ where: { id: assignmentId }, select: { workerIdentityId: true } })
+      : null;
+    if (!identity || !owned || owned.workerIdentityId !== identity.id) {
+      return reply.code(404).send({ error: "RWOS_SHIFT_NOT_FOUND", message: "That shift is not on your schedule." });
+    }
+    const now = new Date();
+    const result = await cancelBookedShift(bookedShiftDeps(), { assignmentId, by: "worker", actorUserId: userId, reason: "worker_cancelled", now });
+    if (result.status === "already_started") return reply.code(409).send(SHIFT_ALREADY_STARTED_BODY);
+    if (result.status === "not_found") return reply.code(404).send({ error: "RWOS_SHIFT_NOT_FOUND", message: "That shift is not on your schedule." });
+    if (result.status === "conflict") return reply.code(409).send({ error: "RWOS_SHIFT_CHANGED", message: "This shift changed. Refresh and try again." });
+    if (result.status === "not_booked" || !result.assignmentCancelled) {
+      return reply.code(409).send({ error: "RWOS_SHIFT_NOT_CANCELLABLE", message: "This shift can no longer be cancelled." });
+    }
+
+    // Late cancellations before this one (the policy counts repeats).
+    const priors = await prisma.assignment.findMany({
+      where: { workerIdentityId: identity.id, status: "worker_withdrawn", id: { not: assignmentId } },
+      select: { confirmedStartAt: true, workerWithdrawnAt: true }
+    });
+    const priorLate = priors.filter(
+      (a) => a.workerWithdrawnAt && (a.confirmedStartAt.getTime() - a.workerWithdrawnAt.getTime()) / 3_600_000 < 24
+    ).length;
+    const penalty = deriveWorkerCancellationPenalty({
+      shiftStartIso: result.startAt.toISOString(),
+      nowIso: now.toISOString(),
+      priorLateCancellations: priorLate
+    });
+    let suspension: { reinstatesAt: string; suspensionDays: number } | null = null;
+    if (penalty.penalty !== "none") {
+      const applied = await suspendWorkerForLateCancellation({ workerIdentityId: identity.id, userId, now });
+      suspension = { reinstatesAt: applied.reinstatesAt.toISOString(), suspensionDays: WORKER_SUSPENSION_DAYS };
+    }
+
+    // Tell the employer and staff (best-effort, never undoes the cancel).
+    await notifyClient(prisma, emailSender, { jobRequestId: result.jobRequestId, kind: "worker_cancelled" }).catch(() => undefined);
+    if (staffAlertEmail) {
+      const job = await prisma.jobRequest.findUnique({ where: { id: result.jobRequestId }, select: { jobRequestNumber: true, title: true } }).catch(() => null);
+      await emailSender
+        .send({
+          to: staffAlertEmail,
+          subject: `Joblop — a worker cancelled ${job?.jobRequestNumber ?? "a shift"}${penalty.penalty !== "none" ? " (under 24 h)" : ""}`,
+          text:
+            `A worker cancelled their shift "${job?.title ?? ""}" (${job?.jobRequestNumber ?? result.jobRequestId}), ` +
+            `${penalty.hoursBeforeStart.toFixed(1)} h before the start. The place is open again on the job board.\n` +
+            (penalty.penalty === "none"
+              ? "More than 24 h before the start: no penalty.\n"
+              : `Under 24 h: the 7-day suspension was applied automatically.${penalty.penalty === "permanent_close" ? " This is a repeat late cancellation: the policy recommends closing the account (staff decision)." : ""}\n`) +
+            `\n— Joblop`
+        })
+        .catch(() => undefined);
+    }
+
+    return reply.code(200).send({
+      status: "cancelled",
+      assignmentId,
+      lateCancellation: penalty.penalty !== "none",
+      hoursBeforeStart: penalty.hoursBeforeStart,
+      recommendedPenalty: penalty.penalty,
+      suspension
+    });
+  };
+
+  // By attendance record: the id the worker's schedule (website and phone app) already has.
+  app.post("/worker/attendance/:attendanceRecordId/cancel", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendAssignmentDenied(reply);
+    const attendanceRecordId = readRouteParam(request.params, "attendanceRecordId");
+    const record = prisma && isCanonicalUuid(attendanceRecordId)
+      ? await prisma.attendanceRecord.findUnique({ where: { id: attendanceRecordId }, select: { assignmentId: true } })
+      : null;
+    if (!record) return reply.code(404).send({ error: "RWOS_SHIFT_NOT_FOUND", message: "That shift is not on your schedule." });
+    return workerCancelBookedShift(reply, session.user.id, record.assignmentId);
+  });
+
   app.post("/worker/assignments/:assignmentId/withdraw", async (request, reply) => {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
@@ -9090,6 +9216,13 @@ export function buildApi(options: BuildApiOptions = {}) {
 
     const body = asRecord(request.body);
     const assignmentId = readRouteParam(request.params, "assignmentId");
+    // A shift already on the schedule goes through the same self-cancel path as the website button.
+    const current = prisma && isCanonicalUuid(assignmentId)
+      ? await prisma.assignment.findUnique({ where: { id: assignmentId }, select: { status: true } })
+      : null;
+    if (current?.status === "attendance_handoff") {
+      return workerCancelBookedShift(reply, session.user.id, assignmentId);
+    }
     const assignment = await assignmentService.workerWithdraw({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
@@ -9253,19 +9386,34 @@ export function buildApi(options: BuildApiOptions = {}) {
     const attendanceRecordId = readRouteParam(request.params, "attendanceRecordId");
     // The worker on this attendance record, read before the cancel, and only while their assignment
     // still holds the shift (an already-cancelled assignment told them when it was cancelled).
-    const holders = prisma
+    const before = prisma
       ? await prisma.attendanceRecord
-          .findUnique({ where: { id: attendanceRecordId }, select: { assignmentId: true } })
-          .then((record) => (record ? readShiftHolders(prisma, { assignmentIds: [record.assignmentId] }) : []))
-          .catch(() => [] as ShiftHolder[])
+          .findUnique({ where: { id: attendanceRecordId }, select: { assignmentId: true, status: true } })
+          .catch(() => null)
+      : null;
+    const holders = prisma && before
+      ? await readShiftHolders(prisma, { assignmentIds: [before.assignmentId] }).catch(() => [] as ShiftHolder[])
       : [];
+    const reason = readRequiredString(body, "reason") ?? "";
     const attendanceRecord = await attendanceService.cancel({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
       attendanceRecordId,
       expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
-      reason: readRequiredString(body, "reason") ?? ""
+      reason
     });
+    // Before the shift started, a staff cancel releases the booking too (the one cancel-a-booked-shift
+    // path): the assignment is cancelled, so the place frees and the job board reopens. No employer
+    // charge on a staff cancel. A shift cancelled after check-in keeps today's behaviour.
+    if (prisma && before?.status === "pending_start") {
+      await cancelBookedShift(bookedShiftDeps(), {
+        assignmentId: before.assignmentId,
+        by: "staff",
+        actorUserId: session.user.id,
+        reason: reason || "staff_cancelled",
+        now: new Date()
+      });
+    }
     for (const [jobRequestId, onJob] of groupShiftHoldersByJob(holders)) {
       await tellWorkersShiftCancelled({ jobRequestId, cancelledBy: "staff", workers: onJob.map((h) => ({ userId: h.userId })) });
     }
@@ -9341,6 +9489,11 @@ export function buildApi(options: BuildApiOptions = {}) {
     // Long-term job (employer plans flag): no clock-in / clock-out, the employer pays directly.
     if (await isLongTermAttendance(prisma, readRouteParam(request.params, "attendanceRecordId"))) {
       return reply.code(409).send(LONG_TERM_NO_TIMESHEETS_BODY);
+    }
+    // A cancelled job or a cancelled booking can never be worked.
+    const checkInRecordId = readRouteParam(request.params, "attendanceRecordId");
+    if (prisma && isCanonicalUuid(checkInRecordId) && (await cancelledShiftReason(prisma, checkInRecordId))) {
+      return reply.code(409).send(SHIFT_CANCELLED_BODY);
     }
     // Check-in opens 30 minutes before the shift starts.
     const checkInOpensAt = await checkInTooEarly(prisma, readRouteParam(request.params, "attendanceRecordId"), session.user.id);
@@ -11472,6 +11625,10 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (await isLongTermAttendance(prisma, readRequiredString(body, "attendanceRecordId") ?? "")) {
       return reply.code(409).send(LONG_TERM_NO_TIMESHEETS_BODY);
     }
+    // No timesheet (so no pay or invoice) for a cancelled job or a cancelled booking.
+    if (prisma && isCanonicalUuid(readRequiredString(body, "attendanceRecordId") ?? "") && (await cancelledShiftReason(prisma, readRequiredString(body, "attendanceRecordId") ?? ""))) {
+      return reply.code(409).send(SHIFT_CANCELLED_BODY);
+    }
     const timesheet = await timesheetService.createFromAttendance({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
@@ -11568,6 +11725,10 @@ export function buildApi(options: BuildApiOptions = {}) {
     const attendanceRecordId = readRequiredString(asRecord(request.body), "attendanceRecordId") ?? "";
     if (await isLongTermAttendance(prisma, attendanceRecordId)) {
       return reply.code(409).send(LONG_TERM_NO_TIMESHEETS_BODY);
+    }
+    // No timesheet (so no pay or invoice) for a cancelled job or a cancelled booking.
+    if (prisma && isCanonicalUuid(attendanceRecordId) && (await cancelledShiftReason(prisma, attendanceRecordId))) {
+      return reply.code(409).send(SHIFT_CANCELLED_BODY);
     }
     const roles = await resolveAuthorizationRoles(session.user.id);
     const attendance = await attendanceService.readAttendance({ session, roles, attendanceRecordId });
@@ -12095,14 +12256,6 @@ function readAllowancesInput(body: Record<string, unknown>) {
     meal: readAllowanceEntryInput(allowances, "meal"),
     lodging: readAllowanceEntryInput(allowances, "lodging")
   };
-}
-
-// Parse an ISO date/datetime string into a Date, or null if absent/invalid. Used for
-// marketplace date-range filters (server-authoritative).
-function parseIsoDate(value: string | null): Date | null {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function readStringArray(body: Record<string, unknown>, key: string) {

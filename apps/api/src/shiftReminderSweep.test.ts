@@ -100,6 +100,41 @@ describe("shift reminder sweep", () => {
     expect(marked).toEqual(["a4"]);
   });
 
+  it("reminds booked shifts in attendance_handoff (every claimed shift), never cancelled ones, with the job-page link", async () => {
+    const texts: string[] = [];
+    const emails: string[] = [];
+    let where: Record<string, unknown> = {};
+    const prisma = {
+      assignment: {
+        async findMany(args: { where: Record<string, unknown> }) {
+          where = args.where;
+          return [
+            {
+              id: "a5",
+              jobRequestId: "job-1",
+              confirmedTitle: "Farm worker",
+              confirmedStartAt: soon,
+              workerIdentity: { userId: "u5", user: { emailNormalized: "w@x.test", phone: "+15145550000", primaryLanguage: "en" } }
+            }
+          ];
+        },
+        async updateMany() {
+          return { count: 1 };
+        }
+      }
+    } as never;
+    await runShiftReminderSweep({
+      prisma,
+      emailSender: { configured: true, send: async (m) => (emails.push(m.text), { status: "sent", id: "e" }) },
+      smsSender: { configured: true, enabled: true, send: async (m) => (texts.push(m.text), { status: "sent", id: "s" }) },
+      workerWebOrigin: "https://work.example.test/"
+    });
+    expect((where.status as { in: string[] }).in).toContain("attendance_handoff");
+    expect(where).toMatchObject({ NOT: { attendanceRecord: { is: { status: "cancelled" } } }, jobRequest: { status: { not: "cancelled" } } });
+    expect(texts[0]).toContain("https://work.example.test/jobs/job-1");
+    expect(emails[0]).toContain("See the job details and the map: https://work.example.test/jobs/job-1");
+  });
+
   it("does not send SMS when the sender is disabled (money gate)", async () => {
     const email = fakeEmail();
     const sms = fakeSms(false);

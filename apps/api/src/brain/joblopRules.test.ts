@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { HOUR, MIN, NOW, at, context, emptyRows, failure, invoice, request, shift, timesheet, unfilledJob } from "./brainTestFixtures";
 import {
   deliveryFailedRule,
+  hoursNotPreparedRule,
   invoiceOverdueRule,
   jobMissingInfoRule,
   jobUnfilledSoonRule,
@@ -21,11 +22,24 @@ describe("joblop brain rules", () => {
       expect(issue).toMatchObject({ severity: "warning", recommendedAction: "offer_employer_bonus", inputs: { thresholdHours: 24 } });
     });
 
-    it("uses the 4 h threshold (a new issue) and urgent severity close to the start", async () => {
-      const rows = { ...emptyRows(), unfilled: [unfilledJob({ startAt: at(3 * HOUR) })] };
-      const [issue] = await jobUnfilledSoonRule.detect(context(rows), NOW);
-      expect(issue?.severity).toBe("urgent");
-      expect(issue?.fingerprint).toContain(":4:");
+    it("moving from 24 h to 4 h updates the same issue (same fingerprint), now urgent", async () => {
+      const job = unfilledJob({ startAt: at(10 * HOUR) });
+      const [early] = await jobUnfilledSoonRule.detect(context({ ...emptyRows(), unfilled: [job] }), NOW);
+      const [late] = await jobUnfilledSoonRule.detect(context({ ...emptyRows(), unfilled: [job] }), at(7 * HOUR));
+      expect(early).toMatchObject({ severity: "warning", inputs: { thresholdHours: 24 } });
+      expect(late).toMatchObject({ severity: "urgent", inputs: { thresholdHours: 4 } });
+      expect(late?.fingerprint).toBe(early?.fingerprint);
+    });
+
+    it("a cancelled booking that reopens a place is a new issue", async () => {
+      const [before] = await jobUnfilledSoonRule.detect(context({ ...emptyRows(), unfilled: [unfilledJob()] }), NOW);
+      const [after] = await jobUnfilledSoonRule.detect(context({ ...emptyRows(), unfilled: [unfilledJob({ cancelledBookings: 1 })] }), NOW);
+      expect(after?.fingerprint).not.toBe(before?.fingerprint);
+    });
+
+    it("no bonus recommendation for a job that is not on the job board", async () => {
+      const [issue] = await jobUnfilledSoonRule.detect(context({ ...emptyRows(), unfilled: [unfilledJob({ onJobBoard: false })] }), NOW);
+      expect(issue).toMatchObject({ recommendedAction: null, inputs: { onJobBoard: false } });
     });
 
     it("no recommendation when a bonus already exists or the job is unpriced; nothing when full or far away", async () => {
@@ -137,6 +151,35 @@ describe("joblop brain rules", () => {
         ]
       };
       expect(await timesheetUnconfirmedRule.detect(context(rows), NOW)).toEqual([]);
+    });
+  });
+
+  describe("timesheet_unconfirmed, waiting for the worker", () => {
+    it("reminds the WORKER (own fingerprint); the employer is not asked until the worker confirmed", async () => {
+      const waiting = timesheet({ status: "worker_review", workerReviewStatus: "pending", employerReviewStatus: "pending" });
+      const [issue] = await timesheetUnconfirmedRule.detect(context({ ...emptyRows(), timesheets: [waiting] }), NOW);
+      expect(issue).toMatchObject({ recommendedAction: "remind_worker_timesheet", fingerprint: `timesheet_unconfirmed:${waiting.timesheetId}:worker` });
+      const confirmedByWorker = timesheet({ status: "employer_review", workerReviewStatus: "confirmed" });
+      const [next] = await timesheetUnconfirmedRule.detect(context({ ...emptyRows(), timesheets: [confirmedByWorker] }), NOW);
+      expect(next?.recommendedAction).toBe("remind_employer_timesheet");
+    });
+  });
+
+  describe("hours_not_prepared", () => {
+    const row = { attendanceRecordId: "a1", assignmentId: "s1", jobRequestNumber: "JR-9", title: "Cook", checkedIn: true };
+    it("flags a shift that ended more than 2 h ago with no timesheet, for staff (no automatic action)", async () => {
+      const finished = [
+        { ...row, scheduledEndAt: at(-2 * HOUR - MIN) },
+        { ...row, attendanceRecordId: "a2", scheduledEndAt: at(-2 * HOUR) },
+        { ...row, attendanceRecordId: "a3", scheduledEndAt: at(-5 * HOUR), checkedIn: false }
+      ];
+      const issues = await hoursNotPreparedRule.detect(context({ ...emptyRows(), finished }), NOW);
+      expect(issues.map((i) => [i.subjectId, i.recommendedAction])).toEqual([
+        ["a1", null],
+        ["a3", null]
+      ]);
+      expect(issues[0]?.summary).toContain("Hours not prepared");
+      expect(issues[1]?.summary).toContain("no check-in");
     });
   });
 

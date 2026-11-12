@@ -9,6 +9,7 @@ import type { Translate } from "../i18n/LocaleProvider";
 import { resolveDeniedKind } from "../resolveDenied";
 import { ShiftAddressMap } from "../ShiftAddressMap";
 import { checkInOpensAt, isCheckInOpen } from "../shiftLocation";
+import { CancelShiftControl } from "./CancelShift";
 
 type Shift = Readonly<{
   attendanceRecordId: string;
@@ -109,6 +110,12 @@ export function MySchedule() {
     }
   }, [load, t, locale]);
 
+  // After "Cancel this shift" (CancelShift.tsx): show the outcome and reload (the shift leaves the list).
+  const cancelShift = useCallback((message: string) => {
+    setNotice(message);
+    void load();
+  }, [load]);
+
   if (state.status === "loading") return <div className="state">{t("common.loading")}</div>;
   if (state.status === "signed_out") return <div className="state">{t("sched.signInPrompt")}<div style={{ marginTop: 12 }}><a className="btn" href="/">{t("common.goToSearch")}</a></div></div>;
   if (state.status === "needs_setup") return <div className="state">{t("common.needsWorkerSetup")}<div style={{ marginTop: 12 }}><a className="btn" href="/onboarding">{t("common.setUpWorker")}</a></div></div>;
@@ -157,6 +164,7 @@ export function MySchedule() {
           onSelect={setSelectedDay}
           busy={busy}
           onAct={act}
+          onCancel={cancelShift}
           locale={locale}
           t={t}
         />
@@ -164,13 +172,13 @@ export function MySchedule() {
         <>
           {upcoming.length > 0 ? <div className="role" style={{ marginBottom: 6 }}>{t("sched.upcoming")}</div> : null}
           <div className="results" style={{ marginBottom: 24 }}>
-            {upcoming.map((s) => <ShiftCard key={s.attendanceRecordId} s={s} busy={busy === s.attendanceRecordId} onAct={act} t={t} locale={locale} />)}
+            {upcoming.map((s) => <ShiftCard key={s.attendanceRecordId} s={s} busy={busy === s.attendanceRecordId} onAct={act} onCancel={cancelShift} t={t} locale={locale} />)}
           </div>
           {past.length > 0 ? (
             <>
               <div className="role" style={{ marginBottom: 6 }}>{t("sched.history")}</div>
               <div className="results" style={{ paddingBottom: 48 }}>
-                {past.map((s) => <ShiftCard key={s.attendanceRecordId} s={s} busy={false} onAct={act} history t={t} locale={locale} />)}
+                {past.map((s) => <ShiftCard key={s.attendanceRecordId} s={s} busy={false} onAct={act} onCancel={cancelShift} history t={t} locale={locale} />)}
               </div>
             </>
           ) : null}
@@ -184,8 +192,10 @@ export function MySchedule() {
   );
 }
 
-function ShiftCard({ s, busy, onAct, history, t, locale }: { s: Shift; busy: boolean; onAct: (s: Shift, a: "check-in" | "check-out") => void; history?: boolean; t: Translate; locale: RwosLocale }) {
+function ShiftCard({ s, busy, onAct, onCancel, history, t, locale }: { s: Shift; busy: boolean; onAct: (s: Shift, a: "check-in" | "check-out") => void; onCancel: (message: string) => void; history?: boolean; t: Translate; locale: RwosLocale }) {
   const noClock = s.clockInAllowed === false;
+  // A booked shift can be cancelled until the worker checks in (CancelShift.tsx explains the rules).
+  const canCancel = !history && !noClock && s.status === "pending_start";
   const canCheckIn = !noClock && s.status === "pending_start";
   const canCheckOut = !noClock && s.status === "checked_in";
   // Check-in opens 30 minutes before the start (the API refuses earlier ones too).
@@ -226,6 +236,9 @@ function ShiftCard({ s, busy, onAct, history, t, locale }: { s: Shift; busy: boo
         <button className="btn" type="button" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => onAct(s, canCheckIn ? "check-in" : "check-out")}>
           {busy ? "…" : canCheckIn ? t("sched.checkIn") : t("sched.checkOut")}
         </button>
+      ) : null}
+      {canCancel ? (
+        <CancelShiftControl attendanceRecordId={s.attendanceRecordId} scheduledStartAt={s.scheduledStartAt} disabled={busy} onCancelled={onCancel} />
       ) : null}
     </article>
   );
@@ -289,7 +302,7 @@ function dayKeyOf(iso: string): string {
 }
 
 
-function CalendarView({ items, month, onPrev, onNext, selected, onSelect, busy, onAct, locale, t }: {
+function CalendarView({ items, month, onPrev, onNext, selected, onSelect, busy, onAct, onCancel, locale, t }: {
   items: readonly Shift[];
   month: Date;
   onPrev: () => void;
@@ -298,6 +311,7 @@ function CalendarView({ items, month, onPrev, onNext, selected, onSelect, busy, 
   onSelect: (k: string | null) => void;
   busy: string | null;
   onAct: (s: Shift, a: "check-in" | "check-out") => void;
+  onCancel: (message: string) => void;
   locale: RwosLocale;
   t: Translate;
 }) {
@@ -363,7 +377,7 @@ function CalendarView({ items, month, onPrev, onNext, selected, onSelect, busy, 
         dayShifts.length > 0 ? (
           <div className="results" style={{ paddingBottom: 48 }}>
             {dayShifts.map((s) => (
-              <ShiftCard key={s.attendanceRecordId} s={s} busy={busy === s.attendanceRecordId} onAct={onAct} t={t} locale={locale} />
+              <ShiftCard key={s.attendanceRecordId} s={s} busy={busy === s.attendanceRecordId} onAct={onAct} onCancel={onCancel} t={t} locale={locale} />
             ))}
           </div>
         ) : (

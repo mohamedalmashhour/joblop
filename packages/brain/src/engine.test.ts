@@ -171,12 +171,26 @@ describe("brain engine", () => {
     expect((await brain.doNow(issueId, "staff-1")).status).toBe("not_open");
   });
 
-  it("staff Do it after the brain already acted is refused", async () => {
+  it("staff Do it after the brain already got it done is refused", async () => {
+    const { brain, store } = setup();
+    await brain.sweep();
+    const issue = store.issues[0]!;
+    // The done action resolved the issue; even if it were still open, the slot is taken.
+    expect(["not_open", "already_handled"]).toContain((await brain.doNow(issue.id, "staff-1")).status);
+  });
+
+  it("staff Do it retries a run that did not get it done (failed or skipped), once, keeping the earlier result", async () => {
     const { brain, ctx, store } = setup();
     ctx.fail = true;
     await brain.sweep();
+    expect(store.actions.map((a) => a.status)).toEqual(["failed"]);
     ctx.fail = false;
-    expect((await brain.doNow(store.issues[0]!.id, "staff-1")).status).toBe("already_handled");
+    const retried = await brain.doNow(store.issues[0]!.id, "staff-1");
+    expect(retried.status).toBe("done");
+    expect(store.actions).toHaveLength(1);
+    expect(store.actions[0]).toMatchObject({ status: "done", actor: { type: "staff", userId: "staff-1" } });
+    expect(store.actions[0]!.detail).toContain("Retried by staff. Earlier:");
+    expect((await brain.doNow(store.issues[0]!.id, "staff-2")).status).not.toBe("done");
   });
 
   it("undo: reverses a done action once", async () => {

@@ -28,9 +28,9 @@ import { materializeAndListWorkerPayouts } from "../../apps/api/src/workerPayout
 // UTC-5) so they never meet the real-time jobs other suites create. TEST/SYNTHETIC: no money moves,
 // mail and texts are captured. Gated on RWOS_TEST_DATABASE_URL like every postgres-* suite.
 //
-// Where today's behaviour looks wrong for real life, the test states the CORRECT behaviour and is
-// marked `it.fails(...)` with a "BUG:" comment, so CI stays green until the fix lands (then the
-// `.fails` must be removed). The matching "ACTUAL:" test pins what the code does today.
+// Where behaviour looks wrong for real life, write the CORRECT behaviour and mark it `it.fails(...)`
+// with a "BUG:" comment until the fix lands. The cancellation bugs found here were fixed by the one
+// cancel-a-booked-shift path (fix/cancel-booked-shift), so their tests now pass as plain `it`.
 const databaseUrl = process.env.RWOS_TEST_DATABASE_URL;
 const suite = databaseUrl ? describe : describe.skip;
 
@@ -548,51 +548,96 @@ suite("real-life scenarios (Laval Farm worker, legal rate, controlled clock)", (
     });
   });
 
-  // ── 3. Cancellations less than 24 h before the start ─────────────────────────────────────────────
-  describe("3. cancellations under 24 h", () => {
+  // ── 3. Cancellations ─────────────────────────────────────────────────────────────────────────────
+  // One cancel-a-booked-shift path for all three actors (apps/api/src/cancelBookedShift.ts): the
+  // assignment and the attendance record are cancelled together, so the shift leaves the worker's
+  // schedule, the place reopens, and nothing can be worked, timed or chased on it any more.
+  describe("3. cancellations", () => {
     const DAY = "2027-02-12";
     const shift = () => ({ startAt: et(DAY, "08:00"), endAt: et(DAY, "14:00") });
     const evening = et("2027-02-11", "14:00"); // 18 h before the start
 
+    const assignmentStatus = async (id: string) => (await prisma.assignment.findUniqueOrThrow({ where: { id } })).status;
+    const attendanceStatus = async (assignmentId: string) => (await prisma.attendanceRecord.findUniqueOrThrow({ where: { assignmentId } })).status;
+    const workerCancel = async (worker: Actor, attendanceRecordId: string) =>
+      app.inject({ method: "POST", url: `/worker/attendance/${attendanceRecordId}/cancel`, headers: await h(worker), payload: {} });
+
     // (a) The worker cancels.
-    it("(a) ACTUAL: the worker cannot cancel a booked shift themselves (withdraw is refused for a scheduled shift)", async () => {
+    it("(a) the worker cancels more than 24 h ahead: free, the shift leaves their schedule and reopens; employer told", async () => {
       setNow(et("2027-02-10", "11:00"));
       const job = await publishJob(shift());
-      const worker = await makeWorker("w-cancel");
+      const worker = await makeWorker("w-cancel-free");
       const assignmentId = await claim(worker, job.id);
-      setNow(evening);
-      const assignment = await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId } });
-      expect(assignment.status).toBe("attendance_handoff");
-      const res = await app.inject({
-        method: "POST", url: `/worker/assignments/${assignmentId}/withdraw`, headers: await h(worker),
-        payload: { expectedVersion: assignment.version, reason: "Sick child." }
-      });
-      expect(res.statusCode).not.toBe(200);
-      expect((await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId } })).status).toBe("attendance_handoff");
+      const item = await scheduleItem(worker, assignmentId);
+      emails.length = 0;
+      const res = await workerCancel(worker, item.attendanceRecordId);
+      expect(res.statusCode, res.body).toBe(200);
+      expect(res.json()).toMatchObject({ status: "cancelled", lateCancellation: false, recommendedPenalty: "none", suspension: null });
+      expect(numbersIn(res.json())).not.toContain(WORKER_RATE);
+      expect(await assignmentStatus(assignmentId)).toBe("worker_withdrawn");
+      expect(await attendanceStatus(assignmentId)).toBe("cancelled");
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: worker.id } })).status).toBe("active");
+      expect(emails.some((m) => /a worker cancelled|un travailleur a annulé/.test(m.subject))).toBe(true);
+      await claim(await makeWorker("w-cancel-free-next"), job.id);
     });
 
-    // BUG: every claimed or staff-assigned shift is in "attendance_handoff", which workerWithdraw does
-    // not accept (allowedFrom: confirmed | worker_acknowledged | ready_for_attendance), and the worker
-    // website has no cancel button. Correct: the worker can cancel, is told the 7-day suspension
-    // that a <24 h cancellation carries, and the place reopens for another worker.
-    it.fails("(a) the worker cancels <24 h: allowed, 7-day suspension recommended, the shift reopens", async () => {
+    it("(a) the worker cancels under 24 h: allowed, the 7-day suspension is applied automatically, the shift reopens", async () => {
       setNow(et("2027-02-10", "11:10"));
       const job = await publishJob(shift());
-      const worker = await makeWorker("w-cancel-ok");
+      const worker = await makeWorker("w-cancel-late");
       const assignmentId = await claim(worker, job.id);
       setNow(evening);
+      const item = await scheduleItem(worker, assignmentId);
+      emails.length = 0;
+      const res = await workerCancel(worker, item.attendanceRecordId);
+      expect(res.statusCode, res.body).toBe(200);
+      expect(res.json()).toMatchObject({ status: "cancelled", lateCancellation: true, recommendedPenalty: "suspend", suspension: { suspensionDays: 7 } });
+      const user = await prisma.user.findUniqueOrThrow({ where: { id: worker.id } });
+      expect(user.status).toBe("disabled");
+      expect(user.suspendedUntil?.toISOString()).toBe(new Date(evening.getTime() + 7 * 24 * HOUR).toISOString());
+      expect(emails.some((m) => m.to === worker.email)).toBe(true); // the existing penalty notice
+      expect(await assignmentStatus(assignmentId)).toBe("worker_withdrawn");
+      expect(await attendanceStatus(assignmentId)).toBe("cancelled");
+      await claim(await makeWorker("w-cancel-late-next"), job.id);
+    });
+
+    it("(a) the older withdraw route takes the same path for a scheduled shift", async () => {
+      setNow(et("2027-02-10", "11:15"));
+      const job = await publishJob(shift());
+      const worker = await makeWorker("w-withdraw");
+      const assignmentId = await claim(worker, job.id);
       const assignment = await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId } });
       const res = await app.inject({
         method: "POST", url: `/worker/assignments/${assignmentId}/withdraw`, headers: await h(worker),
         payload: { expectedVersion: assignment.version, reason: "Sick child." }
       });
       expect(res.statusCode, res.body).toBe(200);
-      expect(res.json().cancellationPenalty).toMatchObject({ penalty: "suspend", suspensionDays: 7 });
-      await claim(await makeWorker("w-replacement"), job.id);
+      expect(res.json()).toMatchObject({ status: "cancelled", lateCancellation: false });
+      expect(await attendanceStatus(assignmentId)).toBe("cancelled");
     });
 
-    it("(a) ACTUAL staff path for a worker who calls in: staff cancel the attendance and apply the 7-day suspension", async () => {
+    it("(a) a worker cannot cancel after checking in, nor cancel someone else's shift", async () => {
       setNow(et("2027-02-10", "11:20"));
+      const job = await publishJob(shift());
+      const worker = await makeWorker("w-started");
+      const assignmentId = await claim(worker, job.id);
+      setNow(et(DAY, "07:55"));
+      const item = await scheduleItem(worker, assignmentId);
+      const stranger = await makeWorker("w-stranger");
+      expect((await workerCancel(stranger, item.attendanceRecordId)).statusCode).toBe(404);
+      const checkIn = await app.inject({
+        method: "POST", url: `/worker/attendance/${item.attendanceRecordId}/check-in`, headers: await h(worker),
+        payload: { expectedVersion: item.version }
+      });
+      expect(checkIn.statusCode, checkIn.body).toBe(200);
+      const res = await workerCancel(worker, item.attendanceRecordId);
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error).toBe("RWOS_SHIFT_ALREADY_STARTED");
+      expect(await assignmentStatus(assignmentId)).toBe("attendance_handoff");
+    });
+
+    it("(a) staff path for a worker who calls in: staff cancel the attendance, the place frees, and the suspension applies", async () => {
+      setNow(et("2027-02-10", "11:30"));
       const job = await publishJob(shift());
       const worker = await makeWorker("w-callin");
       const assignmentId = await claim(worker, job.id);
@@ -603,70 +648,42 @@ suite("real-life scenarios (Laval Farm worker, legal rate, controlled clock)", (
         payload: { expectedVersion: item.version, reason: "worker_cancelled_by_phone" }
       });
       expect(cancelled.statusCode, cancelled.body).toBe(200);
+      expect(await assignmentStatus(assignmentId)).toBe("platform_cancelled");
       const penalty = await app.inject({
         method: "POST", url: `/platform/workers/${worker.workerIdentityId}/apply-cancellation-penalty`, headers: await h(staff),
         payload: { action: "suspend" }
       });
       expect(penalty.statusCode, penalty.body).toBe(200);
       expect(penalty.json()).toMatchObject({ applied: "suspend", suspensionDays: 7 });
-      const user = await prisma.user.findUniqueOrThrow({ where: { id: worker.id } });
-      expect(user.status).toBe("disabled");
-      expect(user.suspendedUntil?.toISOString()).toBe(new Date(evening.getTime() + 7 * 24 * HOUR).toISOString());
-      // ACTUAL: the assignment still holds the place, so the job stays full.
-      expect((await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId } })).status).toBe("attendance_handoff");
-      const other = await makeWorker("w-callin-other");
-      const retry = await app.inject({ method: "POST", url: `/marketplace/jobs/${job.id}/claim`, headers: await h(other) });
-      expect(retry.statusCode).toBe(409);
-      expect(retry.json().error).toBe("RWOS_CLAIM_FULL");
+      await claim(await makeWorker("w-callin-other"), job.id);
     });
 
     // (b) The employer cancels with a worker booked.
-    it("(b) ACTUAL (item 95): an employer cancel <24 h with a booked worker bills nothing and leaves the worker booked", async () => {
-      setNow(et("2027-02-10", "11:30"));
+    it("(b) an employer cancel under 24 h with a booked worker charges 6 h and releases the worker", async () => {
+      setNow(et("2027-02-10", "11:40"));
       const job = await publishJob(shift());
       const worker = await makeWorker("e-cancel");
       const assignmentId = await claim(worker, job.id);
       setNow(evening);
-      const res = await app.inject({
-        method: "POST", url: `/organizations/${scope.organizationId}/job-requests/${job.id}/cancel/confirm`, headers: await h(employer),
-        payload: { idempotencyKey: `rl-${randomUUID()}` }
-      });
-      expect(res.statusCode, res.body).toBe(200);
-      // ACTUAL: the booked worker is not counted ("attendance_handoff" is not a confirmed status), so no obligation.
-      expect(res.json().preview).toMatchObject({ affectedConfirmedWorkers: 0, obligationApplies: false });
-      expect(await prisma.lateCancellationCharge.count({ where: { jobRequestId: job.id } })).toBe(0);
-      expect((await prisma.jobRequest.findUniqueOrThrow({ where: { id: job.id } })).status).toBe("cancelled");
-      // ACTUAL: the worker still holds the assignment and the shift is still on their schedule.
-      expect((await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId } })).status).toBe("attendance_handoff");
-      expect((await scheduleItem(worker, assignmentId)).status).toBe("pending_start");
-    });
-
-    // BUG: CONFIRMED_ASSIGNMENT_STATUSES (packages/auth/src/employerCancellation.ts) leaves out
-    // "attendance_handoff", the status of every scheduled shift. So an employer who cancels <24 h
-    // before the start with a worker booked owes nothing, and the worker is neither released nor
-    // taken off the schedule. Correct: 6 h x $20.75 = $124.50 charged (one late-cancellation charge),
-    // the assignment no longer active and the attendance record cancelled.
-    it.fails("(b) an employer cancel <24 h with a booked worker charges 6 h and releases the worker", async () => {
-      setNow(et("2027-02-10", "11:40"));
-      const job = await publishJob(shift());
-      const worker = await makeWorker("e-cancel-ok");
-      const assignmentId = await claim(worker, job.id);
-      setNow(evening);
+      emails.length = 0;
       const res = await app.inject({
         method: "POST", url: `/organizations/${scope.organizationId}/job-requests/${job.id}/cancel/confirm`, headers: await h(employer),
         payload: { idempotencyKey: `rl-${randomUUID()}` }
       });
       expect(res.statusCode, res.body).toBe(200);
       expect(res.json().preview).toMatchObject({ affectedConfirmedWorkers: 1, obligationApplies: true, obligationAmountMinor: 6 * EMPLOYER_RATE });
+      expect(res.json().cancellation.status).toBe("completed");
+      expect(numbersIn(res.json())).not.toContain(WORKER_RATE);
       const charges = await prisma.lateCancellationCharge.findMany({ where: { jobRequestId: job.id } });
       expect(charges).toHaveLength(1);
-      expect((await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId } })).status).not.toBe("attendance_handoff");
+      expect(charges[0]?.assignmentId).toBe(assignmentId);
+      expect((await prisma.jobRequest.findUniqueOrThrow({ where: { id: job.id } })).status).toBe("cancelled");
+      expect(await assignmentStatus(assignmentId)).toBe("employer_cancelled");
       expect((await scheduleItem(worker, assignmentId)).status).toBe("cancelled");
+      expect(emails.filter((m) => /cancelled|annulé/.test(m.subject)).map((m) => m.to)).toContain(worker.email);
     });
 
-    // BUG: after an employer cancel, the worker's attendance record stays "pending_start", so on the day
-    // they can still check in (and be paid through a timesheet) for a job that no longer exists.
-    it.fails("(b) the worker cannot check in to a job the employer cancelled", async () => {
+    it("(b) the worker cannot check in to a job the employer cancelled, and no timesheet can be made", async () => {
       setNow(et("2027-02-10", "11:50"));
       const job = await publishJob(shift());
       const worker = await makeWorker("e-cancel-checkin");
@@ -683,11 +700,14 @@ suite("real-life scenarios (Laval Farm worker, legal rate, controlled clock)", (
         method: "POST", url: `/worker/attendance/${item.attendanceRecordId}/check-in`, headers: await h(worker),
         payload: { expectedVersion: item.version }
       });
-      expect(checkIn.statusCode).not.toBe(200);
+      expect(checkIn.statusCode).toBe(409);
+      const prepared = await app.inject({ method: "POST", url: "/platform/timesheets/prepare", headers: await h(staff), payload: { attendanceRecordId: item.attendanceRecordId } });
+      expect(prepared.statusCode).toBe(409);
+      expect(prepared.json().error).toBe("RWOS_SHIFT_CANCELLED");
     });
 
     // (c) Staff cancel.
-    it("(c) ACTUAL: staff cancel a booked shift through its attendance record; the worker is told; no charge", async () => {
+    it("(c) staff cancel a booked shift through its attendance record: worker told, place freed, no charge", async () => {
       setNow(et("2027-02-10", "12:00"));
       const job = await publishJob(shift());
       const worker = await makeWorker("s-cancel");
@@ -703,38 +723,45 @@ suite("real-life scenarios (Laval Farm worker, legal rate, controlled clock)", (
       expect(res.json().attendanceRecord.status).toBe("cancelled");
       expect(emails.filter((m) => /cancelled|annulé/.test(m.subject)).map((m) => m.to)).toEqual([worker.email]);
       expect(await prisma.lateCancellationCharge.count({ where: { jobRequestId: job.id } })).toBe(0);
-      // ACTUAL: the governed assignment cancel refuses a scheduled shift...
-      const assignment = await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId } });
-      const viaAssignment = await app.inject({
-        method: "POST", url: `/platform/assignments/${assignmentId}/cancel`, headers: await h(staff),
-        payload: { expectedVersion: assignment.version, reason: "staff_cancelled" }
-      });
-      expect(viaAssignment.statusCode).not.toBe(200);
-      // ...so the assignment keeps holding the place.
-      expect((await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId } })).status).toBe("attendance_handoff");
-    });
-
-    // BUG: a staff cancel only cancels the attendance record. The assignment stays "attendance_handoff"
-    // (staff assignment cancel refuses that status), so the place is never freed: the job board says
-    // full and nobody else can claim it. Correct: the place reopens.
-    it.fails("(c) after a staff cancel the place reopens for another worker", async () => {
-      setNow(et("2027-02-10", "12:10"));
-      const job = await publishJob(shift());
-      const worker = await makeWorker("s-cancel-reopen");
-      const assignmentId = await claim(worker, job.id);
-      setNow(evening);
-      const item = await scheduleItem(worker, assignmentId);
-      const res = await app.inject({
-        method: "POST", url: `/platform/attendance/${item.attendanceRecordId}/cancel`, headers: await h(staff),
-        payload: { expectedVersion: item.version, reason: "staff_cancelled" }
-      });
-      expect(res.statusCode, res.body).toBe(200);
+      expect(await assignmentStatus(assignmentId)).toBe("platform_cancelled");
       await claim(await makeWorker("s-cancel-replacement"), job.id);
     });
 
-    // BUG: the Brain's no-check-in rule reads assignments only, so a worker whose shift staff
-    // cancelled is still flagged at 08:10 and texted to check in to a cancelled shift.
-    it.fails("(c) the Brain does not chase a worker whose shift staff cancelled", async () => {
+    it("(c) staff cancel through the assignment: the attendance record goes too; refused once the worker checked in", async () => {
+      setNow(et("2027-02-10", "12:10"));
+      const job = await publishJob(shift());
+      const worker = await makeWorker("s-cancel-assignment");
+      const assignmentId = await claim(worker, job.id);
+      setNow(evening);
+      const assignment = await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId } });
+      const res = await app.inject({
+        method: "POST", url: `/platform/assignments/${assignmentId}/cancel`, headers: await h(staff),
+        payload: { expectedVersion: assignment.version, reason: "staff_cancelled" }
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      expect(await assignmentStatus(assignmentId)).toBe("platform_cancelled");
+      expect(await attendanceStatus(assignmentId)).toBe("cancelled");
+      expect(await prisma.lateCancellationCharge.count({ where: { jobRequestId: job.id } })).toBe(0);
+
+      // A second worker on another job checks in; staff can no longer cancel that booking here.
+      setNow(et("2027-02-10", "12:15"));
+      const other = await publishJob(shift());
+      const late = await makeWorker("s-cancel-started");
+      const lateAssignmentId = await claim(late, other.id);
+      setNow(et(DAY, "07:55"));
+      const item = await scheduleItem(late, lateAssignmentId);
+      const checkIn = await app.inject({ method: "POST", url: `/worker/attendance/${item.attendanceRecordId}/check-in`, headers: await h(late), payload: { expectedVersion: item.version } });
+      expect(checkIn.statusCode, checkIn.body).toBe(200);
+      const lateAssignment = await prisma.assignment.findUniqueOrThrow({ where: { id: lateAssignmentId } });
+      const refused = await app.inject({
+        method: "POST", url: `/platform/assignments/${lateAssignmentId}/cancel`, headers: await h(staff),
+        payload: { expectedVersion: lateAssignment.version, reason: "staff_cancelled" }
+      });
+      expect(refused.statusCode).toBe(409);
+      expect(refused.json().error).toBe("RWOS_SHIFT_ALREADY_STARTED");
+    });
+
+    it("(c) the Brain does not chase a worker whose shift staff cancelled", async () => {
       setNow(et("2027-02-10", "12:20"));
       const job = await publishJob(shift());
       const worker = await makeWorker("s-cancel-brain");
@@ -748,6 +775,7 @@ suite("real-life scenarios (Laval Farm worker, legal rate, controlled clock)", (
       expect(res.statusCode, res.body).toBe(200);
       const issues = (await workerNotCheckedInRule.detect(brain(), et(DAY, "08:10"))).filter((i) => i.subjectId === assignmentId);
       expect(issues).toEqual([]);
+      expect((await brain().effects.remindWorkerToCheckIn(assignmentId)).status).toBe("skipped");
     });
   });
 

@@ -65,6 +65,7 @@ type Tables = Record<string, Record<string, unknown>>;
 
 function prismaDouble(tables: { failures?: Tables; assignments?: Tables; timesheets?: Tables; jobs?: Tables; users?: Tables; escalations?: unknown[] }) {
   const updates: Array<{ model: string; args: unknown }> = [];
+  const markers = new Set<string>();
   const base = {
     messageDeliveryFailure: {
       findUnique: async ({ where }: { where: { id: string } }) => tables.failures?.[where.id] ?? null,
@@ -78,7 +79,14 @@ function prismaDouble(tables: { failures?: Tables; assignments?: Tables; timeshe
     jobRequest: { findUnique: async ({ where }: { where: { id: string } }) => tables.jobs?.[where.id] ?? null },
     user: { findUnique: async ({ where }: { where: { id: string } }) => tables.users?.[where.id] ?? null },
     requestEscalation: { findFirst: async () => tables.escalations?.[0] ?? null },
-    jobBonus: { findFirst: async () => null }
+    jobBonus: { findFirst: async () => null },
+    brainMarker: {
+      create: async ({ data }: { data: { marker: string } }) => {
+        if (markers.has(data.marker)) throw Object.assign(new Error("unique"), { code: "P2002" });
+        markers.add(data.marker);
+        return data;
+      }
+    }
   };
   return { prisma: moneyGuard(base) as unknown as PrismaClient, updates };
 }
@@ -149,9 +157,91 @@ describe("joblop brain effects", () => {
       expect((await effectsWith(prisma).remindWorkerToCheckIn("c")).status).toBe("skipped");
     });
 
+    it("never texts a worker whose shift was cancelled (attendance record or job)", async () => {
+      const cancelledAttendance = { ...liveAssignment, attendanceRecord: { checkInAt: null, status: "cancelled" } };
+      const cancelledJob = { ...liveAssignment, jobRequest: { status: "cancelled" } };
+      const sms = smsFake();
+      const { prisma } = prismaDouble({ assignments: { a: cancelledAttendance, b: cancelledJob } });
+      expect(await effectsWith(prisma, { sms: sms.sender }).remindWorkerToCheckIn("a")).toMatchObject({ status: "skipped", detail: "The shift was cancelled." });
+      expect(await effectsWith(prisma, { sms: sms.sender }).remindWorkerToCheckIn("b")).toMatchObject({ status: "skipped", detail: "The shift was cancelled." });
+      expect(sms.sent).toHaveLength(0);
+    });
+
+    it("keeps the no-show open after the text, and tells the employer once (EN/FR, no money)", async () => {
+      const withJob = { ...liveAssignment, jobRequest: { status: "approved_for_dispatch", jobRequestNumber: "JR-7", title: "Cook", createdByUserId: "boss" } };
+      const email = emailFake();
+      const sms = smsFake();
+      const { prisma } = prismaDouble({ assignments: { a: withJob }, users: { boss: { emailNormalized: "boss@example.com", primaryLanguage: "fr" } } });
+      const effects = effectsWith(prisma, { sms: sms.sender, email: email.sender });
+      const out = await effects.remindWorkerToCheckIn("a");
+      expect(out).toMatchObject({ status: "done", resolvesIssue: false });
+      expect(out.detail).toContain("Told the employer.");
+      expect(email.sent.map((m) => m.to)).toEqual(["boss@example.com"]);
+      expect(email.sent[0]?.subject).toContain("JR-7");
+      expect(email.sent[0]?.text).toContain("Joblop s'en occupe");
+      expect(`${email.sent[0]?.subject}\n${email.sent[0]?.text}`).not.toMatch(MONEY_TEXT);
+      // A staff retry never emails the employer twice for the same shift.
+      await effects.remindWorkerToCheckIn("a");
+      expect(email.sent).toHaveLength(1);
+    });
+
+    it("a worker with no phone: the employer is still told, and a person must call the worker (skipped)", async () => {
+      const noPhone = {
+        ...liveAssignment,
+        workerIdentity: { user: { phone: null, primaryLanguage: "en" } },
+        jobRequest: { status: "approved_for_dispatch", jobRequestNumber: "JR-8", title: "Cook", createdByUserId: "boss" }
+      };
+      const email = emailFake();
+      const { prisma } = prismaDouble({ assignments: { a: noPhone }, users: { boss: { emailNormalized: "boss@example.com", primaryLanguage: "en" } } });
+      const out = await effectsWith(prisma, { sms: smsFake().sender, email: email.sender }).remindWorkerToCheckIn("a");
+      expect(out.status).toBe("skipped");
+      expect(out.detail).toContain("A person must call the worker.");
+      expect(email.sent[0]?.subject).toBe("Joblop — your worker has not checked in yet (JR-8)");
+    });
+
     it("a failed text is reported as failed", async () => {
       const { prisma } = prismaDouble({ assignments: { a: liveAssignment } });
       expect((await effectsWith(prisma, { sms: smsFake("error").sender }).remindWorkerToCheckIn("a")).status).toBe("failed");
+    });
+  });
+
+  describe("remindWorkerToConfirmHours", () => {
+    const sheet = (user: Record<string, unknown>) => ({
+      status: "worker_review",
+      workerReviewStatus: "pending",
+      scheduledStartAt: at(-34 * HOUR),
+      timezone: "America/Toronto",
+      jobRequest: { title: "Cook" },
+      workerIdentity: { user }
+    });
+
+    it("emails a worker who has an email; texts one who only has a phone; never mentions money", async () => {
+      const email = emailFake();
+      const sms = smsFake();
+      const { prisma } = prismaDouble({
+        timesheets: {
+          a: sheet({ emailNormalized: "w@example.com", phone: "+15145550001", primaryLanguage: "en" }),
+          b: sheet({ emailNormalized: null, phone: "+15145550002", primaryLanguage: "fr" })
+        }
+      });
+      const effects = effectsWith(prisma, { email: email.sender, sms: sms.sender });
+      expect((await effects.remindWorkerToConfirmHours("a")).status).toBe("done");
+      expect((await effects.remindWorkerToConfirmHours("b")).status).toBe("done");
+      expect(email.sent.map((m) => m.to)).toEqual(["w@example.com"]);
+      expect(sms.sent.map((m) => m.to)).toEqual(["+15145550002"]);
+      expect(sms.sent[0]?.text).toContain("confirmer vos heures");
+      for (const text of [email.sent[0]!.text, sms.sent[0]!.text]) expect(text).not.toMatch(MONEY_TEXT);
+    });
+
+    it("skips hours the worker already answered, or that moved on", async () => {
+      const { prisma } = prismaDouble({
+        timesheets: {
+          a: { ...sheet({ emailNormalized: "w@example.com" }), workerReviewStatus: "confirmed" },
+          b: { ...sheet({ emailNormalized: "w@example.com" }), status: "employer_review" }
+        }
+      });
+      expect((await effectsWith(prisma).remindWorkerToConfirmHours("a")).status).toBe("skipped");
+      expect((await effectsWith(prisma).remindWorkerToConfirmHours("b")).status).toBe("skipped");
     });
   });
 

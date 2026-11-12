@@ -12,6 +12,8 @@ const HOUR_MS = 3_600_000;
 export const CHECK_IN_GRACE_MINUTES = 10;
 export const REVIEW_WAIT_HOURS = 2;
 export const TIMESHEET_CONFIRM_HOURS = 24;
+/** A finished shift should have its hours prepared within this many hours of its end. */
+export const HOURS_PREPARE_GRACE_HOURS = 2;
 export const DELIVERY_FAILURE_WINDOW_HOURS = 24;
 /** A request must start at least this far ahead to be approved without a person. */
 export const AUTO_APPROVE_MIN_LEAD_HOURS = 2;
@@ -26,8 +28,22 @@ export type UnfilledJobRow = Readonly<{
   openings: number;
   filled: number;
   priced: boolean;
-  /** An offered, accepted or approved bonus already exists. */
+  /** An offered, accepted or approved bonus already exists, or the employer declined one (asked once). */
   hasBonus: boolean;
+  /** On the job board (open claim): workers can see and claim it, so a bonus can help. */
+  onJobBoard: boolean;
+  /** Bookings on this job that were cancelled: each one reopens a place, which is a new issue. */
+  cancelledBookings: number;
+}>;
+
+export type FinishedShiftRow = Readonly<{
+  attendanceRecordId: string;
+  assignmentId: string;
+  jobRequestNumber: string;
+  title: string;
+  scheduledEndAt: Date;
+  /** The worker checked in (else the shift ended with no check-in recorded). */
+  checkedIn: boolean;
 }>;
 
 export type CheckInRow = Readonly<{
@@ -99,6 +115,8 @@ export interface JoblopBrainData {
   openTimesheets(now: Date): Promise<readonly TimesheetRow[]>;
   /** Unpaid invoices whose due date has passed. */
   overdueInvoices(now: Date): Promise<readonly InvoiceRow[]>;
+  /** Shifts that ended (in the last 14 days) and still have no timesheet; cancelled shifts excluded. */
+  finishedShiftsWithoutTimesheet(now: Date): Promise<readonly FinishedShiftRow[]>;
 }
 
 // ── Effects adapter: what the actions do (implemented with the existing Joblop senders and flows) ──
@@ -107,6 +125,7 @@ export interface JoblopBrainEffects {
   resendFailedMessage(failureId: string): Promise<ActionOutcome>;
   remindWorkerToCheckIn(assignmentId: string): Promise<ActionOutcome>;
   remindEmployerToConfirmHours(timesheetId: string): Promise<ActionOutcome>;
+  remindWorkerToConfirmHours(timesheetId: string): Promise<ActionOutcome>;
   offerEmployerBonus(jobRequestId: string, reason: string): Promise<ActionOutcome>;
   approveRequest(jobRequestId: string): Promise<ActionOutcome>;
   approveTimesheet(timesheetId: string): Promise<ActionOutcome>;
@@ -185,14 +204,21 @@ export const jobUnfilledSoonRule: BrainRule<JoblopBrainContext> = {
       if (threshold === null || job.filled >= job.openings) continue;
       out.push({
         ruleKey: "job_unfilled_soon",
-        fingerprint: `job_unfilled_soon:${job.jobRequestId}:${threshold}:${iso(job.startAt)}`,
+        // One issue per job and start: moving from the 24 h to the 4 h threshold UPDATES it (summary,
+        // severity) instead of closing it as "cleared". A cancelled booking reopens a place, which is
+        // a new problem, so the count of cancelled bookings is part of the fingerprint.
+        fingerprint: `job_unfilled_soon:${job.jobRequestId}:${iso(job.startAt)}:c${job.cancelledBookings}`,
         subjectType: "job_request",
         subjectId: job.jobRequestId,
         severity: threshold <= 4 ? "urgent" : "warning",
         summary: `${job.title} (${job.jobRequestNumber}) starts in under ${threshold} h with ${job.openings - job.filled} of ${job.openings} places open.`,
-        inputs: { jobRequestNumber: job.jobRequestNumber, startAt: iso(job.startAt), openings: job.openings, filled: job.filled, thresholdHours: threshold, hasBonus: job.hasBonus, priced: job.priced },
-        // Policy: offer the employer a bonus first. Only once per job, and only on a priced job.
-        recommendedAction: job.priced && !job.hasBonus ? "offer_employer_bonus" : null
+        inputs: {
+          jobRequestNumber: job.jobRequestNumber, startAt: iso(job.startAt), openings: job.openings, filled: job.filled,
+          thresholdHours: threshold, hasBonus: job.hasBonus, priced: job.priced, onJobBoard: job.onJobBoard
+        },
+        // Policy: offer the employer a bonus first, once per job (never again after a "no"), only on a
+        // priced job that is on the job board (workers must be able to see it).
+        recommendedAction: job.priced && job.onJobBoard && !job.hasBonus ? "offer_employer_bonus" : null
       });
     }
     return out;
@@ -305,9 +331,29 @@ export const timesheetUnconfirmedRule: BrainRule<JoblopBrainContext> = {
   async detect({ data }, now) {
     const out: DetectedIssue[] = [];
     for (const row of await data.openTimesheets(now)) {
-      if (row.status !== "worker_review" && row.status !== "employer_review") continue;
-      if (row.employerReviewStatus === "confirmed" || row.employerReviewStatus === "disputed") continue;
       if (now.getTime() - row.scheduledEndAt.getTime() < TIMESHEET_CONFIRM_HOURS * HOUR_MS) continue;
+      const inputs = {
+        jobRequestNumber: row.jobRequestNumber, shiftEndedAt: iso(row.scheduledEndAt), status: row.status,
+        workerReviewStatus: row.workerReviewStatus, employerReviewStatus: row.employerReviewStatus
+      };
+      // Waiting for the WORKER: remind the worker. The employer cannot confirm yet (employer confirm
+      // only accepts employer_review), so the employer is only asked once the worker has confirmed.
+      if (row.status === "worker_review") {
+        if (row.workerReviewStatus === "confirmed" || row.workerReviewStatus === "disputed") continue;
+        out.push({
+          ruleKey: "timesheet_unconfirmed",
+          fingerprint: `timesheet_unconfirmed:${row.timesheetId}:worker`,
+          subjectType: "timesheet",
+          subjectId: row.timesheetId,
+          severity: "warning",
+          summary: `Hours for ${row.title} (${row.jobRequestNumber}) are not confirmed by the worker 24 h after the shift.`,
+          inputs,
+          recommendedAction: "remind_worker_timesheet"
+        });
+        continue;
+      }
+      if (row.status !== "employer_review") continue;
+      if (row.employerReviewStatus === "confirmed" || row.employerReviewStatus === "disputed") continue;
       out.push({
         ruleKey: "timesheet_unconfirmed",
         fingerprint: `timesheet_unconfirmed:${row.timesheetId}`,
@@ -315,8 +361,34 @@ export const timesheetUnconfirmedRule: BrainRule<JoblopBrainContext> = {
         subjectId: row.timesheetId,
         severity: "warning",
         summary: `Hours for ${row.title} (${row.jobRequestNumber}) are not confirmed by the employer 24 h after the shift.`,
-        inputs: { jobRequestNumber: row.jobRequestNumber, shiftEndedAt: iso(row.scheduledEndAt), status: row.status, employerReviewStatus: row.employerReviewStatus },
+        inputs,
         recommendedAction: "remind_employer_timesheet"
+      });
+    }
+    return out;
+  }
+};
+
+export const hoursNotPreparedRule: BrainRule<JoblopBrainContext> = {
+  key: "hours_not_prepared",
+  async detect({ data }, now) {
+    const out: DetectedIssue[] = [];
+    for (const row of await data.finishedShiftsWithoutTimesheet(now)) {
+      const since = now.getTime() - row.scheduledEndAt.getTime();
+      if (since <= HOURS_PREPARE_GRACE_HOURS * HOUR_MS) continue;
+      const hours = Math.floor(since / HOUR_MS);
+      out.push({
+        ruleKey: "hours_not_prepared",
+        fingerprint: `hours_not_prepared:${row.attendanceRecordId}`,
+        subjectType: "attendance_record",
+        subjectId: row.attendanceRecordId,
+        severity: "warning",
+        summary: row.checkedIn
+          ? `Hours not prepared: ${row.title} (${row.jobRequestNumber}) ended ${hours} h ago and has no timesheet yet.`
+          : `Hours not prepared: ${row.title} (${row.jobRequestNumber}) ended ${hours} h ago with no check-in recorded and no timesheet (no-show?).`,
+        inputs: { jobRequestNumber: row.jobRequestNumber, assignmentId: row.assignmentId, shiftEndedAt: iso(row.scheduledEndAt), checkedIn: row.checkedIn },
+        // Preparing hours is a staff decision (check the times, a no-show, a missing check-out).
+        recommendedAction: null
       });
     }
     return out;
@@ -374,6 +446,7 @@ export const JOBLOP_BRAIN_RULES: readonly BrainRule<JoblopBrainContext>[] = [
   requestWaitingReviewRule,
   jobMissingInfoRule,
   timesheetUnconfirmedRule,
+  hoursNotPreparedRule,
   timesheetReadyRule,
   invoiceOverdueRule
 ];
