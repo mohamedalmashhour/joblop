@@ -53,6 +53,7 @@ export * from "./workerProfileRating";
 export * from "./jobBonus";
 export * from "./employerPlan";
 export * from "./quebecSalesTax";
+export * from "./employerRequestEstimate";
 export * from "./jobListing";
 export * from "./payOffered";
 export * from "./requiredCertificates";

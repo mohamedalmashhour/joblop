@@ -121,7 +121,7 @@ export function MyCalendarPanel() {
   const money = (minor: number) =>
     (minor / 100).toLocaleString(locale, { style: "currency", currency: "CAD" });
   const time = (iso: string) =>
-    new Date(iso).toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
+    new Date(iso).toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit", timeZone: "America/Toronto" });
 
   const header = (
     <header style={look.header}>

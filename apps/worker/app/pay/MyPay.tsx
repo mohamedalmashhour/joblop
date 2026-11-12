@@ -99,14 +99,15 @@ function period(startAt: string, endAt: string, tz: string, locale: RwosLocale):
   return `${new Date(startAt).toLocaleDateString(locale, opts)} – ${new Date(endAt).toLocaleDateString(locale, opts)}`;
 }
 function shortPeriod(startAt: string, endAt: string, locale: RwosLocale): string {
-  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", timeZone: "America/Toronto" };
   return `${new Date(startAt).toLocaleDateString(locale, opts)} – ${new Date(endAt).toLocaleDateString(locale, opts)}`;
 }
 function shortDate(iso: string, locale: RwosLocale): string {
-  return new Date(iso).toLocaleDateString(locale, { month: "short", day: "numeric", year: "numeric" });
+  return new Date(iso).toLocaleDateString(locale, { month: "short", day: "numeric", year: "numeric", timeZone: "America/Toronto" });
 }
-function hours(minutes: number): string {
-  return (minutes / 60).toFixed(2);
+/** Hours with two decimals in the reader's language: "7.50" / "7,50". */
+export function hours(minutes: number, locale: RwosLocale): string {
+  return (minutes / 60).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function payoutBadge(stage: PayoutStage): string {
   if (stage === "registered" || stage === "paid") return "verified";
@@ -315,7 +316,7 @@ function EarningsTab({ state, choose, t, locale }: { state: Extract<PayState, { 
                   <div className="when" style={{ marginTop: 6 }}>{t("pay.earningsTitle")}</div>
                   <ul style={{ margin: "4px 0 0", paddingLeft: 18, fontSize: 13 }}>
                     {s.earningLines.map((e, i) => (
-                      <li key={`${e.classification}-${i}`}>{lineLabel("earning", e.classification, e.description, t)}: {money(e.amountMinor, e.currency, locale)} <span style={{ opacity: 0.7 }}>({e.quantityMinutes === null || e.quantityMinutes === undefined ? "—" : t("pay.hours", { hours: hours(e.quantityMinutes) })} · {e.rateMinor === null || e.rateMinor === undefined ? "—" : t("pay.rateHr", { rate: money(e.rateMinor, e.currency, locale) })})</span></li>
+                      <li key={`${e.classification}-${i}`}>{lineLabel("earning", e.classification, e.description, t)}: {money(e.amountMinor, e.currency, locale)} <span style={{ opacity: 0.7 }}>({e.quantityMinutes === null || e.quantityMinutes === undefined ? "—" : t("pay.hours", { hours: hours(e.quantityMinutes, locale) })} · {e.rateMinor === null || e.rateMinor === undefined ? "—" : t("pay.rateHr", { rate: money(e.rateMinor, e.currency, locale) })})</span></li>
                     ))}
                   </ul>
                 </>

@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { formatMoney } from "@rwos/shared";
+import { formatMoney, formatRwosDateTime } from "@rwos/shared";
 import { styles } from "../../employerStyles";
 import type { OrderLateCancellationDto } from "../../../api/orders/lateCancellationBoundary";
-import { useT } from "../../../i18n/LocaleProvider";
+import { fmtLocale, useLocale, useT } from "../../../i18n/LocaleProvider";
 import type { MessageKey } from "../../../i18n/messages";
 
 type Child = Readonly<{ jobRequestId: string; jobRequestNumber: string; title: string; numberOfWorkers: number; status: string }>;
@@ -36,6 +36,7 @@ const ORDER_STATUS_KEY: Record<string, MessageKey> = {
 
 export function OrderDetailPanel({ orderId }: { orderId: string }) {
   const t = useT();
+  const locale = useLocale();
   const [state, setState] = useState<State>({ status: "loading" });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -108,7 +109,10 @@ export function OrderDetailPanel({ orderId }: { orderId: string }) {
   if (state.status === "error") return <section style={styles.card}><p style={styles.cardText}>{t("order.detailLoadError")}</p></section>;
 
   const order = state.order;
-  const schedule = `${new Date(order.startAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })} – ${new Date(order.endAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })} (${order.timezone})`;
+  // Shown in the order's own time zone (the label used to say Toronto while the times followed the device).
+  const when = (iso: string) =>
+    formatRwosDateTime(iso, { dateStyle: "medium", timeStyle: "short", timeZone: order.timezone || "America/Toronto", locale: fmtLocale(locale) });
+  const schedule = `${when(order.startAt)} – ${when(order.endAt)} (${order.timezone})`;
   const canCancel = order.status !== "cancelled" && order.status !== "expired";
   const canSubmit = order.status === "draft";
 

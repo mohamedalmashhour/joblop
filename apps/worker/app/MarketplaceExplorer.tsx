@@ -9,6 +9,7 @@ import { HowItWorksMovie } from "./HowItWorksMovie";
 import { syncAccountLanguageOnce } from "./i18n/saveLanguage";
 import { NEXT_AFTER_SIGN_UP_KEY } from "./authScroll";
 import { safeReturnPath } from "./safeReturnPath";
+import { groupByTorontoDay, torontoStartOfDayIso } from "./torontoTime";
 import type { RwosLocale } from "./i18n/config";
 import { workerPayLabel, formatHourlyRate } from "./workerPayLabel";
 import { CertificateChip, type RequiredCertificatesData } from "./RequiredCertificates";
@@ -150,7 +151,7 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
       radiusKm,
       sort,
       ...(role.trim() ? { role: role.trim() } : {}),
-      ...(dateFrom ? { dateFrom: new Date(dateFrom).toISOString() } : {}),
+      ...(dateFrom && torontoStartOfDayIso(dateFrom) ? { dateFrom: torontoStartOfDayIso(dateFrom) as string } : {}),
       ...(minOpenings && Number(minOpenings) > 0 ? { minOpenings: Number(minOpenings) } : {}),
       ...(verifiedOnly ? { verifiedOnly: true } : {})
     }),
@@ -525,18 +526,11 @@ function AgendaView({
   detailHref: (id: string) => string;
   onToggleSaved: (job: JobResult) => void;
 }) {
-  const groups: { key: string; label: string; items: JobResult[] }[] = [];
-  for (const job of jobs) {
-    const d = new Date(job.startAt);
-    const key = d.toLocaleDateString(locale, { year: "numeric", month: "2-digit", day: "2-digit" });
-    const label = d.toLocaleDateString(locale, { weekday: "long", month: "long", day: "numeric" });
-    let group = groups.find((g) => g.key === key);
-    if (!group) {
-      group = { key, label, items: [] };
-      groups.push(group);
-    }
-    group.items.push(job);
-  }
+  // Québec days in date order (whatever the list's sort), labelled in Toronto time.
+  const groups = groupByTorontoDay(jobs, (job) => job.startAt).map((group) => ({
+    ...group,
+    label: new Date(group.items[0]!.startAt).toLocaleDateString(locale, { weekday: "long", month: "long", day: "numeric", timeZone: SHIFT_TIME_ZONE })
+  }));
   return (
     <div className="agenda">
       {groups.map((group) => (

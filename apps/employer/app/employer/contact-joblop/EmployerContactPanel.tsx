@@ -201,7 +201,10 @@ function Thread({ id, onBack }: { id: string; onBack(): void }) {
 }
 
 export function EmployerContactPanel() {
-  const tx = contactText[langOf(useLocale())];
+  const lang = langOf(useLocale());
+  const tx = contactText[lang];
+  const sentAt = (iso: string) =>
+    new Date(iso).toLocaleString(lang === "fr" ? "fr-CA" : "en-CA", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Toronto" });
   const [state, setState] = useState<ListState>({ status: "loading" });
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -232,7 +235,7 @@ export function EmployerContactPanel() {
         {state.items.map((c) => (
           <button key={c.id} type="button" onClick={() => setOpenId(c.id)} style={styles.item}>
             <strong>{tx.topics[c.topic] ?? c.topic}{c.unread ? ` · ${tx.newReply}` : ""}</strong>
-            <span style={styles.muted}>{tx.status[c.status] ?? c.status} · {new Date(c.lastMessageAt).toLocaleString()}</span>
+            <span style={styles.muted}>{tx.status[c.status] ?? c.status} · {sentAt(c.lastMessageAt)}</span>
           </button>
         ))}
       </div>

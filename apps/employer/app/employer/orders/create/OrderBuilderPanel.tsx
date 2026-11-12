@@ -4,16 +4,17 @@ import { useEffect, useState } from "react";
 import type { EmployerRequestContext } from "../../../api/job-requests/jobRequestBoundary";
 import { styles } from "../../employerStyles";
 import {
+  compareToMarket,
   createContractMoney,
-  estimateRequestCost,
+  employerBilledHourlyMinor,
+  estimateEmployerRequest,
   formatHourlyRate,
   formatMoney,
   hoursBetween,
   meetsMinimumShiftDuration,
-  urgencyPremiumMinor,
-  compareToMarket
+  urgencyPremiumMinor
 } from "@rwos/shared";
-import { useT } from "../../../i18n/LocaleProvider";
+import { fmtLocale, useLocale, useT } from "../../../i18n/LocaleProvider";
 
 type Urgency = "normal" | "urgent" | "immediate";
 type RequestType = "single_day" | "multi_day" | "recurring_intent";
@@ -63,6 +64,7 @@ function newLine(): Line {
 
 export function OrderBuilderPanel() {
   const t = useT();
+  const locale = useLocale();
   const [context, setContext] = useState<EmployerRequestContext | null>(null);
   const [shared, setShared] = useState<Shared>(initialShared);
   const [lines, setLines] = useState<Line[]>(() => [newLine()]);
@@ -135,14 +137,18 @@ export function OrderBuilderPanel() {
 
   const hours = hoursBetween(shared.startAt, shared.endAt);
   const premiumMinor = urgencyPremiumMinor(shared.urgency);
+  const moneyLocale = fmtLocale(locale);
+  // Hours as people write them: "6", "6.5" / "6,5", never "6.333333333333333".
+  const hoursLabel = hours.toLocaleString(moneyLocale, { maximumFractionDigits: 2 });
 
   function lineEstimateMinor(line: Line): { minor: number; currency: string } | null {
     const role = lineRole(line);
     if (!role || role.hourlyRateMinor === null || role.currency === null) return null;
     const workers = Number.parseInt(line.numberOfWorkers, 10);
     if (!Number.isInteger(workers) || workers < 1 || hours <= 0) return null;
-    const est = estimateRequestCost({ hourlyRate: createContractMoney({ amountMinor: role.hourlyRateMinor + premiumMinor, currency: role.currency }), hours, workers });
-    return { minor: est.amountMinor, currency: est.currency };
+    // Same rules as the invoices (urgent premium and fee, 6 h minimum); before taxes.
+    const est = estimateEmployerRequest({ contractRateMinor: role.hourlyRateMinor, urgency: shared.urgency, shiftHours: hours, shiftCount: 1, workers });
+    return { minor: est.subtotalMinor, currency: role.currency };
   }
 
   const orderTotal = (() => {
@@ -153,7 +159,7 @@ export function OrderBuilderPanel() {
       const est = lineEstimateMinor(line);
       if (est) { minor += est.minor; currency = est.currency; any = true; }
     }
-    return any ? formatMoney(createContractMoney({ amountMinor: minor, currency })) : null;
+    return any ? formatMoney(createContractMoney({ amountMinor: minor, currency }), moneyLocale) : null;
   })();
 
   const departments = context?.departments.filter((d) => d.residenceId === shared.residenceId) ?? [];
@@ -345,8 +351,8 @@ export function OrderBuilderPanel() {
                 </div>
                 {role && role.hourlyRateMinor !== null && role.currency ? (
                   <p style={styles.cardText}>
-                    {t("order.lineRate")}: {formatHourlyRate(createContractMoney({ amountMinor: role.hourlyRateMinor + premiumMinor, currency: role.currency }))}
-                    {est ? ` · ${t("order.lineEstimate", { amount: formatMoney(createContractMoney({ amountMinor: est.minor, currency: est.currency })), hours: String(hours), workers: line.numberOfWorkers })}` : ""}
+                    {t("order.lineRate")}: {formatHourlyRate(createContractMoney({ amountMinor: employerBilledHourlyMinor(role.hourlyRateMinor, shared.urgency), currency: role.currency }), moneyLocale)}
+                    {est ? ` · ${t("order.lineEstimate", { amount: formatMoney(createContractMoney({ amountMinor: est.minor, currency: est.currency }), moneyLocale), hours: hoursLabel, workers: line.numberOfWorkers })}` : ""}
                   </p>
                 ) : null}
                 {(() => {
@@ -356,7 +362,7 @@ export function OrderBuilderPanel() {
                   const cmpLabel = cmp === "below" ? t("order.marketBelow") : cmp === "above" ? t("order.marketAbove") : t("order.marketAt");
                   return (
                     <p style={styles.metaLabel}>
-                      {t("order.marketRef")}: {formatHourlyRate(createContractMoney({ amountMinor: market.medianHourlyRateMinor, currency: market.currency }))}
+                      {t("order.marketRef")}: {formatHourlyRate(createContractMoney({ amountMinor: market.medianHourlyRateMinor, currency: market.currency }), moneyLocale)}
                       {cmp !== "unknown" ? ` · ${cmpLabel}` : ""}
                     </p>
                   );

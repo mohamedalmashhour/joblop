@@ -69,7 +69,7 @@ export default function SharedStatement({ snapshot }: { snapshot: Snapshot | nul
 
       <p style={{ color: C.faint, fontSize: 11.5, marginTop: 12, lineHeight: 1.6 }}>{s.note}</p>
       <p style={{ color: C.faint, fontSize: 11, marginTop: 18, borderTop: `1px solid ${C.line}`, paddingTop: 12, lineHeight: 1.6 }}>
-        Issued {new Date(s.generated).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" })}. Figures from the Joblop @rwos/shared pricing engine. Test-mode until a payment provider is bound for your region; tax &amp; deductions illustrative. This is a private, time-limited statement.
+        Issued {new Date(s.generated).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Toronto" })} (Eastern time). Taxes and deductions shown here are estimates; your invoice or pay statement is the official record. This is a private statement and the link expires.
       </p>
     </main>
   );

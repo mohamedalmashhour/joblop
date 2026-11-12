@@ -21,6 +21,20 @@ type InterestItem = Readonly<{
 }>;
 
 // Marketplace-intent status → worker-facing label key. Kept visually distinct from offer state.
+// The offer's status in words (it used to show the raw code, e.g. "sent").
+const OFFER_STATUS_KEY: Record<string, MessageKey> = {
+  draft: "offers.statusPreparing",
+  approved: "offers.statusPreparing",
+  sent: "offers.statusAwaiting",
+  delivered: "offers.statusAwaiting",
+  viewed: "offers.statusAwaiting",
+  accepted: "offers.statusAccepted",
+  declined: "offers.statusDeclined",
+  expired: "offers.statusExpired",
+  withdrawn: "offers.statusWithdrawn",
+  cancelled: "offers.statusCancelled"
+};
+
 const INTEREST_LABEL_KEY: Record<string, MessageKey> = {
   submitted: "interests.submitted",
   under_review: "interests.underReview",
@@ -113,7 +127,7 @@ export function MyInterests() {
                   <div className="employer">{i.summary.employer.name}</div>
                   <div className="chips">
                     <span className={`chip status-${i.status}`}>{t(INTEREST_LABEL_KEY[i.status] ?? "interests.submitted")}</span>
-                    {i.offerStatus ? <span className="chip offer">{t("interests.offerChip", { status: i.offerStatus })}</span> : null}
+                    {i.offerStatus ? <span className="chip offer">{t("interests.offerChip", { status: t(OFFER_STATUS_KEY[i.offerStatus] ?? "offers.statusAwaiting") })}</span> : null}
                     {i.summary.areaLabel ? <span className="chip">{i.summary.areaLabel}</span> : null}
                   </div>
                   <div className="when">{formatWhen(i.summary.startAt, i.summary.endAt, locale)}</div>

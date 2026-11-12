@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { styles } from "../employerStyles";
-import { useT } from "../../i18n/LocaleProvider";
+import { fmtLocale, useLocale, useT } from "../../i18n/LocaleProvider";
 import type { MessageKey } from "../../i18n/messages";
 import { createContractMoney, formatMoney } from "@rwos/shared";
 
@@ -27,12 +27,14 @@ const INVOICE_STATUS_KEY: Record<string, MessageKey> = {
 const OPEN_STATUSES = ["approved", "issued", "sent", "viewed", "partially_paid", "overdue"];
 const EXCLUDE_FROM_INVOICED = ["draft", "voided", "refunded"];
 
-function cad(minor: number): string {
-  return formatMoney(createContractMoney({ amountMinor: Math.max(0, minor), currency: "CAD" }));
+function cadIn(minor: number, locale: string): string {
+  return formatMoney(createContractMoney({ amountMinor: Math.max(0, minor), currency: "CAD" }), locale);
 }
 
 export function EmployerMoneyPanel() {
   const t = useT();
+  const moneyLocale = fmtLocale(useLocale());
+  const cad = (minor: number) => cadIn(minor, moneyLocale);
   const [state, setState] = useState<State>({ status: "loading" });
 
   useEffect(() => {

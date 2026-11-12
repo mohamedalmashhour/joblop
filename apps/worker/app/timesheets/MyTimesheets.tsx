@@ -91,7 +91,7 @@ export function MyTimesheets() {
           return (
             <article key={s.timesheetId} className="card">
               <div className="role">{s.employerName}</div>
-              <div className="when">{new Date(s.scheduledStartAt).toLocaleDateString(locale)}{s.areaLabel ? ` · ${s.areaLabel}` : ""}</div>
+              <div className="when">{new Date(s.scheduledStartAt).toLocaleDateString(locale, { timeZone: "America/Toronto" })}{s.areaLabel ? ` · ${s.areaLabel}` : ""}</div>
               <div className="when"><strong>{t("ts.payable", { hours: Math.floor(payable / 60), minutes: payable % 60 })}</strong></div>
               <div className="chips"><span className={`chip ${yourTurn ? "status-pending" : "status-verified"}`}>{t(STATUS_KEY[s.status] ?? "ts.statusProcessing")}</span></div>
               {yourTurn ? (
