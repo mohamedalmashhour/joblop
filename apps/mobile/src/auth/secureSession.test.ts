@@ -794,6 +794,41 @@ describe("worker attendance transport", () => {
     if (result.status === "ready") expect(result.data[0]).toMatchObject({ status: "pending_start", version: 2, employerName: "Lakeside Residence", checkInAt: null });
   });
 
+  it("a cancelled shift keeps only who cancelled it, never a reason text", async () => {
+    const transport = createMobileSessionTransport({
+      apiOrigin: origin,
+      vault: withSession(),
+      fetch: vi.fn(async () =>
+        response(200, {
+          items: [
+            {
+              attendanceRecordId: "55555555-5555-4555-8555-555555555555",
+              assignmentId: "a1",
+              status: "cancelled",
+              scheduledStartAt: "2026-07-10T12:00:00.000Z",
+              scheduledEndAt: "2026-07-10T20:00:00.000Z",
+              timezone: "America/Toronto",
+              checkInAt: null,
+              checkOutAt: null,
+              cancelledBy: "joblop",
+              // An older API could still send the internal reason; the app must drop it.
+              exceptionCategory: "JR-2026-000004 was cancelled (below minimum wage). Owner approved.",
+              version: 3,
+              employerName: "Lakeside Residence",
+              areaLabel: null
+            }
+          ],
+          nextCursor: null
+        })
+      )
+    });
+    const result = await transport.workerAttendance();
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") return;
+    expect(result.data[0]?.cancelledBy).toBe("joblop");
+    expect(JSON.stringify(result.data[0])).not.toContain("Owner approved");
+  });
+
   it("long-term job (employer plans flag): keeps clockInAllowed: false; absent otherwise", async () => {
     const row = {
       attendanceRecordId: "55555555-5555-4555-8555-555555555555",

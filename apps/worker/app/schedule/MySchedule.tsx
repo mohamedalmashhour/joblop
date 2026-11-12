@@ -21,7 +21,8 @@ type Shift = Readonly<{
   timezone: string;
   checkInAt: string | null;
   checkOutAt: string | null;
-  exceptionCategory: string | null;
+  /** Who cancelled the shift; the internal reason text is never sent to the worker. */
+  cancelledBy?: "joblop" | "employer" | "worker" | null;
   version: number;
   employerName: string;
   /** The job (e.g. "Farm worker"); shown as the card title, with the company under it. */
@@ -43,6 +44,13 @@ const STATUS_COPY_KEY: Record<string, MessageKey> = {
   missed: "sched.statusMissed",
   cancelled: "sched.statusCancelled",
   exception: "sched.statusException"
+};
+
+// A plain label by who cancelled; never the free-text reason staff or the employer typed.
+const CANCELLED_BY_KEY: Record<"joblop" | "employer" | "worker", MessageKey> = {
+  joblop: "sched.cancelledByJoblop",
+  employer: "sched.cancelledByEmployer",
+  worker: "sched.cancelledByWorker"
 };
 
 export function MySchedule() {
@@ -241,7 +249,7 @@ function ShiftCard({ s, busy, onAct, onCancel, history, t, locale }: { s: Shift;
       <div className="chips">
         <span className={`chip status-${badgeClass(s.status)}`}>{t(STATUS_COPY_KEY[s.status] ?? "sched.statusScheduled")}</span>
         {s.areaLabel ? <span className="chip">{s.areaLabel}</span> : null}
-        {s.exceptionCategory ? <span className="chip status-rejected">{s.exceptionCategory.replaceAll("_", " ")}</span> : null}
+        {s.cancelledBy && CANCELLED_BY_KEY[s.cancelledBy] ? <span className="chip status-rejected">{t(CANCELLED_BY_KEY[s.cancelledBy])}</span> : null}
       </div>
       <div className="when">{formatShift(s.scheduledStartAt, s.scheduledEndAt, s.timezone, locale, t("sched.easternTime"))}</div>
       {s.worksiteAddress ? <div className="when">{t("sched.address", { address: s.worksiteAddress })}</div> : null}
