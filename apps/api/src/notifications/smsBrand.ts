@@ -40,6 +40,25 @@ export function codeSms(body: string): string {
   return gsmFriendly(`${SMS_BRAND_PREFIX} ${body.trim()}`);
 }
 
+// The code and password-reset texts, in the person's language (prefix only, no opt-out line).
+export function signInCodeSms(language: SmsLanguage, code: string, staff = false): string {
+  if (language === "fr") return codeSms(`votre code de connexion${staff ? " (personnel)" : ""} est ${code}. Il expire dans 10 minutes. Ne le partagez jamais.`);
+  if (language === "ar") return codeSms(`رمز الدخول${staff ? " للفريق" : ""} هو ${code}. ينتهي خلال 10 دقائق. لا تشاركه أبدًا.`);
+  return codeSms(`your ${staff ? "staff " : ""}sign-in code is ${code}. It expires in 10 minutes. Never share it.`);
+}
+
+export function verificationCodeSms(language: SmsLanguage, code: string, minutes: number): string {
+  if (language === "fr") return codeSms(`votre code est ${code}. Il expire dans ${minutes} min. Ne le partagez jamais.`);
+  if (language === "ar") return codeSms(`رمزك هو ${code}. ينتهي خلال ${minutes} دقيقة. لا تشاركه أبدًا.`);
+  return codeSms(`your code is ${code}. Expires in ${minutes} min. Never share it.`);
+}
+
+export function passwordResetSms(language: SmsLanguage, resetUrl: string, minutes: number): string {
+  if (language === "fr") return codeSms(`réinitialisation du mot de passe (valide ${minutes} min): ${resetUrl}`);
+  if (language === "ar") return codeSms(`إعادة تعيين كلمة المرور (صالح ${minutes} دقيقة): ${resetUrl}`);
+  return codeSms(`password reset (valid ${minutes} min): ${resetUrl}`);
+}
+
 // GSM 03.38 basic alphabet and its extension table (extension characters count twice).
 const GSM_BASIC = "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà";
 const GSM_EXTENSION = "^{}\\[~]|€";

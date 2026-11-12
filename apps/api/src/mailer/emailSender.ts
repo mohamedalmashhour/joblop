@@ -141,8 +141,23 @@ export function createEmailSender(options: {
 export function verificationEmailMessage(
   to: string,
   code: string,
-  expiryMinutes = 10
+  expiryMinutes = 10,
+  language: "en" | "fr" | "ar" = "en"
 ): EmailMessage {
+  if (language === "fr") {
+    return {
+      to,
+      subject: "Votre code de vérification Joblop",
+      text: `Votre code de vérification Joblop est ${code}. Il expire dans ${expiryMinutes} minutes. Si vous n'avez rien demandé, vous pouvez ignorer ce courriel.`
+    };
+  }
+  if (language === "ar") {
+    return {
+      to,
+      subject: "رمز التحقق من Joblop",
+      text: `رمز التحقق الخاص بك من Joblop هو ${code}. تنتهي صلاحيته خلال ${expiryMinutes} دقائق. إذا لم تطلبه، يمكنك تجاهل هذه الرسالة.`
+    };
+  }
   return {
     to,
     subject: "Your Joblop verification code",

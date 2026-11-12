@@ -3,7 +3,8 @@ import type { EmailSender } from "./mailer/emailSender";
 import { verificationEmailMessage } from "./mailer/emailSender";
 import type { SmsSender } from "./mailer/smsSender";
 import { sendsText } from "./notifications/noticeChannels";
-import { codeSms } from "./notifications/smsBrand";
+import { verificationCodeSms } from "./notifications/smsBrand";
+import { resolveWorkerLanguage } from "./notifications/workerLanguage";
 
 export const emailVerificationExpiryMinutes = 10;
 export const emailVerificationMaximumAttempts = 5;
@@ -66,6 +67,8 @@ export interface EmailVerificationService {
     userId: string;
     emailNormalized: string;
     recipientPhone?: string | null;
+    /** The account's stored language (users.primary_language); French when unknown. */
+    language?: string | null;
   }): Promise<
     | Readonly<{ status: "accepted" }>
     | Readonly<{ status: "accepted"; code: string }>
@@ -103,11 +106,13 @@ export function createEmailVerificationService(
 
       // Delivery is intentionally fail-soft. The API must not disclose provider
       // configuration or delivery state, and local adapters may safely skip it.
+      const language = resolveWorkerLanguage(input.language);
       await emailSender.send(
         verificationEmailMessage(
           input.emailNormalized,
           code,
-          emailVerificationExpiryMinutes
+          emailVerificationExpiryMinutes,
+          language
         )
       );
       // SMS twin (fail-soft, money-gated in the sender): text the same code when a phone is on file.
@@ -115,7 +120,7 @@ export function createEmailVerificationService(
         await options.smsSender
           .send({
             to: input.recipientPhone,
-            text: codeSms(`your code is ${code}. Expires in ${emailVerificationExpiryMinutes} min. Never share it.`)
+            text: verificationCodeSms(language, code, emailVerificationExpiryMinutes)
           })
           .catch(() => undefined);
       }

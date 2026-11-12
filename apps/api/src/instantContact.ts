@@ -283,12 +283,12 @@ export interface ContactStore {
   listForRequester(userId: string, side: ContactSide): Promise<readonly ConversationRow[]>;
   listForAdmin(filter: AdminFilter, side: ContactSide | null): Promise<readonly (ConversationRow & { requesterName: string })[]>;
   countAiReplies(since: Date, userId: string | null): Promise<number>;
-  requesterContact(userId: string): Promise<Readonly<{ name: string; email: string | null }>>;
+  requesterContact(userId: string): Promise<Readonly<{ name: string; email: string | null; language?: string | null }>>;
 }
 
 export type ContactNotices = Readonly<{
   adminNeeded(input: { conversation: ConversationRow; reason: HandoffReason; urgent: boolean }): Promise<void>;
-  adminReplied(input: { conversation: ConversationRow; email: string | null }): Promise<void>;
+  adminReplied(input: { conversation: ConversationRow; email: string | null; language?: string | null }): Promise<void>;
 }>;
 
 // ── what each side may see ────────────────────────────────────────────────────
@@ -620,8 +620,8 @@ export function createContactService(deps: {
       await store.addMessage({ conversationId: c.id, authorKind: "admin", authorUserId: input.adminId, body, internal, now: now(), touchConversation: !internal });
       if (internal) return done({ id: c.id });
       const updated = await store.updateConversation(c.id, { status: "admin_replied", assignedToUserId: c.assignedToUserId ?? input.adminId });
-      const { email } = await store.requesterContact(c.requesterUserId);
-      await notices.adminReplied({ conversation: updated, email }).catch(() => {});
+      const { email, language } = await store.requesterContact(c.requesterUserId);
+      await notices.adminReplied({ conversation: updated, email, language: language ?? null }).catch(() => {});
       return done({ id: c.id });
     },
 
