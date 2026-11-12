@@ -46,7 +46,7 @@ type Payload = {
 };
 type State = { status: "loading" } | { status: "denied" } | { status: "error" } | { status: "ready"; data: Payload };
 
-const when = (iso: string) => new Date(iso).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" });
+const when = (iso: string) => new Date(iso).toLocaleString("en-CA", { timeZone: "America/Toronto", dateStyle: "medium", timeStyle: "short" });
 const total = (counts: Record<string, number>) => Object.values(counts).reduce((a, b) => a + b, 0);
 
 export function BrainPanel() {

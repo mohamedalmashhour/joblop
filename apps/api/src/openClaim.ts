@@ -30,6 +30,7 @@ import { createPrismaHeldShiftOverlapFinder } from "@rwos/auth";
 import type { createPrismaClient } from "@rwos/database";
 import type { HeldShift } from "@rwos/shared";
 import { offerPayLine } from "./offerPayLine";
+import { claimBlockReason } from "./openJobs";
 import { resolveWorkerLanguage } from "./notifications/workerLanguage";
 import { certificateGapForJob, certificateReasons } from "./requiredCertificateCheck";
 
@@ -229,7 +230,7 @@ export async function claimOpenJob(
     where: { id: input.jobRequestId },
     include: {
       residence: { select: { status: true } },
-      pricingSnapshot: { select: { workerHourlyRateMinor: true, currency: true } }
+      pricingSnapshot: { select: { workerHourlyRateMinor: true, currency: true, employerPlanCode: true } }
     }
   });
   if (!job) return { status: "not_found" };
@@ -240,6 +241,10 @@ export async function claimOpenJob(
   if (!job.pricingSnapshot) return { status: "not_open" };
   // A long-term listing is never claimed: workers apply and the employer chooses.
   if (job.jobLength === "long_term") return { status: "not_open" };
+  // A job that has started, or that pays below the minimum wage in force on its date, is never taken
+  // (the job page shows the same reason, from the same rule).
+  const blocked = claimBlockReason(job, at);
+  if (blocked) return { status: "ineligible", reasons: [blocked] };
 
   // 3. The open-claim dispatch must be open (offer_preparation).
   const dispatch = await prisma.dispatchReview.findFirst({

@@ -181,7 +181,7 @@ function GreetingsTab() {
       <h2 style={{ ...styles.h2, marginTop: 28 }}>Recently sent</h2>
       {sent.length === 0 ? <p style={styles.hint}>No greetings sent yet.</p> : (
         <ul style={styles.history}>
-          {sent.map((g) => <li key={g.id} style={styles.historyItem}><strong>{g.title}</strong> <span style={styles.hint}>· {g.audienceScope} · {g.recipientCount} recipient{g.recipientCount === 1 ? "" : "s"} · {new Date(g.sentAt).toLocaleString()}</span></li>)}
+          {sent.map((g) => <li key={g.id} style={styles.historyItem}><strong>{g.title}</strong> <span style={styles.hint}>· {g.audienceScope} · {g.recipientCount} recipient{g.recipientCount === 1 ? "" : "s"} · {new Date(g.sentAt).toLocaleString("en-CA", { timeZone: "America/Toronto" })}</span></li>)}
         </ul>
       )}
     </div>
@@ -246,7 +246,7 @@ function CertificatesTab() {
       <h2 style={{ ...styles.h2, marginTop: 28 }}>Recently issued</h2>
       {issued.length === 0 ? <p style={styles.hint}>No certificates issued yet.</p> : (
         <ul style={styles.history}>
-          {issued.map((c) => <li key={c.id} style={styles.historyItem}><strong>{c.title}</strong> → {c.recipientName} <span style={styles.hint}>· {c.recipientKind} · {c.serial} · {new Date(c.issuedAt).toLocaleString()}</span></li>)}
+          {issued.map((c) => <li key={c.id} style={styles.historyItem}><strong>{c.title}</strong> → {c.recipientName} <span style={styles.hint}>· {c.recipientKind} · {c.serial} · {new Date(c.issuedAt).toLocaleString("en-CA", { timeZone: "America/Toronto" })}</span></li>)}
         </ul>
       )}
     </div>

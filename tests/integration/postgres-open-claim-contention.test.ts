@@ -17,8 +17,9 @@ const displayOrder = 31_000_000 + Number.parseInt(runKey.slice(0, 6), 16);
 const adminUserId = randomUUID();
 const firstWorkerUserId = randomUUID();
 const secondWorkerUserId = randomUUID();
-const startAt = new Date("2026-08-12T12:00:00.000Z");
-const endAt = new Date("2026-08-12T20:00:00.000Z");
+// Two weeks ahead at noon UTC: a job that has started can never be claimed.
+const startAt = new Date(Math.floor(Date.now() / 86_400_000) * 86_400_000 + 14 * 86_400_000 + 12 * 3_600_000);
+const endAt = new Date(startAt.getTime() + 8 * 3_600_000);
 
 suite("PostgreSQL open-claim direct-claim contention", () => {
   const prisma = createPrismaClient(databaseUrl);

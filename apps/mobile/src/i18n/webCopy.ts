@@ -266,7 +266,24 @@ export const WEB_COPY: Readonly<Record<string, Readonly<{ en: string; fr: string
   "land.videoSoundOff": { en: "Sound off", fr: "Couper le son", ar: "كتم الصوت" },
   "land.videoPlay": { en: "Play video", fr: "Lire la vidéo", ar: "تشغيل الفيديو" },
   "land.videoReadyLabel": { en: "Video: chefs and workers ready to help", fr: "Vidéo : des chefs et travailleurs prêts à aider", ar: "فيديو: طهاة وعمال مستعدون للمساعدة" },
-  "land.videoHowLabel": { en: "Video: how Joblop works for workers", fr: "Vidéo : comment Joblop fonctionne pour les travailleurs", ar: "فيديو: كيف يعمل Joblop للعمال" }
+  "land.videoHowLabel": { en: "Video: how Joblop works for workers", fr: "Vidéo : comment Joblop fonctionne pour les travailleurs", ar: "فيديو: كيف يعمل Joblop للعمال" },
+  // Words the app used to word differently from the website; now the website's (owner rule).
+  "brand.tagline": { en: "Find work near you", fr: "Trouvez du travail près de chez vous", ar: "اعثر على عمل بالقرب منك" },
+  "home.title": { en: "Find paid work near you, this week.", fr: "Trouvez du travail payé près de chez vous, cette semaine.", ar: "اعثر على عمل مدفوع قريب منك هذا الأسبوع." },
+  "auth.signInIntro": { en: "Sign in to search open shifts, see how far they are, and save the ones you like.", fr: "Connectez-vous pour rechercher des quarts de travail ouverts, voir leur distance et enregistrer ceux qui vous intéressent.", ar: "سجّل الدخول للبحث عن المناوبات المتاحة، ومعرفة بُعدها، وحفظ ما يعجبك." },
+  "auth.email": { en: "Email", fr: "Courriel", ar: "البريد الإلكتروني" },
+  "nav.contact": { en: "Contact Joblop", fr: "Contacter Joblop", ar: "تواصل مع Joblop" },
+  "contact.back": { en: "← All messages", fr: "← Tous les messages", ar: "→ كل الرسائل" },
+  "contact.status.ai": { en: "With AI assistant", fr: "Avec l'assistant IA", ar: "مع المساعد الذكي" },
+  "contact.status.needs_admin": { en: "Waiting for the Joblop team", fr: "En attente de l'équipe Joblop", ar: "بانتظار فريق Joblop" },
+  "contact.status.admin_replied": { en: "Joblop team replied", fr: "L'équipe Joblop a répondu", ar: "رد فريق Joblop" },
+  "contact.topic.shift": { en: "My shift", fr: "Mon quart", ar: "مناوبتي" },
+  "contact.topic.pay": { en: "Pay", fr: "Paie", ar: "الأجر" },
+  "contact.topic.documents": { en: "Documents", fr: "Documents", ar: "المستندات" },
+  "contact.topic.account": { en: "Account", fr: "Compte", ar: "الحساب" },
+  "contact.sendFailed": { en: "Your message could not be sent. Please try again.", fr: "Votre message n'a pas pu être envoyé. Veuillez réessayer.", ar: "تعذر إرسال رسالتك. يرجى المحاولة مرة أخرى." },
+  "land.haveAccountCta": { en: "I already have an account", fr: "J'ai déjà un compte", ar: "لديّ حساب بالفعل" },
+  "cv.pageIntro": { en: "Answer a few quick questions, upload your certificates, pick a design — and get a ready CV and cover letter in minutes, in French or English. You review and edit before you apply.", fr: "Répondez à quelques questions rapides, téléversez vos certificats, choisissez un modèle — et obtenez un CV et une lettre de présentation prêts en quelques minutes, en français ou en anglais. Vous les relisez et les modifiez avant de postuler.", ar: "أجب عن بضعة أسئلة سريعة، وارفع شهاداتك، واختر تصميمًا، لتحصل على سيرة ذاتية ورسالة تقديم جاهزتين خلال دقائق بالفرنسية أو الإنجليزية. تراجعهما وتعدّلهما قبل التقديم." }
 };
 
 /**

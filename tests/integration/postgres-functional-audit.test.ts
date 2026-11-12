@@ -114,7 +114,11 @@ suite("worker journey and payout guards", () => {
     return updated;
   }
 
+  // A shift already under way (staff-assigned tests only: a started job can never be claimed).
   const soon = () => ({ startAt: new Date(Date.now() - HOUR), endAt: new Date(Date.now() + 7 * HOUR) });
+  // A shift a worker can still claim and check in to straight away: it starts in 15 minutes, inside
+  // the 30-minute check-in window, so no fake clock is needed.
+  const claimableNow = () => ({ startAt: new Date(Date.now() + 15 * 60_000), endAt: new Date(Date.now() + 8 * HOUR) });
 
   beforeAll(async () => {
     // Many synthetic sign-ups share the loopback IP within one minute. The local-only E2E switch (read
@@ -369,7 +373,7 @@ suite("worker journey and payout guards", () => {
   describe("claiming and being assigned a shift", () => {
     it("a claimed shift reaches My schedule and can be checked in to", async () => {
       const worker = await makeWorker("claim");
-      const { job } = await makeJob({ ...soon(), openClaim: true });
+      const { job } = await makeJob({ ...claimableNow(), openClaim: true });
       const claimed = await app.inject({ method: "POST", url: `/marketplace/jobs/${job.id}/claim`, headers: auth(worker.token) });
       expect(claimed.statusCode, claimed.body).toBe(201);
 
@@ -524,7 +528,7 @@ suite("worker journey and payout guards", () => {
     });
 
     it("an address is never shown before assignment", async () => {
-      const { job } = await makeJob({ ...soon(), openClaim: true });
+      const { job } = await makeJob({ ...claimableNow(), openClaim: true });
       const worker = await makeWorker("preview");
       const detail = await app.inject({ method: "GET", url: `/marketplace/jobs/${job.id}`, headers: auth(worker.token) });
       expect(detail.body).not.toContain(STREET);

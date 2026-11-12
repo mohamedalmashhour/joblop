@@ -159,6 +159,34 @@ describe("staff request summary read model", () => {
     expect(summary?.pricingProblem).toBe("no_role_rate");
   });
 
+  it("bills at least 6 hours per worker, like the invoices (round 7)", async () => {
+    // A 4-hour shift: staff must see the same total the employer will be invoiced (6 h minimum).
+    const short = {
+      ...baseRow,
+      endAt: new Date("2026-11-12T17:00:00.000Z"),
+      pricingSnapshot: {
+        currency: "CAD",
+        marginPpm: 200_000,
+        employerHourlyRateMinor: 3000,
+        workerHourlyRateMinor: 2400,
+        platformHourlyMarginMinor: 600,
+        transportEmployerMinor: 0,
+        transportWorkerMinor: 0,
+        mealEmployerMinor: 0,
+        mealWorkerMinor: 0,
+        lodgingEmployerMinor: 0,
+        lodgingWorkerMinor: 0,
+        emergencySurchargePerHourMinor: 0,
+        distanceSurchargeMinor: 0,
+        distanceWorkerMinor: 0
+      }
+    };
+    const summary = await readAdminRequestSummary(fakePrisma(short), null, "jr-1");
+    // 3 workers × $30.00 × 6 h (not 4 h) = $540.00
+    expect(summary?.pricing?.estimatedTotalMinor).toBe(54_000);
+    expect(summary?.hoursPerWorker).toBe(4);
+  });
+
   it("returns null for an unknown request and counts hours safely", async () => {
     expect(await readAdminRequestSummary(fakePrisma(null), null, "missing")).toBeNull();
     expect(hoursBetween(new Date("2026-01-01T10:00:00Z"), new Date("2026-01-01T09:00:00Z"))).toBe(0);

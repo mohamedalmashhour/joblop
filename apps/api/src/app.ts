@@ -311,7 +311,9 @@ import { activeBonusByJob, coverageBonusSuggestion, latestBonusByJob, registerJo
 import { registerCalendarHubRoutes } from "./calendarHubRoutes";
 import { registerEmployerPlanRoutes } from "./employerPlanRoutes";
 import { isListedForWorkers, listedJobWhere, listingVisibilitySelect } from "./jobListingVisibility";
-import { openJobWhere } from "./openJobs";
+import { claimBlockReason, openJobWhere } from "./openJobs";
+import { isSavedJobAvailable } from "./savedJobAvailability";
+import { sortDispatchesBySoonestShift } from "./dispatchListOrder";
 import { PUBLIC_CALENDAR_MAX_JOBS, publicCalendarJobView, publicCalendarRange } from "./publicJobsCalendar";
 import { defaultOfferCompensationLine } from "./offerPayLine";
 import {
@@ -4804,6 +4806,9 @@ export function buildApi(options: BuildApiOptions = {}) {
         pricingSnapshot: { select: { workerHourlyRateMinor: true } },
         ...WORKER_PAY_SELECT
       },
+      // Soonest first in the database, BEFORE the cap: past the cap the latest jobs drop out, never
+      // the soonest ones. (The sort the worker picks is applied to these candidates afterwards.)
+      orderBy: [{ startAt: "asc" }, { id: "asc" }],
       take: MARKETPLACE_CANDIDATE_CAP
     });
     if (rows.length === MARKETPLACE_CANDIDATE_CAP) {
@@ -4975,14 +4980,20 @@ export function buildApi(options: BuildApiOptions = {}) {
         : [];
       const byId = new Map(rows.map((r) => [r.id, r]));
       const visibleAt = new Date();
+      // Places left, counted the same way as every other list (not the total headcount).
+      const placesLeftById = rows.length
+        ? await remainingOpenings(prisma!, rows.map((r) => ({ id: r.id, numberOfWorkers: r.numberOfWorkers }))).catch(() => new Map<string, number>())
+        : new Map<string, number>();
       const saved = savedRecords.map((rec) => {
         const r = byId.get(rec.jobRequestId);
-        // A long-term job with no active listing (employer plans flag) reads as unavailable.
-        const available =
-          !!r &&
-          (r.status === "submitted" || r.status === "approved_for_dispatch") &&
-          r.residence.status === "active" &&
-          isListedForWorkers(r as Parameters<typeof isListedForWorkers>[0], visibleAt);
+        const placesLeft = r ? (placesLeftById.get(r.id) ?? r.numberOfWorkers) : 0;
+        // Unavailable when not approved, cancelled/finished, started, full, its site closed, or (long-term,
+        // employer plans flag) no longer listed.
+        const available = isSavedJobAvailable(r, {
+          placesLeft,
+          listed: !!r && isListedForWorkers(r as Parameters<typeof isListedForWorkers>[0], visibleAt),
+          now: visibleAt
+        });
         return {
           jobRequestId: rec.jobRequestId,
           savedAt: rec.savedAt,
@@ -4998,7 +5009,7 @@ export function buildApi(options: BuildApiOptions = {}) {
                     : null,
                 startAt: r.startAt.toISOString(),
                 endAt: r.endAt.toISOString(),
-                openings: r.numberOfWorkers
+                openings: placesLeft
               }
             : null
         };
@@ -6444,6 +6455,8 @@ export function buildApi(options: BuildApiOptions = {}) {
         pricingSnapshot: {
           select: {
             workerHourlyRateMinor: true,
+            currency: true,
+            employerPlanCode: true,
             transportWorkerMinor: true,
             mealWorkerMinor: true,
             lodgingWorkerMinor: true
@@ -6544,13 +6557,16 @@ export function buildApi(options: BuildApiOptions = {}) {
     const missingCertificateKeys = viewer && prisma && required.keys.length > 0
       ? (await certificateGapForJob(prisma, { workerIdentityId: viewer.id, job: row }).catch(() => ({ missing: required.keys }))).missing
       : [];
+    // Same rule as the claim: never claimable once started or when below the minimum wage on its date.
+    const claimBlockedReason = claimBlockReason(row, new Date());
     const claimable =
       row.openClaim === true &&
       row.status === "approved_for_dispatch" &&
       !!row.pricingSnapshot &&
       placesLeft > 0 &&
       !longTerm &&
-      !required.keys.includes("other");
+      !required.keys.includes("other") &&
+      claimBlockedReason === null;
     // The job's active bonus (kind + amount only; who pays it is never shown to workers).
     const bonus = prisma
       ? await activeBonusByJob(prisma, [row.id])
@@ -6565,6 +6581,8 @@ export function buildApi(options: BuildApiOptions = {}) {
         allowances: workerAllowances(row.calendarProfile, row.pricingSnapshot),
         openClaim: row.openClaim === true,
         claimable,
+        // Why the job can't be taken ("job_started" | "below_minimum_wage"), shown on the job page.
+        claimBlockedReason: longTerm ? null : claimBlockedReason,
         longTerm,
         requiredCertificates: required,
         missingCertificates: viewer ? missingCertificateKeys : null,
@@ -7992,11 +8010,21 @@ export function buildApi(options: BuildApiOptions = {}) {
     const dispatchSourceNumbers = await Promise.all(
       dispatches.map((item) => reduceJobRequestRepository.findJobRequestById(item.jobRequestId))
     );
+    // Each row carries its shift's start and end (so staff see WHEN, not only when the review began),
+    // and the list is soonest shift first.
     return reply.code(200).send({
-      dispatches: dispatches.map((item, index) => ({
-        ...serializeDispatchReview(item),
-        jobRequestNumber: dispatchSourceNumbers[index]?.jobRequestNumber ?? null
-      }))
+      dispatches: sortDispatchesBySoonestShift(
+        dispatches.map((item, index) => {
+          const source = dispatchSourceNumbers[index];
+          return {
+            ...serializeDispatchReview(item),
+            jobRequestNumber: source?.jobRequestNumber ?? null,
+            shiftStartAt: source?.startAt ? source.startAt.toISOString() : null,
+            shiftEndAt: source?.endAt ? source.endAt.toISOString() : null,
+            shiftTimezone: source?.timezone ?? null
+          };
+        })
+      )
     });
   });
 

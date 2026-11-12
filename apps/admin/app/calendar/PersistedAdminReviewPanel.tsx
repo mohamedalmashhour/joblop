@@ -15,10 +15,10 @@ import { JobLocationMap } from "../shared/maps";
 import { SignedOut } from "../shared/SignedOut";
 import { usePageText } from "../i18n/pageText";
 import { useLocale } from "../i18n/LocaleProvider";
+import { adminMoney } from "../i18n/adminFormat";
 import { reviewText, type ReviewActionMessage, type ReviewCopy } from "./reviewText";
 import {
   formatHours,
-  formatMoney,
   intlLocale,
   parseRequestSummary,
   type RequestSummary
@@ -141,7 +141,8 @@ export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: s
   }
   const { request, summary } = state.data;
   const pricing = summary?.pricing ?? null;
-  const money = (minor: number) => formatMoney(minor, pricing?.currency ?? "CAD", locale);
+  // Money like the domain formatter, in the admin's language (Arabic: en-CA, "$16.60").
+  const money = (minor: number) => adminMoney(minor, pricing?.currency ?? "CAD", appLocale);
 
   async function performAction(action: IntakeAction) {
     if (action === "request-information" && reason.trim().length < 4) {

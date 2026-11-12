@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePageText } from "../i18n/pageText";
+import { useLocale } from "../i18n/LocaleProvider";
+import { adminDateTime, adminMoney } from "../i18n/adminFormat";
 import { canSendTestPayout, payoutStatusLabel, type StaffPayout } from "./payoutCopy";
 import { payoutsText } from "./text";
 import { SignedOut } from "../shared/SignedOut";
@@ -12,16 +14,15 @@ type State =
   | { status: "error" }
   | { status: "ready"; items: readonly StaffPayout[]; testPayoutEnabled: boolean };
 
-function money(minor: number, currency: string): string {
-  return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(minor / 100);
-}
 
-function day(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
-}
+
+
 
 export function WorkerPayoutsPanel() {
   const t = usePageText(payoutsText);
+  const adminLocale = useLocale();
+  const money = (minor: number, currency: string) => adminMoney(minor, currency, adminLocale);
+  const day = (iso: string) => adminDateTime(iso, adminLocale, { dateStyle: "medium" });
   const [state, setState] = useState<State>({ status: "loading" });
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState("");

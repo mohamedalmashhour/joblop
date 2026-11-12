@@ -38,6 +38,8 @@ type JobDetailData = Readonly<{
   // Hybrid auto-offer: when claimable, the worker claims directly instead of expressing interest.
   openClaim?: boolean;
   claimable?: boolean;
+  // Why the job can't be taken (the API's claim rule): it has started, or pays below the minimum wage.
+  claimBlockedReason?: string | null;
   // Extra pay Joblop added to fill the job faster (null when there is none).
   bonus?: JobBonus | null;
   // Long-term listing: workers apply and the employer chooses (never claimed).
@@ -317,7 +319,11 @@ export function JobDetail({ id, place }: { id: string; place: string | null }) {
 
       <AllowancesSection allowances={job.allowances} currency={job.currency} locale={locale} />
 
-      {job.claimable ? (
+      {blockedReasonKey(job.claimBlockedReason) ? (
+        <section className="detail-section interest" role="status">
+          <p className="muted">{t(blockedReasonKey(job.claimBlockedReason)!)}</p>
+        </section>
+      ) : job.claimable ? (
         <ClaimPanel
           outcome={claimOutcome}
           onClaim={claimJob}
@@ -556,6 +562,7 @@ function ClaimPanel({
   const t = useT();
   const state = outcome.state;
   const certificateReasons = outcome.reasons.filter((r) => r.startsWith("missing_certificate:"));
+  const blockedKey = outcome.reasons.map(blockedReasonKey).find((key) => key !== null) ?? null;
 
   if (state === "assigned") {
     return (
@@ -580,7 +587,7 @@ function ClaimPanel({
       {state === "ineligible" && certificateReasons.length > 0 ? (
         <MissingCertificatesNotice reasons={certificateReasons} other={other} />
       ) : state === "ineligible" ? (
-        <p className="muted">{t("job.inelDefault")}</p>
+        <p className="muted">{t(blockedKey ?? "job.inelDefault")}</p>
       ) : null}
       {state === "overlap" && overlapMessage ? <p className="muted" role="alert">{overlapMessage}</p> : null}
       {state === "error" ? <p className="muted">{t("job.loadError")}</p> : null}
@@ -591,6 +598,13 @@ function ClaimPanel({
       ) : null}
     </section>
   );
+}
+
+/** The message for a claim-block reason from the API, or null for any other reason. */
+export function blockedReasonKey(reason: string | null | undefined): "job.blockedStarted" | "job.blockedBelowWage" | null {
+  if (reason === "job_started") return "job.blockedStarted";
+  if (reason === "below_minimum_wage") return "job.blockedBelowWage";
+  return null;
 }
 
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {

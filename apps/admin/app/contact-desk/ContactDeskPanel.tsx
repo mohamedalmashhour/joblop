@@ -153,7 +153,7 @@ function Thread({ id, onChanged }: { id: string; onChanged(): void }) {
       <div role="log" style={styles.log}>
         {detail.messages.map((m) => (
           <div key={m.id} style={m.internal ? styles.note : styles.message}>
-            <strong style={styles.label}>{t.author[m.authorKind] ?? m.authorKind}{m.internal ? t.internalTag : ""} · {new Date(m.createdAt).toLocaleString()}</strong>
+            <strong style={styles.label}>{t.author[m.authorKind] ?? m.authorKind}{m.internal ? t.internalTag : ""} · {new Date(m.createdAt).toLocaleString("en-CA", { timeZone: "America/Toronto" })}</strong>
             <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{assistantMessageText(m.authorKind, m.body, t.assistant)}</div>
           </div>
         ))}
