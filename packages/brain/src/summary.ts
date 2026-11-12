@@ -46,8 +46,19 @@ export async function buildBrainSummary(store: BrainStore, now: Date): Promise<B
     else if (action.status === "failed") bump(failed, action.actionKey);
     else if (action.status === "undone") undone += 1;
   }
+  // An open issue whose action ran but did not get it done (skipped or failed: no phone, a refused
+  // check) needs a person just as much as one with no action or a switched-off action.
+  const recent = await store.actionsSince(new Date(now.getTime() - 7 * DAY_MS));
+  const doneOn = new Set(recent.filter((a) => a.kind === "live" && (a.status === "done" || a.status === "running")).map((a) => a.issueId));
+  const stuckOn = new Set(recent.filter((a) => a.kind === "live" && (a.status === "skipped" || a.status === "failed")).map((a) => a.issueId));
   const needsPeople = open
-    .filter((issue) => !issue.recommendedAction || settings.mode !== "live" || settings.switches[issue.recommendedAction] !== true)
+    .filter(
+      (issue) =>
+        !issue.recommendedAction ||
+        settings.mode !== "live" ||
+        settings.switches[issue.recommendedAction] !== true ||
+        (stuckOn.has(issue.id) && !doneOn.has(issue.id))
+    )
     .slice(0, 20);
   return { since, until: now, mode: settings.mode, found, done, simulated, failed, undone, openIssues: open.length, needsPeople };
 }

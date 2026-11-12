@@ -552,13 +552,17 @@ export type EmployerCancellationService = ReturnType<typeof createEmployerCancel
 
 // ── Prisma adapters ──────────────────────────────────────────────────────────
 
-// Assignment statuses that count as an affected "confirmed worker" — exactly the
-// states the platform assignment.cancel path can transition to employer_cancelled.
+// Assignment statuses that count as an affected "confirmed worker" — every state in which the worker
+// is booked, exactly the states the platform assignment.cancel path can transition to
+// employer_cancelled. "attendance_handoff" is the status of every shift on a worker's schedule
+// (claimed or staff-assigned), so it must count: otherwise a late cancel bills nothing and leaves the
+// worker booked (owner decision 2026-11-11).
 export const CONFIRMED_ASSIGNMENT_STATUSES: readonly string[] = [
   "confirmed",
   "worker_acknowledged",
   "ready_for_attendance",
-  "in_attendance_window"
+  "in_attendance_window",
+  "attendance_handoff"
 ];
 
 type PrismaCancellationClient = {

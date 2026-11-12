@@ -193,10 +193,20 @@ async function roleCatalogue(ctx: ToolContext, org: string) {
     getOk(ctx, `/role-definitions?organizationId=${enc(org)}`)
   ]);
   const groupById = new Map((groups.ok ? asArray(groups.body.workGroups) : []).map(asRecord).map((g) => [String(g.id), g]));
+  // The real routes send the public shapes (toPublicWorkGroup / toPublicRoleDefinition): a work group
+  // has `slug` ("farming-agriculture"), a role has `code` ("FARM_WORKER"), `slug` ("farm-worker") and
+  // `workGroupSlug`; there is no `key`. The create route accepts the key form ("farm_worker").
   return (roles.ok ? asArray(roles.body.roleDefinitions) : []).map(asRecord).map((r) => {
     const g = groupById.get(String(r.workGroupId));
-    return { roleDefinitionId: String(r.id), roleKey: String(r.key ?? ""), role: String(r.displayLabel ?? ""), workGroup: String(g?.key ?? ""), workGroupLabel: String(g?.displayLabel ?? "") };
+    const roleKey = catalogueKey(r.code ?? r.slug ?? r.key);
+    const workGroup = catalogueKey(r.workGroupSlug ?? g?.slug ?? g?.key);
+    return { roleDefinitionId: String(r.id), roleKey, role: String(r.displayLabel ?? ""), workGroup, workGroupLabel: String(g?.displayLabel ?? "") };
   });
+}
+
+/** "FARM_WORKER", "farm-worker" and "farm_worker" all become the key "farm_worker". */
+export function catalogueKey(value: unknown): string {
+  return typeof value === "string" ? value.trim().toLowerCase().replace(/-/g, "_") : "";
 }
 
 const myContract: ReadTool = {
@@ -284,14 +294,17 @@ const createDraftRequest: ActionTool = {
     const site = asArray(sites.body.residences).map(asRecord).find((s) => s.id === input.residenceId);
     if (!site) return fail("unknown_site");
     const roles = await roleCatalogue(ctx, org);
-    const role = roles.find((r) => r.roleKey === roleKey && r.workGroup === workGroup);
-    if (!role) return fail("unknown_role");
+    // The model may send the key, the slug, the code or the id (all of which the catalogue shows).
+    const wantedRole = catalogueKey(roleKey);
+    const wantedGroup = catalogueKey(workGroup);
+    const role = roles.find((r) => (r.roleKey === wantedRole || r.roleDefinitionId === roleKey) && (r.workGroup === wantedGroup || !wantedGroup));
+    if (!role || !role.roleKey || !role.workGroup) return fail("unknown_role");
     const description = str(input.description, 2000);
     const sameDay = startAt.slice(0, 10) === endAt.slice(0, 10) || Date.parse(endAt) - Date.parse(startAt) <= DAY_MS;
     return {
       ok: true,
       args: {
-        residenceId: input.residenceId, departmentId: input.departmentId, workGroup, roleDefinition: roleKey, title,
+        residenceId: input.residenceId, departmentId: input.departmentId, workGroup: role.workGroup, roleDefinition: role.roleKey, title,
         ...(description ? { description } : {}), numberOfWorkers: workers, startAt, endAt,
         requestType: sameDay ? "single_day" : "multi_day"
       },

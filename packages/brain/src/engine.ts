@@ -87,7 +87,7 @@ export function createBrain<C>(options: {
   }
   const switchKeys = [...actions.keys(), ...(options.extraSwitches ?? [])];
 
-  async function finishRun(issue: StoredIssue, action: BrainAction<C>, claimed: StoredAction): Promise<StoredAction> {
+  async function finishRun(issue: StoredIssue, action: BrainAction<C>, claimed: StoredAction, earlier: string | null = null): Promise<StoredAction> {
     let outcome;
     try {
       outcome = await action.run(issue, context);
@@ -97,7 +97,7 @@ export function createBrain<C>(options: {
     const at = now();
     const finished = await store.finishAction(claimed.id, {
       status: outcome.status,
-      detail: outcome.detail,
+      detail: earlier ? `${outcome.detail} (Retried by staff. Earlier: ${earlier})` : outcome.detail,
       undo: outcome.status === "done" ? (outcome.undo ?? null) : null,
       now: at
     });
@@ -221,16 +221,14 @@ export function createBrain<C>(options: {
       if (issue.status !== "open") return { status: "not_open" };
       const action = issue.recommendedAction ? actions.get(issue.recommendedAction) : undefined;
       if (!action) return { status: "no_action" };
-      const claimed = await store.claimAction({
-        issue,
-        actionKey: action.key,
-        kind: "live",
-        actor: { type: "staff", userId: staffUserId },
-        undoHint: action.undoHint,
-        now: now()
-      });
-      if (!claimed) return { status: "already_handled" };
-      const finished = await finishRun(issue, action, claimed);
+      const input = { issue, actionKey: action.key, kind: "live" as const, actor: { type: "staff" as const, userId: staffUserId }, undoHint: action.undoHint, now: now() };
+      // First run, or a person retrying a run that did not get it done (skipped / failed, e.g. no phone
+      // number then). A done or running action stays handled once.
+      const claimed = await store.claimAction(input);
+      const reopened = claimed ? null : await store.reopenAction(input);
+      const slot = claimed ?? reopened;
+      if (!slot) return { status: "already_handled" };
+      const finished = await finishRun(issue, action, slot, reopened ? (reopened.detail ?? reopened.status) : null);
       const status = finished.status === "done" ? "done" : finished.status === "failed" ? "failed" : "skipped";
       return { status, action: finished };
     },

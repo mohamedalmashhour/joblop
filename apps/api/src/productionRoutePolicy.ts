@@ -62,6 +62,7 @@ export const JOB_FLOW_ROUTES: readonly string[] = [
   "POST /worker/assignments/:assignmentId/withdraw",
   "POST /worker/attendance/:attendanceRecordId/check-in",
   "POST /worker/attendance/:attendanceRecordId/check-out",
+  "POST /worker/attendance/:attendanceRecordId/cancel",
   "POST /worker/timesheets/:timesheetId/confirm",
   "POST /worker/timesheets/:timesheetId/dispute",
   // Staff dispatch (admin console: create, review, source and shortlist, offer preparation, lifecycle).

@@ -9,6 +9,7 @@ import { workerPayLabel } from "../../workerPayLabel";
 import { MissingCertificatesNotice, RequiredCertificatesSection, type RequiredCertificatesData } from "../../RequiredCertificates";
 import { shiftOverlapNotice } from "../../shiftOverlapNotice";
 import { ShiftAddressMap } from "../../ShiftAddressMap";
+import { CancelShiftControl } from "../../schedule/CancelShift";
 import { JoblopJobBadge } from "../../JobSourceBadge";
 
 type JobDetailData = Readonly<{
@@ -90,16 +91,24 @@ export function JobDetail({ id, place }: { id: string; place: string | null }) {
   // The exact work address, only when this worker is confirmed on this job (from their own schedule;
   // the API sends it only for a confirmed shift that is not over). Everyone else sees the city only.
   const [confirmedAddress, setConfirmedAddress] = useState<string | null>(null);
+  // The worker's own booked shift on this job, while it has not started: they may cancel it here.
+  const [myShift, setMyShift] = useState<{ attendanceRecordId: string; scheduledStartAt: string } | null>(null);
+  const [cancelNotice, setCancelNotice] = useState<string | null>(null);
   const confirmedJobId = job?.jobRequestId ?? null;
   useEffect(() => {
     if (!confirmedJobId) return;
     let active = true;
     fetch("/api/attendance?limit=100", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((p: { items?: { jobRequestId?: string; worksiteAddress?: string | null }[] } | null) => {
+      .then((p: { items?: { jobRequestId?: string; worksiteAddress?: string | null; attendanceRecordId?: string; status?: string; scheduledStartAt?: string; clockInAllowed?: boolean }[] } | null) => {
         if (!active) return;
         const mine = p?.items?.find((item) => item.jobRequestId === confirmedJobId && item.worksiteAddress);
         setConfirmedAddress(mine?.worksiteAddress ?? null);
+        setMyShift(
+          mine && mine.status === "pending_start" && mine.clockInAllowed !== false && mine.attendanceRecordId && mine.scheduledStartAt
+            ? { attendanceRecordId: mine.attendanceRecordId, scheduledStartAt: mine.scheduledStartAt }
+            : null
+        );
       })
       .catch(() => undefined);
     return () => {
@@ -257,10 +266,22 @@ export function JobDetail({ id, place }: { id: string; place: string | null }) {
 
       {job.bonus && job.bonus.amountMinor > 0 ? <BonusBox bonus={job.bonus} currency={job.currency} locale={locale} /> : null}
 
+      {cancelNotice ? <p className="notice" role="status" style={{ color: "var(--accent)" }}>{cancelNotice}</p> : null}
       {confirmedAddress ? (
         <Section title={t("map.workAddress")}>
           <p>{confirmedAddress}</p>
           <ShiftAddressMap address={confirmedAddress} height={220} />
+          {myShift ? (
+            <CancelShiftControl
+              attendanceRecordId={myShift.attendanceRecordId}
+              scheduledStartAt={myShift.scheduledStartAt}
+              onCancelled={(message) => {
+                setCancelNotice(message);
+                setMyShift(null);
+                setConfirmedAddress(null);
+              }}
+            />
+          ) : null}
         </Section>
       ) : (
         <>
