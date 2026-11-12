@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FinanceInvoice } from "../api/finance/financeBoundary";
 import { usePageText } from "../i18n/pageText";
+import { useLocale } from "../i18n/LocaleProvider";
+import { adminMoney } from "../i18n/adminFormat";
 import { invoiceActionPath, invoiceIssueBody, invoiceSendBody, nextInvoiceAction, type InvoiceStaffAction } from "./invoiceIssue";
 import { invoicesText } from "./text";
 import { SignedOut } from "../shared/SignedOut";
@@ -24,12 +26,11 @@ function doneMessage(t: InvoicesCopy, action: InvoiceStaffAction, employerNotice
   return employerNotice === "sent" ? t.sentEmailed : t.sentNoEmail;
 }
 
-function money(minor: number, currency: string): string {
-  return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(minor / 100);
-}
 
 export function InvoiceApprovalPanel() {
   const t = usePageText(invoicesText);
+  const adminLocale = useLocale();
+  const money = (minor: number, currency: string) => adminMoney(minor, currency, adminLocale);
   const [organizations, setOrganizations] = useState<readonly Organization[]>([]);
   const [organizationId, setOrganizationId] = useState("");
   const [state, setState] = useState<State>({ status: "idle" });

@@ -3,7 +3,7 @@ import { dictionaries, isRtlLocale, LOCALES, translate } from "./strings";
 
 describe("mobile i18n", () => {
   it("translates per locale and falls back to English then the key", () => {
-    expect(translate("en", "home.title")).toBe("Welcome to JobLop");
+    expect(translate("en", "home.title")).toBe("Find paid work near you, this week.");
     expect(translate("fr", "nav.home")).toBe("Accueil");
     expect(translate("ar", "nav.home")).toBe("الرئيسية");
     expect(translate("ar", "totally.missing.key")).toBe("totally.missing.key");

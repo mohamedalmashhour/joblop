@@ -108,7 +108,7 @@ function ReviewRow({ r }: { r: CaseRow }) {
   return (
     <a href={link(r.workerIdentityId)} style={styles.rowLink}>
       <span><strong>{t.caseLabel(r.caseType)}</strong> <span style={styles.badge}>{t.status(r.status)}</span></span>
-      <span style={styles.dim}>{r.workerIdentityId.slice(0, 8)} · {t.openedOn(new Date(r.createdAt).toLocaleDateString())}</span>
+      <span style={styles.dim}>{r.workerIdentityId.slice(0, 8)} · {t.openedOn(new Date(r.createdAt).toLocaleDateString("en-CA", { timeZone: "America/Toronto" }))}</span>
     </a>
   );
 }
@@ -117,7 +117,7 @@ function ExpiringRow({ r }: { r: CredRow }) {
   return (
     <a href={link(r.workerIdentityId)} style={styles.rowLink}>
       <span><strong>{r.credentialType}</strong> <span style={r.effectiveStatus === "expired" ? styles.badgeBad : styles.badgeWarn}>{t.status(r.effectiveStatus)}</span></span>
-      <span style={styles.dim}>{r.workerIdentityId.slice(0, 8)}{r.expiresAt ? ` · ${t.expiresOn(new Date(r.expiresAt).toLocaleDateString())}` : ""}</span>
+      <span style={styles.dim}>{r.workerIdentityId.slice(0, 8)}{r.expiresAt ? ` · ${t.expiresOn(new Date(r.expiresAt).toLocaleDateString("en-CA", { timeZone: "America/Toronto" }))}` : ""}</span>
     </a>
   );
 }
@@ -141,7 +141,7 @@ function DocumentRow({ r }: { r: DocRow }) {
   return (
     <div style={{ ...styles.rowLink, flexWrap: "wrap" }}>
       <span><strong>{t.docLabel(r.documentType)}</strong> <span style={styles.badgeWarn}>{t.status(r.effectiveStatus)}</span></span>
-      <span style={styles.dim}>{r.workerIdentityId.slice(0, 8)}{r.expiresAt ? ` · ${t.expiresOn(new Date(r.expiresAt).toLocaleDateString())}` : ""}</span>
+      <span style={styles.dim}>{r.workerIdentityId.slice(0, 8)}{r.expiresAt ? ` · ${t.expiresOn(new Date(r.expiresAt).toLocaleDateString("en-CA", { timeZone: "America/Toronto" }))}` : ""}</span>
       <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <a href={link(r.workerIdentityId)} style={styles.button}>{t.openWorker}</a>
         <button type="button" style={styles.button} disabled={busy} onClick={() => void review()}>{busy ? t.aiReviewing : t.aiReview}</button>

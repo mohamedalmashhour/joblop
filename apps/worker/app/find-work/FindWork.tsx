@@ -5,6 +5,7 @@ import { foldPlaceText, placeMatches, resolveKnownPlace, type PublicCalendarJob 
 import { useLocale, useT, fmtLocale } from "../i18n/LocaleProvider";
 import { workerPayLabel } from "../workerPayLabel";
 import { leadPayLabel } from "../leadPay";
+import { appendUnique, nextCursorOf } from "../pagination";
 import { publicJobPath, signUpReturningTo } from "../safeReturnPath";
 import { JoblopJobBadge, OutsideApplyLink, OutsideSiteBadge } from "../JobSourceBadge";
 import { outsideApplyUrl } from "../jobSource";
@@ -59,6 +60,9 @@ export function FindWork({ initialTab, initialQ, initialCity }: { initialTab: Fi
   const [q, setQ] = useState(initialQ);
   const [city, setCity] = useState(initialCity);
   const [jobs, setJobs] = useState<readonly PublicJob[] | null>(null);
+  // "Load more": the API pages Joblop jobs 30 at a time.
+  const [jobsCursor, setJobsCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [leads, setLeads] = useState<readonly Lead[] | null>(null);
   const [signedIn, setSignedIn] = useState(false);
 
@@ -84,8 +88,22 @@ export function FindWork({ initialTab, initialQ, initialCity }: { initialTab: Fi
       fetch(`/api/public/jobscanner/leads?${leadParams.toString()}`, { cache: "no-store" }).then((r) => r.json()).catch(() => ({}))
     ]);
     setJobs(Array.isArray(j?.jobs) ? (j.jobs as PublicJob[]) : []);
+    setJobsCursor(nextCursorOf(j));
     setLeads(Array.isArray(l?.leads) ? (l.leads as Lead[]) : []);
   }, []);
+
+  const loadMore = useCallback(async () => {
+    if (jobsCursor === null) return;
+    setLoadingMore(true);
+    const params = new URLSearchParams({ limit: "30", cursor: jobsCursor });
+    if (q) params.set("q", q);
+    if (city) params.set("city", city);
+    const page = await fetch(`/api/public/jobs?${params.toString()}`, { cache: "no-store" }).then((r) => r.json()).catch(() => ({}));
+    const more = Array.isArray(page?.jobs) ? (page.jobs as PublicJob[]) : [];
+    setJobs((current) => appendUnique(current ?? [], more, (job) => job.jobCode));
+    setJobsCursor(nextCursorOf(page));
+    setLoadingMore(false);
+  }, [jobsCursor, q, city]);
 
   useEffect(() => {
     void load(q, city);
@@ -139,7 +157,7 @@ export function FindWork({ initialTab, initialQ, initialCity }: { initialTab: Fi
 
       <div id="fw-panel" role="tabpanel" aria-labelledby={`fw-tab-${tab}`}>
         {tab === "list" ? (
-          <ListTab jobs={jobs} leads={leads} applyHref={applyHref} arrow={arrow} />
+          <ListTab jobs={jobs} leads={leads} applyHref={applyHref} arrow={arrow} onMore={jobsCursor !== null ? () => void loadMore() : undefined} moreBusy={loadingMore} />
         ) : tab === "map" ? (
           <MapTab jobs={jobs} city={city} applyHref={applyHref} />
         ) : (
@@ -178,12 +196,16 @@ function ListTab({
   jobs,
   leads,
   applyHref,
-  arrow
+  arrow,
+  onMore,
+  moreBusy
 }: {
   jobs: readonly PublicJob[] | null;
   leads: readonly Lead[] | null;
   applyHref: (job: PublicJob) => string;
   arrow: string;
+  onMore?: (() => void) | undefined;
+  moreBusy?: boolean;
 }) {
   const t = useT();
   return (
@@ -197,6 +219,11 @@ function ListTab({
             <JoblopJobCard key={job.jobCode} job={job} applyHref={applyHref(job)} />
           ))}
         </div>
+        {onMore ? (
+          <button type="button" className="btn ghost" onClick={onMore} disabled={moreBusy}>
+            {moreBusy ? t("fw.loading") : t("common.loadMore")}
+          </button>
+        ) : null}
       </section>
 
       <section className="fw-sec" aria-labelledby="fw-sec-other">

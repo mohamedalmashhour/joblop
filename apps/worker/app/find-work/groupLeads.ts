@@ -2,6 +2,8 @@
 // they become ONE card: same title + same company (compared without case, accents, punctuation or extra
 // spaces) = one group. The card says "N locations" and lists the cities; each city keeps its own
 // "Apply on <site>" link, because each posting lives at its own address on the other website.
+// A listing WITHOUT a company name is never grouped: two "Cleaner" posts from unknown companies may
+// be different employers. Only an exact repeat of the same posting (same address) collapses.
 
 export type GroupableLead = Readonly<{
   title: string;
@@ -41,17 +43,19 @@ export function leadGroupKey(lead: Pick<GroupableLead, "title" | "employer">): s
  */
 export function groupLeads<L extends GroupableLead>(leads: readonly L[]): LeadGroup<L>[] {
   const groups = new Map<string, { lead: L; locations: L[]; places: Set<string> }>();
-  for (const lead of leads) {
-    const key = leadGroupKey(lead);
+  leads.forEach((lead, index) => {
+    const key = normaliseLeadText(lead.employer)
+      ? leadGroupKey(lead)
+      : `${normaliseLeadText(lead.title)}|no-company|${lead.url ? `url:${lead.url}` : `#${index}`}`;
     const place = normaliseLeadText(lead.areaLabel);
     const group = groups.get(key);
     if (!group) {
       groups.set(key, { lead, locations: [lead], places: new Set([place]) });
-      continue;
+      return;
     }
-    if (group.places.has(place)) continue;
+    if (group.places.has(place)) return;
     group.places.add(place);
     group.locations.push(lead);
-  }
+  });
   return [...groups.entries()].map(([key, g]) => ({ key, lead: g.lead, locations: g.locations }));
 }

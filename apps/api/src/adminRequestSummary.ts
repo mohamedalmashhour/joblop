@@ -1,4 +1,5 @@
 import type { RequestPricingSnapshotCapture } from "@rwos/auth";
+import { billableHours } from "@rwos/shared";
 
 // STAFF-ONLY read model for the staff request calendar and request detail pages. It is attached to
 // the platform calendar responses only AFTER calendarRequestService has authorized the caller as a
@@ -222,8 +223,11 @@ export async function readAdminRequestSummary(
 
   let pricing: AdminRequestPricing | null = null;
   let pricingProblem: AdminRequestSummary["pricingProblem"] = null;
+  // The employer is billed at least 6 hours per shift, like the invoices (billableHours), so staff see
+  // the same total the employer will be charged.
+  const billedHoursPerWorker = billableHours(hoursPerWorker);
   const total = (hourly: number, perShift: number) =>
-    Math.round(row.numberOfWorkers * (hourly * hoursPerWorker + perShift));
+    Math.round(row.numberOfWorkers * (hourly * billedHoursPerWorker + perShift));
   if (row.pricingSnapshot) {
     const s = row.pricingSnapshot;
     const allowancesEmployer = s.transportEmployerMinor + s.mealEmployerMinor + s.lodgingEmployerMinor;

@@ -10,6 +10,7 @@ import { outsideApplyUrl } from "../jobSource";
 import { activeCountry } from "../country";
 import { publicJobPath } from "../safeReturnPath";
 import { leadPayLabel } from "../leadPay";
+import { appendUnique, nextCursorOf } from "../pagination";
 
 // Public, no-sign-in landing + job board for Joblop. Hero search, real categories, REAL featured
 // jobs (from /public/jobs — never fabricated), job-seeker + employer sections, honest stats and
@@ -290,6 +291,9 @@ export function PublicJobBoard() {
   const [province, setProvince] = useState("");
   const [q, setQ] = useState("");
   const [jobs, setJobs] = useState<Job[] | null>(null);
+  // "Load more": the API pages the board 24 jobs at a time.
+  const [jobsCursor, setJobsCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [leads, setLeads] = useState<Lead[] | null>(null);
   const [leadsTotal, setLeadsTotal] = useState<number | null>(null);
   const [totalJobs, setTotalJobs] = useState<number | null>(null);
@@ -322,11 +326,40 @@ export function PublicJobBoard() {
     try {
       const res = await fetch(`/api/public/jobs?${params.toString()}`, { cache: "no-store" });
       const data = await res.json();
-      if (mine === gen.current) setJobs(Array.isArray(data.jobs) ? data.jobs : []);
+      if (mine === gen.current) {
+        setJobs(Array.isArray(data.jobs) ? data.jobs : []);
+        setJobsCursor(nextCursorOf(data));
+      }
     } catch {
-      if (mine === gen.current) setJobs([]);
+      if (mine === gen.current) {
+        setJobs([]);
+        setJobsCursor(null);
+      }
     }
   }, [province, q]);
+
+  const loadMore = useCallback(async () => {
+    if (jobsCursor === null) return;
+    const mine = gen.current;
+    setLoadingMore(true);
+    const params = new URLSearchParams();
+    if (province) params.set("province", province);
+    if (q.trim()) params.set("q", q.trim());
+    params.set("limit", "24");
+    params.set("cursor", jobsCursor);
+    try {
+      const res = await fetch(`/api/public/jobs?${params.toString()}`, { cache: "no-store" });
+      const data = await res.json();
+      if (mine === gen.current) {
+        setJobs((current) => appendUnique(current ?? [], Array.isArray(data.jobs) ? (data.jobs as Job[]) : [], (job) => job.jobCode));
+        setJobsCursor(nextCursorOf(data));
+      }
+    } catch {
+      /* keep what is shown; the button stays so the visitor can try again */
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [jobsCursor, province, q]);
 
   useEffect(() => {
     const h = setTimeout(load, q ? 300 : 0);
@@ -626,6 +659,11 @@ export function PublicJobBoard() {
               })}
             </div>
           )}
+          {jobs && jobs.length > 0 && jobsCursor !== null ? (
+            <button type="button" className="jl-link" onClick={() => void loadMore()} disabled={loadingMore}>
+              {loadingMore ? tm("common.loading") : tm("common.loadMore")}
+            </button>
+          ) : null}
         </div>
       </section>
 

@@ -3,20 +3,13 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SignedOut } from "../shared/SignedOut";
+import { shiftWhen, sortRowsBySoonestShift, type DispatchRow } from "./dispatchListRows";
 
 const SIGNED_OUT = "signed-out";
 
 // Dispatch reviews index — a live list (from /api/dispatches/list), each row opening its
 // dispatch detail workspace. Read-only; additive.
-type Row = {
-  id: string;
-  jobRequestId: string;
-  state: string;
-  priority: string;
-  requiredWorkerCount: number;
-  createdAt: string;
-  jobRequestNumber?: string | null;
-};
+type Row = DispatchRow;
 type Load =
   | { state: "loading" }
   | { state: "ready"; rows: Row[] }
@@ -31,7 +24,7 @@ const stateColor = (s: string): string => {
   return "#171511";
 };
 const fmt = (s: string) => {
-  try { return new Date(s).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" }); } catch { return s; }
+  try { return new Date(s).toLocaleString("en-CA", { timeZone: "America/Toronto", dateStyle: "medium", timeStyle: "short" }); } catch { return s; }
 };
 
 export default function DispatchReviewsPage() {
@@ -43,7 +36,7 @@ export default function DispatchReviewsPage() {
       .then(async (r) => (r.ok ? r.json() : Promise.reject(r.status === 401 || r.status === 403 ? SIGNED_OUT : `Could not load dispatch reviews (HTTP ${r.status}).`)))
       .then((j) => {
         const rows: Row[] = Array.isArray(j?.dispatches) ? j.dispatches : [];
-        setLoad(rows.length ? { state: "ready", rows } : { state: "empty" });
+        setLoad(rows.length ? { state: "ready", rows: sortRowsBySoonestShift(rows) } : { state: "empty" });
       })
       .catch((reason) => setLoad({ state: "error", reason: String(reason) }));
   }, []);
@@ -74,7 +67,8 @@ export default function DispatchReviewsPage() {
                     {r.priority !== "normal" && <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", color: "#9a1f2b" }}>{r.priority}</span>}
                   </div>
                   <div style={{ fontSize: 13.5, marginTop: 4 }}>Request <span style={{ fontFamily: "ui-monospace, monospace" }}>{r.jobRequestNumber ?? `${r.jobRequestId.slice(0, 8)}…`}</span></div>
-                  <div style={{ color: C.muted, fontSize: 11.5, marginTop: 2 }}>{fmt(r.createdAt)} · needs {r.requiredWorkerCount} worker(s)</div>
+                  <div style={{ fontSize: 13, marginTop: 2, fontWeight: 600 }}>Shift: {shiftWhen(r) ?? "date unknown"}</div>
+                  <div style={{ color: C.muted, fontSize: 11.5, marginTop: 2 }}>Review opened {fmt(r.createdAt)} · needs {r.requiredWorkerCount} {r.requiredWorkerCount === 1 ? "worker" : "workers"}</div>
                 </div>
                 <span style={{ color: C.accent, fontWeight: 600, fontSize: 13 }}>Open review →</span>
               </button>

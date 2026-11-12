@@ -31,7 +31,7 @@ const money = (m: unknown) => {
   return Number.isFinite(n) ? `$${(n / 100).toFixed(2)}` : "—";
 };
 const dt = (s: string | null) =>
-  s ? new Date(s).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" }) : "—";
+  s ? new Date(s).toLocaleString("en-CA", { timeZone: "America/Toronto", dateStyle: "medium", timeStyle: "short" }) : "—";
 
 export default function TransactionReport(
   { jobRequestId, view = "full" }: { jobRequestId: string; view?: View }
@@ -179,7 +179,7 @@ export default function TransactionReport(
                 {copied ? "Copied ✓" : "Copy"}
               </button>
               <span style={{ fontSize: 11, color: C.faint, flexBasis: "100%" }}>
-                {share.view === "worker" ? "Worker view" : "Client view"} · expires {new Date(share.expiresAt).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" })}
+                {share.view === "worker" ? "Worker view" : "Client view"} · expires {new Date(share.expiresAt).toLocaleString("en-CA", { timeZone: "America/Toronto", dateStyle: "medium", timeStyle: "short" })}
                 {share.id ? <> · link id <code style={{ fontFamily: "ui-monospace, monospace" }}>{share.id}</code> (add to CONTROL_ROOM_REVOKED_JTIS to revoke)</> : null}
               </span>
             </div>
