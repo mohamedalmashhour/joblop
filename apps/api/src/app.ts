@@ -331,6 +331,7 @@ import { LONG_TERM_NO_TIMESHEETS_BODY, clockInFields, isLongTermAssignment, isLo
 import { checkInTooEarly, checkInTooEarlyBody } from "./checkInWindow";
 import {
   BOOKED_ASSIGNMENT_STATUSES,
+  CANCELLED_ASSIGNMENT_STATUSES,
   cancelBookedShift,
   cancelledShiftReason,
   SHIFT_ALREADY_STARTED_BODY,
@@ -342,6 +343,8 @@ import { createMarketingContactSync, type MarketingContactSync } from "./mailer/
 import { runShiftReminderSweep } from "./shiftReminderSweep";
 import { searchDateBound } from "./localDay";
 import { registerBrainRoutes } from "./brain/brainRoutes";
+import { hoursReportAvailability, hoursReportDeadline } from "./hoursReport";
+import { latestHoursReports, registerHoursReportRoutes } from "./hoursReportRoutes";
 import { createPrismaDeliveryFailureRecorder, purgeOldDeliveryBodies, withEmailFailureRecording, withSmsFailureRecording } from "./brain/deliveryFailures";
 import { createJoblopBrain } from "./brain/joblopBrain";
 import { createPrismaJoblopBrainData } from "./brain/joblopData";
@@ -9632,7 +9635,26 @@ export function buildApi(options: BuildApiOptions = {}) {
       }
     });
     const hasMore = rows.length > limit;
+    // "Report my hours": the latest report per shift, and whether the worker can report hours now.
+    const reports = await latestHoursReports(prisma!, rows.slice(0, limit).map((r) => r.id));
+    const scheduleNow = new Date();
     const items = rows.slice(0, limit).map((r) => ({
+      hoursReport: reports.has(r.id) ? { status: reports.get(r.id)! } : null,
+      canReportHours: hoursReportAvailability(
+        {
+          attendanceStatus: r.status,
+          assignmentCancelled: (CANCELLED_ASSIGNMENT_STATUSES as readonly string[]).includes(r.assignment.status),
+          jobCancelled: r.jobRequest.status === "cancelled",
+          scheduledStartAt: r.scheduledStartAt,
+          scheduledEndAt: r.scheduledEndAt,
+          checkInAt: r.checkInAt,
+          checkOutAt: r.checkOutAt,
+          latestReportStatus: reports.get(r.id) ?? null,
+          longTerm: "clockInAllowed" in clockInFields(r.jobRequest.jobLength)
+        },
+        scheduleNow
+      ).available,
+      reportHoursUntil: hoursReportDeadline(r.scheduledEndAt).toISOString(),
       attendanceRecordId: r.id, assignmentId: r.assignmentId, jobRequestId: r.jobRequestId, status: r.status,
       scheduledStartAt: r.scheduledStartAt.toISOString(), scheduledEndAt: r.scheduledEndAt.toISOString(), timezone: r.timezone,
       checkInAt: r.checkInAt?.toISOString() ?? null, checkOutAt: r.checkOutAt?.toISOString() ?? null,
@@ -9658,6 +9680,21 @@ export function buildApi(options: BuildApiOptions = {}) {
       ...clockInFields(r.jobRequest.jobLength)
     }));
     return reply.code(200).send({ items, nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null });
+  });
+
+  // "Report my hours": worker report of a shift worked with no check-in; staff approve or reject
+  // (hoursReportRoutes.ts). Approval prepares the timesheet the same way /platform/timesheets/prepare does.
+  registerHoursReportRoutes(app, {
+    prisma: prisma ?? null,
+    validateSession: (request) => authService.validateSession(readBearerToken(request.headers.authorization)),
+    resolveAuthorizationRoles,
+    attendanceService,
+    timesheetService,
+    emailSender,
+    smsSender,
+    staffEmail: staffAlertEmail,
+    isLongTermAttendance: (attendanceRecordId) => isLongTermAttendance(prisma, attendanceRecordId),
+    serializeTimesheet
   });
 
   // ── HR-4 payroll boundary: ApprovedWorkedTime. The ONLY authoritative HR input the future
@@ -11269,6 +11306,10 @@ export function buildApi(options: BuildApiOptions = {}) {
     async requestTimesheetCorrection({ timesheetId, expectedVersion, reason, actorUserId }) {
       const { session, roles } = await requireBrainSession(actorUserId);
       await timesheetService.requestCorrection({ session, roles, timesheetId, expectedVersion, reason });
+    },
+    async markAttendanceMissed({ attendanceRecordId, expectedVersion, reason, actorUserId }) {
+      const { session, roles } = await requireBrainSession(actorUserId);
+      await attendanceService.markMissed({ session, roles, attendanceRecordId, expectedVersion, reason });
     }
   };
   // Logs carry plain values only (counts, keys), never message text or personal details.
@@ -11293,7 +11334,8 @@ export function buildApi(options: BuildApiOptions = {}) {
             rawSmsSender,
             actorUserId: brainActorUserId,
             domain: brainDomain,
-            now: () => new Date()
+            now: () => new Date(),
+            workerWebOrigin: offerCtaOrigin
           }),
           extraSwitches: assistantSwitchKeys(),
           log: brainLog
@@ -13751,6 +13793,7 @@ function createUnavailableAttendanceService(): AttendanceService {
     workerCheckIn: denied,
     workerCheckOut: denied,
     markCompleted: denied,
+    recordReportedHours: denied,
     markMissed: denied,
     markException: denied,
     cancel: denied,

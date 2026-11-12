@@ -9,7 +9,8 @@ import type {
   JoblopBrainEffects,
   ReviewRequestRow,
   TimesheetRow,
-  UnfilledJobRow
+  UnfilledJobRow,
+  UnreportedShiftRow
 } from "./joblopRules";
 
 // TEST ONLY: fixtures and fakes for the Joblop brain tests.
@@ -27,6 +28,7 @@ export type FakeRows = {
   timesheets: TimesheetRow[];
   invoices: InvoiceRow[];
   finished: FinishedShiftRow[];
+  unreported?: UnreportedShiftRow[];
 };
 
 export const emptyRows = (): FakeRows => ({ unfilled: [], shifts: [], failures: [], requests: [], timesheets: [], invoices: [], finished: [] });
@@ -39,7 +41,8 @@ export function fakeData(rows: FakeRows): JoblopBrainData {
     requestsInReview: async () => rows.requests,
     openTimesheets: async () => rows.timesheets,
     overdueInvoices: async () => rows.invoices,
-    finishedShiftsWithoutTimesheet: async () => rows.finished
+    finishedShiftsWithoutTimesheet: async () => rows.finished,
+    unreportedShifts: async () => rows.unreported ?? []
   };
 }
 
@@ -72,7 +75,9 @@ export function fakeEffects(outcome: ActionOutcome = { status: "done", detail: "
     reopenTimesheet: async (id) => {
       calls.push({ name: "reopenTimesheet", id });
       return { ok: true, detail: "reopened" };
-    }
+    },
+    notifyWorkerToReportHours: record("notifyWorkerToReportHours"),
+    closeUnreportedShift: record("closeUnreportedShift")
   };
   return { effects, calls };
 }

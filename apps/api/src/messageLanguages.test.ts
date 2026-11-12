@@ -3,7 +3,18 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { confirmEmailMessage } from "./addEmail";
-import { checkInReminderSmsText, noShowEmployerEmail, summaryCopy, timesheetReminderEmail, workerTimesheetReminderEmail, workerTimesheetReminderSmsText } from "./brain/brainText";
+import {
+  checkInReminderSmsText,
+  noShowEmployerEmail,
+  reportHoursNoticeEmail,
+  reportHoursNoticeSmsText,
+  shiftNotRecordedEmployerEmail,
+  summaryCopy,
+  timesheetReminderEmail,
+  workerTimesheetReminderEmail,
+  workerTimesheetReminderSmsText
+} from "./brain/brainText";
+import { hoursReportRejectedEmail, hoursReportRejectedSmsText } from "./hoursReport";
 import { contactRepliedEmail } from "./instantContactRoutes";
 import { jobAlertConfirmationEmail, jobAlertDigestEmail } from "./jobAlerts";
 import { applicationDecisionEmail } from "./longTermApplications";
@@ -61,6 +72,15 @@ const TEMPLATES: Record<string, (language: Lang) => string> = {
   checkInReminderSmsText: (language) => checkInReminderSmsText({ language, title: "Farm worker", startAt, timezone: "America/Toronto" }),
   workerTimesheetReminderEmail: (language) => flat(workerTimesheetReminderEmail({ to: "w@x.test", language, title: "Farm worker", shiftStart: startAt, timezone: "America/Toronto" })),
   workerTimesheetReminderSmsText: (language) => workerTimesheetReminderSmsText({ language, title: "Farm worker", shiftStart: startAt, timezone: "America/Toronto" }),
+  reportHoursNoticeEmail: (language) =>
+    flat(reportHoursNoticeEmail({ to: "w@x.test", language, title: "Farm worker", shiftStart: startAt, timezone: "America/Toronto", deadline: new Date("2027-02-13T07:00:00.000Z"), link: "https://joblop.com/schedule", last: false })),
+  reportHoursNoticeSmsText: (language) =>
+    reportHoursNoticeSmsText({ language, title: "Farm worker", deadline: new Date("2027-02-13T07:00:00.000Z"), link: "https://joblop.com/schedule", last: true }),
+  shiftNotRecordedEmployerEmail: (language) =>
+    flat(shiftNotRecordedEmployerEmail({ to: "e@x.test", language, jobCode: "JR-2026-000007", title: "Farm worker", shiftStart: startAt, timezone: "America/Toronto" })),
+  hoursReportRejectedEmail: (language) =>
+    flat(hoursReportRejectedEmail({ to: "w@x.test", language, title: "Farm worker", startAt, timezone: "America/Toronto", reason: "The farm has no record of this shift." })),
+  hoursReportRejectedSmsText: (language) => hoursReportRejectedSmsText({ language, title: "Farm worker", startAt, timezone: "America/Toronto" }),
   jobAlertConfirmationEmail: (language) =>
     flat(jobAlertConfirmationEmail({ to: "w@x.test", language, criteria: { roleKeywords: "farm", province: "QC" }, workerWebOrigin: "https://joblop.com", unsubscribeToken: "t" })),
   jobAlertDigestEmail: (language) =>
@@ -120,8 +140,9 @@ describe("every email exists in English, French and Arabic; every SMS in English
 });
 
 // Builders are exported functions named …Email, …EmailMessage, …SmsText or …Sms (helpers excluded).
-const NOT_TEMPLATES = new Set(["noticeSms", "codeSms", "isPlausibleEmail", "sendsEmail", "sendPaymentReceiptEmail", "unfilledShiftsEmail"]);
-// unfilledShiftsEmail: the staff-inbox alert, which already carries EN, FR and AR in one message.
+const NOT_TEMPLATES = new Set(["noticeSms", "codeSms", "isPlausibleEmail", "sendsEmail", "sendPaymentReceiptEmail", "unfilledShiftsEmail", "hoursReportStaffAlertEmail"]);
+// unfilledShiftsEmail, hoursReportStaffAlertEmail: staff-inbox alerts, which already carry EN, FR and
+// AR in one message (hoursReport.test.ts checks all three are there).
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {

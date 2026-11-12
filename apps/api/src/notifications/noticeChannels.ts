@@ -2,7 +2,8 @@
 //   - Sign-in is by mobile number and a texted code. No passwords.
 //   - Email carries documents and information: invoices, receipts, statements, replies, greetings.
 //   - Text carries only what is urgent or important: codes, a confirmed shift, a shift about to
-//     start, a shift started with no check-in yet, a held shift that is cancelled or changed, a paid plan or listing ending tomorrow, and
+//     start, a shift started with no check-in yet, a shift ended with no check-in (12 hours to report
+//     the hours), a held shift that is cancelled or changed, a paid plan or listing ending tomorrow, and
 //     staff alerts marked urgent. Texts cost
 //     money and interrupt, so nothing else.
 //   - Push (the phone app) carries what a worker should see at once: a confirmed, upcoming,
@@ -30,6 +31,9 @@ export type NoticeKind =
   | "check_in_reminder"
   | "timesheet_reminder"
   | "worker_timesheet_reminder"
+  | "hours_report_rejected"
+  | "hours_report_deadline"
+  | "shift_not_recorded_employer"
   | "no_show_employer"
   | "staff_summary";
 
@@ -61,6 +65,14 @@ export const NOTICE_CHANNELS: Readonly<Record<NoticeKind, NoticeChannels>> = {
   // The worker's own hours waiting for their confirmation (their pay depends on it). Email; a text
   // only for a worker with no email (phone sign-in), who could not be reached otherwise.
   worker_timesheet_reminder: { email: true, text: "urgent_only" },
+  // Staff did not accept the hours a worker reported (no check-in): same rule as above, email, and a
+  // text only for a worker with no email.
+  hours_report_rejected: { email: true, text: "urgent_only" },
+  // Brain: a shift ended with no check-in. The worker has 12 hours to report the hours or the shift is
+  // not recorded or paid (owner decision 2026-11-12): urgent, so email and text.
+  hours_report_deadline: { email: true, text: "always" },
+  // Employer: no hours were reported in time for a shift, so it will not be invoiced.
+  shift_not_recorded_employer: { email: true, text: "never" },
   // Employer: their booked worker has not checked in yet and Joblop is on it.
   no_show_employer: { email: true, text: "never" },
   staff_summary: { email: true, text: "never" }

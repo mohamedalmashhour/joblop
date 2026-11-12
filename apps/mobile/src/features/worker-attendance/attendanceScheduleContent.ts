@@ -101,6 +101,25 @@ export type AttendanceCopy = Readonly<{
   cancelStarted: string;
   // Who cancelled a shift (same words as the website schedule). Never the internal reason text.
   cancelledBy: Readonly<Record<"joblop" | "employer" | "worker", string>>;
+  // "Report my hours" (a shift worked with no check-in): same words as the website schedule.
+  reportCta: string;
+  /** Contains {deadline}: shown on the card of a finished shift with no check-in. */
+  reportDeadlineNotice: string;
+  /** Contains {deadline}. */
+  reportIntro: string;
+  reportArrival: string;
+  reportDeparture: string;
+  reportReason: string;
+  reportSubmit: string;
+  reportClose: string;
+  reportWaiting: string;
+  reportSentNotice: string;
+  reportRejected: string;
+  reportErrTimes: string;
+  reportErrEndBeforeStart: string;
+  reportErrFuture: string;
+  reportErrReason: string;
+  reportErrClosed: string;
 }>;
 
 const en: AttendanceCopy = {
@@ -129,7 +148,23 @@ const en: AttendanceCopy = {
   cancelledNotice: "Your shift is cancelled. The employer and Joblop have been told.",
   cancelledSuspendedNotice: "Your shift is cancelled. Your account is suspended for 7 days; check your email.",
   cancelStarted: "This shift has already started, so it can't be cancelled here. Contact Joblop.",
-  cancelledBy: { joblop: "Cancelled by Joblop", employer: "Cancelled by the employer", worker: "You cancelled this shift" }
+  cancelledBy: { joblop: "Cancelled by Joblop", employer: "Cancelled by the employer", worker: "You cancelled this shift" },
+  reportCta: "Report my hours",
+  reportDeadlineNotice: "No check-in recorded. You have until {deadline} to report your hours. After that, this shift will not be recorded or paid.",
+  reportIntro: "You worked this shift but didn't check in? Tell Joblop when you arrived and when you left. Joblop checks it before your hours count. You can do this until {deadline}.",
+  reportArrival: "Arrival time",
+  reportDeparture: "Departure time",
+  reportReason: "Why didn't you check in? (short reason)",
+  reportSubmit: "Send my hours",
+  reportClose: "Not now",
+  reportWaiting: "Waiting for Joblop to approve",
+  reportSentNotice: "Your hours were sent. Joblop will check them and let you know.",
+  reportRejected: "Joblop did not accept the hours you reported. Check your email.",
+  reportErrTimes: "Enter your arrival and departure times.",
+  reportErrEndBeforeStart: "The departure time must be after the arrival time.",
+  reportErrFuture: "The departure time can't be in the future.",
+  reportErrReason: "Write a short reason (at least 3 characters).",
+  reportErrClosed: "Hours can no longer be reported for this shift. Contact Joblop."
 };
 
 const fr: AttendanceCopy = {
@@ -158,7 +193,23 @@ const fr: AttendanceCopy = {
   cancelledNotice: "Votre quart est annulé. L'employeur et Joblop ont été avisés.",
   cancelledSuspendedNotice: "Votre quart est annulé. Votre compte est suspendu 7 jours; consultez vos courriels.",
   cancelStarted: "Ce quart a déjà commencé : il ne peut plus être annulé ici. Contactez Joblop.",
-  cancelledBy: { joblop: "Annulé par Joblop", employer: "Annulé par l’employeur", worker: "Vous avez annulé ce quart" }
+  cancelledBy: { joblop: "Annulé par Joblop", employer: "Annulé par l’employeur", worker: "Vous avez annulé ce quart" },
+  reportCta: "Déclarer mes heures",
+  reportDeadlineNotice: "Aucun pointage enregistré. Vous avez jusqu'au {deadline} pour déclarer vos heures. Après, ce quart ne sera ni enregistré ni payé.",
+  reportIntro: "Vous avez travaillé ce quart sans pointer? Indiquez à Joblop l'heure de votre arrivée et de votre départ. Joblop vérifie avant que vos heures comptent. Vous pouvez le faire jusqu'au {deadline}.",
+  reportArrival: "Heure d'arrivée",
+  reportDeparture: "Heure de départ",
+  reportReason: "Pourquoi n'avez-vous pas pointé? (courte raison)",
+  reportSubmit: "Envoyer mes heures",
+  reportClose: "Pas maintenant",
+  reportWaiting: "En attente de l'approbation de Joblop",
+  reportSentNotice: "Vos heures ont été envoyées. Joblop va les vérifier et vous tenir au courant.",
+  reportRejected: "Joblop n'a pas accepté les heures déclarées. Consultez vos courriels.",
+  reportErrTimes: "Indiquez votre heure d'arrivée et votre heure de départ.",
+  reportErrEndBeforeStart: "L'heure de départ doit être après l'heure d'arrivée.",
+  reportErrFuture: "L'heure de départ ne peut pas être dans le futur.",
+  reportErrReason: "Écrivez une courte raison (au moins 3 caractères).",
+  reportErrClosed: "Il n'est plus possible de déclarer des heures pour ce quart. Contactez Joblop."
 };
 
 const ar: AttendanceCopy = {
@@ -177,7 +228,7 @@ const ar: AttendanceCopy = {
   emptyBody: "تظهر فرص العمل المؤكَّدة هنا.",
   signInRequiredTitle: "تسجيل الدخول مطلوب",
   errorTitle: "حدث خطأ ما",
-  longTermNoClockIn: "وظيفة طويلة: يدفع لك صاحب العمل مباشرة، لذا لا يوجد تسجيل حضور أو ورقة دوام على Joblop.",
+  longTermNoClockIn: "وظيفة طويلة: يدفع لك صاحب العمل مباشرة، لذا لا يوجد تسجيل وصول أو ورقة دوام على Joblop.",
   cancelCta: "إلغاء هذه المناوبة",
   cancelTitle: "هل تريد إلغاء هذه المناوبة؟",
   cancelFreeBody: "تبدأ المناوبة بعد أكثر من 24 ساعة، لذلك الإلغاء مجاني. تُحذف من جدولك وتعود إلى لوحة الوظائف لعامل آخر. يتم إبلاغ صاحب العمل وJoblop.",
@@ -187,7 +238,23 @@ const ar: AttendanceCopy = {
   cancelledNotice: "تم إلغاء مناوبتك. تم إبلاغ صاحب العمل وJoblop.",
   cancelledSuspendedNotice: "تم إلغاء مناوبتك. حسابك معلَّق لمدة 7 أيام؛ راجع بريدك الإلكتروني.",
   cancelStarted: "بدأت هذه المناوبة بالفعل، لذا لا يمكن إلغاؤها من هنا. تواصل مع Joblop.",
-  cancelledBy: { joblop: "ألغتها Joblop", employer: "ألغاها صاحب العمل", worker: "لقد ألغيت هذه المناوبة" }
+  cancelledBy: { joblop: "ألغتها Joblop", employer: "ألغاها صاحب العمل", worker: "لقد ألغيت هذه المناوبة" },
+  reportCta: "أبلغ عن ساعاتي",
+  reportDeadlineNotice: "لم يُسجَّل أي حضور. أمامك حتى {deadline} للإبلاغ عن ساعاتك. بعد ذلك لن تُسجَّل هذه المناوبة ولن تُدفع.",
+  reportIntro: "عملت في هذه المناوبة ولم تسجّل دخولك؟ أخبر Joblop بوقت وصولك ووقت مغادرتك. تتحقق Joblop من ذلك قبل احتساب ساعاتك. يمكنك فعل ذلك حتى {deadline}.",
+  reportArrival: "وقت الوصول",
+  reportDeparture: "وقت المغادرة",
+  reportReason: "لماذا لم تسجّل دخولك؟ (سبب قصير)",
+  reportSubmit: "أرسل ساعاتي",
+  reportClose: "ليس الآن",
+  reportWaiting: "بانتظار موافقة Joblop",
+  reportSentNotice: "تم إرسال ساعاتك. ستتحقق Joblop منها وتُعلمك.",
+  reportRejected: "لم تقبل Joblop الساعات التي أبلغت عنها. راجع بريدك الإلكتروني.",
+  reportErrTimes: "أدخل وقت وصولك ووقت مغادرتك.",
+  reportErrEndBeforeStart: "يجب أن يكون وقت المغادرة بعد وقت الوصول.",
+  reportErrFuture: "لا يمكن أن يكون وقت المغادرة في المستقبل.",
+  reportErrReason: "اكتب سببًا قصيرًا (3 أحرف على الأقل).",
+  reportErrClosed: "لم يعد بالإمكان الإبلاغ عن ساعات لهذه المناوبة. تواصل مع Joblop."
 };
 
 const BY_LOCALE: Record<Locale, AttendanceCopy> = { en, fr, ar };
@@ -244,4 +311,73 @@ export function torontoDay(iso: string, locale: Locale): string {
 /** True when cancelling now is a late cancellation (less than 24 h before the start): 7-day suspension. */
 export function isLateCancellation(scheduledStartAt: string, now: number = Date.now()): boolean {
   return new Date(scheduledStartAt).getTime() - now < 24 * 3_600_000;
+}
+
+// ── "Report my hours" (same rules as the website schedule card) ──
+
+const SHIFT_ZONE = "America/Toronto";
+
+export type ReportHoursView = "form" | "waiting" | "rejected" | null;
+
+/** What the card shows for "Report my hours", from the API's fields (the API decides). */
+export function reportHoursView(
+  record: Readonly<{ canReportHours?: boolean; reportHoursUntil?: string | null; hoursReport?: Readonly<{ status: string }> | null; clockInAllowed?: boolean }>,
+  now: number = Date.now()
+): ReportHoursView {
+  if (record.clockInAllowed === false) return null;
+  if (record.hoursReport?.status === "pending") return "waiting";
+  const open = record.canReportHours === true && (!record.reportHoursUntil || now <= new Date(record.reportHoursUntil).getTime());
+  if (open) return "form";
+  if (record.hoursReport?.status === "rejected") return "rejected";
+  return null;
+}
+
+/** "HH:MM" (24 h) of an instant on Québec time, the starting value of the time fields. */
+export function shiftClock(iso: string, timeZone: string = SHIFT_ZONE): string {
+  try {
+    return new Intl.DateTimeFormat("en-GB", { timeZone: timeZone || SHIFT_ZONE, hourCycle: "h23", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
+  } catch {
+    return new Date(iso).toISOString().slice(11, 16);
+  }
+}
+
+const CLOCK = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+/** Accepts "8:05" or "08:05" and returns "08:05"; null when it is not a time. */
+export function normalizeClock(value: string): string | null {
+  const trimmed = value.trim();
+  const padded = /^\d:\d\d$/.test(trimmed) ? `0${trimmed}` : trimmed;
+  return CLOCK.test(padded) ? padded : null;
+}
+
+export type ReportErrorKey = "reportErrTimes" | "reportErrEndBeforeStart" | "reportErrFuture" | "reportErrReason" | "reportErrClosed" | "reportWaiting";
+
+/** The checks the form makes before sending (the API checks them all again). */
+export function reportInputError(arrival: string, departure: string, reason: string): ReportErrorKey | null {
+  const a = normalizeClock(arrival);
+  const d = normalizeClock(departure);
+  if (!a || !d) return "reportErrTimes";
+  if (d <= a) return "reportErrEndBeforeStart";
+  if (reason.trim().length < 3) return "reportErrReason";
+  return null;
+}
+
+/** The message for a report the API refused (its `reason`). */
+export function reportRefusalKey(reason: string | null | undefined): ReportErrorKey {
+  if (reason === "end_before_start") return "reportErrEndBeforeStart";
+  if (reason === "in_future") return "reportErrFuture";
+  if (reason === "reason_required") return "reportErrReason";
+  if (reason === "invalid_time") return "reportErrTimes";
+  if (reason === "already_pending") return "reportWaiting";
+  return "reportErrClosed";
+}
+
+/** The report deadline on Québec time, for the form's intro line. */
+export function formatReportDeadline(iso: string, locale: Locale): string {
+  const intl = locale === "en" ? "en-CA" : locale === "fr" ? "fr-CA" : "ar-u-nu-latn";
+  try {
+    return new Intl.DateTimeFormat(intl, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: SHIFT_ZONE }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
 }

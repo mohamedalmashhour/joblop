@@ -100,6 +100,8 @@ export const brainText: PageText<BrainCopy> = {
       auto_approve_request: "Approve a request that passes every check",
       auto_approve_timesheet: "Approve hours with check-in, check-out and no problems",
       daily_summary_email: "Daily summary email to staff",
+      notify_worker_report_hours: "Tell a worker with no check-in to report their hours (12 h)",
+      close_unreported_shift: "Close a shift with no hours reported in time (employer told)",
       "remind_worker_timesheet": "Remind a worker to confirm their hours (email, or text without email)",
       "assistant.claim_open_job": "Assistant: a worker claimed a job",
       "assistant.cancel_my_shift": "Assistant: a worker cancelled a shift",
@@ -122,18 +124,24 @@ export const brainText: PageText<BrainCopy> = {
       timesheet_ready: "Hours ready to approve",
       invoice_overdue: "Overdue invoice",
       job_missing_info: "Job missing information",
-      "hours_not_prepared": "Shift ended, no hours prepared"
+      "hours_not_prepared": "Shift ended, no hours prepared",
+      hours_not_reported: "No check-in: worker has 12 h to report hours",
+      shift_not_recorded: "Not recorded: no hours reported in time"
     },
     switchHelp: {
       "remind_worker_timesheet": "24 h after the shift, if the worker has not confirmed their hours. The employer is asked only after the worker confirms.",
       "remind_worker_check_in": "10 min after the start. The employer also gets one short email saying the worker has not checked in yet and Joblop is on it.",
-      "offer_employer_bonus": "Only for jobs on the job board, and never again after the employer said no."
+      "offer_employer_bonus": "Only for jobs on the job board, and never again after the employer said no.",
+      notify_worker_report_hours: "Right after a shift ends with no check-in: one email and text with the deadline (end + 12 h, Eastern time) and a link to the shift. One last reminder 2 h before the deadline. Never twice.",
+      close_unreported_shift: "After the 12 h with no report: the shift is marked missed (not recorded, no timesheet, no invoice) and the employer gets one email. Staff can still enter the hours in Timesheets."
     },
     ruleHelp: {
       "job_unfilled_soon": "Raised 24 h before the start. At 4 h the same problem is updated and marked urgent; it is not closed and reopened.",
       "worker_not_checked_in": "Stays open until the worker checks in or staff close it. If the worker could not be texted, it shows as needing a person.",
       "timesheet_unconfirmed": "24 h after the shift: first the worker is reminded, then the employer once the worker has confirmed.",
-      "hours_not_prepared": "The shift ended over 2 h ago and no timesheet exists yet. A person must check it."
+      "hours_not_prepared": "The shift ended over 2 h ago and no timesheet exists yet. A person must check it.",
+      hours_not_reported: "The shift ended with no check-in. The worker can report the hours until 12 h after the end; otherwise it is not recorded.",
+      shift_not_recorded: "The 12 h passed with no hours reported: no hours, no pay, no invoice unless staff enter the hours."
     },
     issuesHeading: "Open problems",
     issuesEmpty: "No open problems.",
@@ -208,6 +216,8 @@ export const brainText: PageText<BrainCopy> = {
       auto_approve_request: "Approuver une demande qui passe toutes les vérifications",
       auto_approve_timesheet: "Approuver des heures avec arrivée, départ et aucun problème",
       daily_summary_email: "Résumé quotidien par courriel au personnel",
+      notify_worker_report_hours: "Aviser un travailleur sans pointage de déclarer ses heures (12 h)",
+      close_unreported_shift: "Fermer un quart sans heures déclarées à temps (employeur avisé)",
       "remind_worker_timesheet": "Rappeler à un travailleur de confirmer ses heures (courriel, ou texto sans courriel)",
       "assistant.claim_open_job": "Assistant : un travailleur a pris un emploi",
       "assistant.cancel_my_shift": "Assistant : un travailleur a annulé un quart",
@@ -230,18 +240,24 @@ export const brainText: PageText<BrainCopy> = {
       timesheet_ready: "Heures prêtes à approuver",
       invoice_overdue: "Facture en retard",
       job_missing_info: "Mission avec informations manquantes",
-      "hours_not_prepared": "Quart terminé, heures non préparées"
+      "hours_not_prepared": "Quart terminé, heures non préparées",
+      hours_not_reported: "Sans pointage : le travailleur a 12 h pour déclarer ses heures",
+      shift_not_recorded: "Non enregistré : aucune heure déclarée à temps"
     },
     switchHelp: {
       "remind_worker_timesheet": "24 h après le quart, si le travailleur n’a pas confirmé ses heures. L’employeur n’est sollicité qu’après la confirmation du travailleur.",
       "remind_worker_check_in": "10 min après le début. L’employeur reçoit aussi un court courriel : le travailleur n’est pas encore arrivé et Joblop s’en occupe.",
-      "offer_employer_bonus": "Seulement pour les emplois sur le babillard, et plus jamais après un refus de l’employeur."
+      "offer_employer_bonus": "Seulement pour les emplois sur le babillard, et plus jamais après un refus de l’employeur.",
+      notify_worker_report_hours: "Dès la fin d’un quart sans pointage : un courriel et un texto avec la limite (fin + 12 h, heure de l’Est) et un lien vers le quart. Un dernier rappel 2 h avant la limite. Jamais deux fois.",
+      close_unreported_shift: "Après les 12 h sans déclaration : le quart est marqué manqué (non enregistré, sans feuille de temps ni facture) et l’employeur reçoit un courriel. Le personnel peut encore saisir les heures dans Feuilles de temps."
     },
     ruleHelp: {
       "job_unfilled_soon": "Signalé 24 h avant le début. À 4 h, le même problème est mis à jour et marqué urgent; il n’est pas fermé puis rouvert.",
       "worker_not_checked_in": "Reste ouvert jusqu’à l’arrivée du travailleur ou sa fermeture par le personnel. Si le texto n’a pas pu partir, il est marqué « une personne doit s’en occuper ».",
       "timesheet_unconfirmed": "24 h après le quart : d’abord un rappel au travailleur, puis à l’employeur une fois que le travailleur a confirmé.",
-      "hours_not_prepared": "Le quart est terminé depuis plus de 2 h et aucune feuille de temps n’existe encore. Une personne doit vérifier."
+      "hours_not_prepared": "Le quart est terminé depuis plus de 2 h et aucune feuille de temps n’existe encore. Une personne doit vérifier.",
+      hours_not_reported: "Le quart s’est terminé sans pointage. Le travailleur peut déclarer ses heures jusqu’à 12 h après la fin; sinon, il n’est pas enregistré.",
+      shift_not_recorded: "Les 12 h sont passées sans déclaration : aucune heure, aucune paie, aucune facture, sauf si le personnel saisit les heures."
     },
     issuesHeading: "Problèmes ouverts",
     issuesEmpty: "Aucun problème ouvert.",
@@ -316,6 +332,8 @@ export const brainText: PageText<BrainCopy> = {
       auto_approve_request: "الموافقة على طلب يجتاز كل الفحوص",
       auto_approve_timesheet: "الموافقة على ساعات فيها وصول ومغادرة وبلا مشكلات",
       daily_summary_email: "ملخص يومي بالبريد للموظفين",
+      notify_worker_report_hours: "إبلاغ عامل دون تسجيل وصول بالإبلاغ عن ساعاته (12 ساعة)",
+      close_unreported_shift: "إغلاق مناوبة لم يُبلَغ عن ساعاتها في الوقت المحدد (يُبلَّغ صاحب العمل)",
       "remind_worker_timesheet": "تذكير العامل بتأكيد ساعاته (بريد، أو رسالة نصية إن لم يكن لديه بريد)",
       "assistant.claim_open_job": "المساعد: عامل أخذ وظيفة",
       "assistant.cancel_my_shift": "المساعد: عامل ألغى مناوبة",
@@ -338,18 +356,24 @@ export const brainText: PageText<BrainCopy> = {
       timesheet_ready: "ساعات جاهزة للموافقة",
       invoice_overdue: "فاتورة متأخرة",
       job_missing_info: "وظيفة تنقصها معلومات",
-      "hours_not_prepared": "انتهت المناوبة دون تحضير الساعات"
+      "hours_not_prepared": "انتهت المناوبة دون تحضير الساعات",
+      hours_not_reported: "دون تسجيل وصول: أمام العامل 12 ساعة للإبلاغ عن ساعاته",
+      shift_not_recorded: "غير مسجّلة: لم يُبلَغ عن أي ساعات في الوقت المحدد"
     },
     switchHelp: {
       "remind_worker_timesheet": "بعد 24 ساعة من المناوبة إذا لم يؤكد العامل ساعاته. لا يُطلب من صاحب العمل التأكيد إلا بعد تأكيد العامل.",
       "remind_worker_check_in": "بعد 10 دقائق من البدء. ويتلقى صاحب العمل أيضًا بريدًا قصيرًا يفيد بأن العامل لم يسجّل وصوله بعد وأن Joblop تتابع الأمر.",
-      "offer_employer_bonus": "فقط للوظائف المنشورة على لوحة الوظائف، ولا يُعاد العرض بعد رفض صاحب العمل."
+      "offer_employer_bonus": "فقط للوظائف المنشورة على لوحة الوظائف، ولا يُعاد العرض بعد رفض صاحب العمل.",
+      notify_worker_report_hours: "فور انتهاء مناوبة دون تسجيل وصول: بريد ورسالة نصية بالمهلة (النهاية + 12 ساعة، توقيت الشرق) ورابط إلى المناوبة. تذكير أخير قبل المهلة بساعتين. لا يُرسل مرتين.",
+      close_unreported_shift: "بعد مرور 12 ساعة دون بلاغ: تُعلَّم المناوبة كغائبة (غير مسجّلة، دون سجل دوام أو فاتورة) ويتلقى صاحب العمل بريدًا واحدًا. يمكن للفريق إدخال الساعات في كشوف الساعات."
     },
     ruleHelp: {
       "job_unfilled_soon": "يُرفع قبل 24 ساعة من البدء. عند 4 ساعات تُحدَّث المشكلة نفسها وتُعلَّم عاجلة، ولا تُغلق ثم تُفتح من جديد.",
       "worker_not_checked_in": "تبقى مفتوحة حتى يسجّل العامل وصوله أو يغلقها الموظفون. إذا تعذّر إرسال رسالة للعامل، تظهر على أنها تحتاج إلى شخص.",
       "timesheet_unconfirmed": "بعد 24 ساعة من المناوبة: يُذكَّر العامل أولًا، ثم صاحب العمل بعد أن يؤكد العامل.",
-      "hours_not_prepared": "انتهت المناوبة منذ أكثر من ساعتين ولا يوجد سجل دوام بعد. يجب أن يتحقق شخص من ذلك."
+      "hours_not_prepared": "انتهت المناوبة منذ أكثر من ساعتين ولا يوجد سجل دوام بعد. يجب أن يتحقق شخص من ذلك.",
+      hours_not_reported: "انتهت المناوبة دون تسجيل وصول. يمكن للعامل الإبلاغ عن ساعاته حتى 12 ساعة بعد النهاية؛ وإلا فلن تُسجَّل.",
+      shift_not_recorded: "مرّت 12 ساعة دون الإبلاغ عن ساعات: لا ساعات ولا أجر ولا فاتورة، إلا إذا أدخل الفريق الساعات."
     },
     issuesHeading: "المشكلات المفتوحة",
     issuesEmpty: "لا توجد مشكلات مفتوحة.",
