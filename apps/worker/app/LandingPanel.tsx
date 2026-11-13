@@ -186,6 +186,12 @@ function SignInForm({ onSignedIn, onNeedAccount, onStep }: { onSignedIn: () => v
 
   async function sendCode(event?: React.FormEvent) {
     event?.preventDefault();
+    // Reject obviously-malformed numbers before claiming a code is on its way (a real mobile number
+    // has at least 10 digits). The backend still validates; this is immediate, honest feedback.
+    if (phone.replace(/\D/g, "").length < 10) {
+      setError(t("auth.invalidPhone"));
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
