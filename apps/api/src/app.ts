@@ -344,6 +344,7 @@ import { createMarketingContactSync, type MarketingContactSync } from "./mailer/
 import { runShiftReminderSweep } from "./shiftReminderSweep";
 import { searchDateBound } from "./localDay";
 import { registerBrainRoutes } from "./brain/brainRoutes";
+import { registerCrmRoutes } from "./crm/crmRoutes";
 import { hoursReportAvailability, hoursReportDeadline } from "./hoursReport";
 import { latestHoursReports, registerHoursReportRoutes } from "./hoursReportRoutes";
 import { createPrismaDeliveryFailureRecorder, purgeOldDeliveryBodies, withEmailFailureRecording, withSmsFailureRecording } from "./brain/deliveryFailures";
@@ -11413,6 +11414,15 @@ export function buildApi(options: BuildApiOptions = {}) {
     actorConfigured: brainActorUserId !== null,
     ...(prisma ? { afterSweep: () => purgeOldDeliveryBodies(prisma, new Date()) } : {}),
     log: brainLog
+  });
+
+  // ── CRM core (phase 1) ──────────────────────────────────────────────────────────────────────────
+  // Staff-only pipeline + contacts, served to the dedicated CRM app. Platform-administrator authority
+  // is enforced here (requireStaff sends 401/403 and returns null before any write). Nothing in this
+  // phase sends marketing email or moves money; consent is read-only.
+  registerCrmRoutes(app, {
+    prisma: prisma ?? null,
+    requireStaff: async (request, reply) => (await requirePlatformAdmin(request, reply))?.id ?? null
   });
 
   // Upcoming holiday occasions for the active country — drives the greeting-card occasion picker.

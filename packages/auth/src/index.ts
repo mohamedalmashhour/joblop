@@ -51,9 +51,11 @@ export {
 export {
   createFrontendSessionGateway,
   localAdminSessionCookieName,
+  localCrmSessionCookieName,
   localEmployerSessionCookieName,
   localFrontendSessionCookieName,
   secureAdminSessionCookieName,
+  secureCrmSessionCookieName,
   secureEmployerSessionCookieName,
   secureFrontendSessionCookieName,
   type FrontendSessionFetch,

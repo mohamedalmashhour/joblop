@@ -27,6 +27,14 @@
       "readiness": "/ready"
     },
     {
+      "name": "crm",
+      "application": "@rwos/crm",
+      "dockerfile": "apps/crm/Dockerfile",
+      "port": 8080,
+      "liveness": "/health",
+      "readiness": "/ready"
+    },
+    {
       "name": "worker",
       "application": "@rwos/mobile",
       "dockerfile": "apps/mobile/Dockerfile",

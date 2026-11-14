@@ -420,21 +420,21 @@ enum UploadedDocumentState {
 }
 
 model User {
-  id              String     @id @default(uuid()) @db.Uuid
+  id                   String                @id @default(uuid()) @db.Uuid
   supportConversations SupportConversation[] @relation("SupportConversationRequester")
-  publicId        String     @unique @map("public_id")
-  emailNormalized String     @unique @map("email_normalized")
-  displayName     String?    @map("display_name")
-  phone           String?    @map("phone")
-  status          UserStatus @default(email_verification_pending)
-  primaryLanguage String?    @map("primary_language")
-  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
-  disabledAt      DateTime?  @map("disabled_at") @db.Timestamptz(3)
-  closedAt        DateTime?  @map("closed_at") @db.Timestamptz(3)
+  publicId             String                @unique @map("public_id")
+  emailNormalized      String                @unique @map("email_normalized")
+  displayName          String?               @map("display_name")
+  phone                String?               @map("phone")
+  status               UserStatus            @default(email_verification_pending)
+  primaryLanguage      String?               @map("primary_language")
+  createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+  disabledAt           DateTime?             @map("disabled_at") @db.Timestamptz(3)
+  closedAt             DateTime?             @map("closed_at") @db.Timestamptz(3)
   // Set with status='disabled' when an admin applies a time-boxed (7-day) worker suspension; the
   // sign-in path auto-reinstates (status='active', this cleared) once it passes. Null otherwise.
-  suspendedUntil  DateTime?  @map("suspended_until") @db.Timestamptz(3)
+  suspendedUntil       DateTime?             @map("suspended_until") @db.Timestamptz(3)
 
   identities                    UserIdentity[]
   sessions                      Session[]
@@ -487,6 +487,10 @@ model User {
   googleOAuthToken              GoogleOAuthToken?
   pushTokens                    PushToken[]
   jobAlertSubscriptions         JobAlertSubscription[]
+  crmContacts                   CrmContact[]                 @relation("CrmContactUser")
+  assignedCrmContacts           CrmContact[]                 @relation("CrmContactAssignee")
+  createdCrmContacts            CrmContact[]                 @relation("CrmContactCreatedBy")
+  crmActivities                 CrmActivity[]                @relation("CrmActivityActor")
 
   @@index([emailNormalized], map: "users_email_normalized_idx")
   @@index([status], map: "users_status_idx")
@@ -597,55 +601,56 @@ model PasswordResetToken {
 }
 
 model EmployerOrganization {
-  id               String                     @id @default(uuid()) @db.Uuid
-  publicId         String                     @unique @map("public_id")
-  legalName        String                     @map("legal_name")
-  displayName      String                     @map("display_name")
-  status           EmployerOrganizationStatus @default(pending_review)
-  createdByUserId  String?                    @map("created_by_user_id") @db.Uuid
-  reviewedByUserId String?                    @map("reviewed_by_user_id") @db.Uuid
-  createdAt        DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                         String                     @id @default(uuid()) @db.Uuid
+  publicId                   String                     @unique @map("public_id")
+  legalName                  String                     @map("legal_name")
+  displayName                String                     @map("display_name")
+  status                     EmployerOrganizationStatus @default(pending_review)
+  createdByUserId            String?                    @map("created_by_user_id") @db.Uuid
+  reviewedByUserId           String?                    @map("reviewed_by_user_id") @db.Uuid
+  createdAt                  DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                  DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(3)
   // Long-term job listings (EMPLOYER_PLANS_ENABLED): the 2-week free trial and the 50%-off first
   // paid month are each once per organization. Set once by a conditional write; null = still unused.
-  jobListingTrialUsedAt      DateTime? @map("job_listing_trial_used_at") @db.Timestamptz(3)
-  jobListingFirstMonthUsedAt DateTime? @map("job_listing_first_month_used_at") @db.Timestamptz(3)
-  restrictedAt     DateTime?                  @map("restricted_at") @db.Timestamptz(3)
-  suspendedAt      DateTime?                  @map("suspended_at") @db.Timestamptz(3)
-  closedAt         DateTime?                  @map("closed_at") @db.Timestamptz(3)
+  jobListingTrialUsedAt      DateTime?                  @map("job_listing_trial_used_at") @db.Timestamptz(3)
+  jobListingFirstMonthUsedAt DateTime?                  @map("job_listing_first_month_used_at") @db.Timestamptz(3)
+  restrictedAt               DateTime?                  @map("restricted_at") @db.Timestamptz(3)
+  suspendedAt                DateTime?                  @map("suspended_at") @db.Timestamptz(3)
+  closedAt                   DateTime?                  @map("closed_at") @db.Timestamptz(3)
 
-  createdBy            User?                    @relation("EmployerOrganizationCreatedByUser", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  reviewedBy           User?                    @relation("EmployerOrganizationReviewedByUser", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
-  memberships          OrganizationMembership[]
-  residences           Residence[]
-  departments          Department[]
-  jobRequests          JobRequest[]
-  dispatchReviews      DispatchReview[]
-  workerOffers         WorkerOffer[]
-  assignments          Assignment[]
-  attendanceRecords    AttendanceRecord[]
-  timesheets           Timesheet[]
-  invoices             Invoice[]
-  paymentMethods       EmployerPaymentMethod[]
-  paymentAttempts      EmployerPaymentAttempt[]
-  paymentPolicies      PaymentPolicyVersion[]
-  contracts            EmployerContract[]       @relation("EmployerOrganizationContracts")
-  uploadedDocuments    UploadedDocument[]
-  auditActorReferences AuditActorReference[]
-  requestCancellations EmployerRequestCancellation[]
+  createdBy               User?                            @relation("EmployerOrganizationCreatedByUser", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  reviewedBy              User?                            @relation("EmployerOrganizationReviewedByUser", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  memberships             OrganizationMembership[]
+  residences              Residence[]
+  departments             Department[]
+  jobRequests             JobRequest[]
+  dispatchReviews         DispatchReview[]
+  workerOffers            WorkerOffer[]
+  assignments             Assignment[]
+  attendanceRecords       AttendanceRecord[]
+  timesheets              Timesheet[]
+  invoices                Invoice[]
+  paymentMethods          EmployerPaymentMethod[]
+  paymentAttempts         EmployerPaymentAttempt[]
+  paymentPolicies         PaymentPolicyVersion[]
+  contracts               EmployerContract[]               @relation("EmployerOrganizationContracts")
+  uploadedDocuments       UploadedDocument[]
+  auditActorReferences    AuditActorReference[]
+  requestCancellations    EmployerRequestCancellation[]
   cancellationObligations EmployerCancellationObligation[]
-  capacityReductions EmployerCapacityReduction[]
-  changeProposals EmployerRequestChangeProposal[]
-  workerInterests WorkerJobInterest[]
-  verification EmployerVerification?
+  capacityReductions      EmployerCapacityReduction[]
+  changeProposals         EmployerRequestChangeProposal[]
+  workerInterests         WorkerJobInterest[]
+  verification            EmployerVerification?
 
-  orders EmployerOrder[]
-  employerPlans      EmployerPlan[]
-  employerPlanOrders EmployerPlanOrder[]
-  jobListings        JobListing[]
-  jobListingOrders   JobListingOrder[]
-  paymentReceipts    PaymentReceipt[]
+  orders                  EmployerOrder[]
+  employerPlans           EmployerPlan[]
+  employerPlanOrders      EmployerPlanOrder[]
+  jobListings             JobListing[]
+  jobListingOrders        JobListingOrder[]
+  paymentReceipts         PaymentReceipt[]
   lateCancellationCharges LateCancellationCharge[]
+  crmContacts             CrmContact[]             @relation("CrmContactOrganization")
 
   @@index([status], map: "employer_organizations_status_idx")
   @@map("employer_organizations")
@@ -751,31 +756,31 @@ model EmployerRequestCancellation {
 // financial-intent snapshot. NEVER a payment; there is no PAID state. Immutable
 // inputs snapshot (rate, rule hours, contract version) so it reproduces later.
 model EmployerCancellationObligation {
-  id                   String                               @id @default(uuid()) @db.Uuid
-  cancellationId       String                               @unique @map("cancellation_id") @db.Uuid
-  organizationId       String                               @map("organization_id") @db.Uuid
-  jobRequestId         String                               @map("job_request_id") @db.Uuid
-  cause                EmployerCancellationCause
-  confirmedWorkerCount Int                                  @map("confirmed_worker_count")
-  governedRateMinor    Int                                  @map("governed_rate_minor")
-  currency             String
-  minimumShiftHours    Int                                  @map("minimum_shift_hours")
-  cutoffHours          Int                                  @map("cutoff_hours")
-  contractId           String?                              @map("contract_id") @db.Uuid
-  contractVersion      String?                              @map("contract_version")
-  amountMinor          Int                                  @map("amount_minor")
+  id                      String                               @id @default(uuid()) @db.Uuid
+  cancellationId          String                               @unique @map("cancellation_id") @db.Uuid
+  organizationId          String                               @map("organization_id") @db.Uuid
+  jobRequestId            String                               @map("job_request_id") @db.Uuid
+  cause                   EmployerCancellationCause
+  confirmedWorkerCount    Int                                  @map("confirmed_worker_count")
+  governedRateMinor       Int                                  @map("governed_rate_minor")
+  currency                String
+  minimumShiftHours       Int                                  @map("minimum_shift_hours")
+  cutoffHours             Int                                  @map("cutoff_hours")
+  contractId              String?                              @map("contract_id") @db.Uuid
+  contractVersion         String?                              @map("contract_version")
+  amountMinor             Int                                  @map("amount_minor")
   // Worker compensation (3h × worker rate × workers) on a late client cancellation — a payment TO the
   // worker, recorded for governed Finance handling. Never a deduction. No money moves until FINANCE_LIVE.
-  workerCompensationMinor Int                               @default(0) @map("worker_compensation_minor")
-  status               EmployerCancellationObligationStatus @default(RECORDED)
-  computedByUserId     String                               @map("computed_by_user_id") @db.Uuid
-  computedAt           DateTime                             @default(now()) @map("computed_at") @db.Timestamptz(3)
-  createdAt            DateTime                             @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt            DateTime                             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  workerCompensationMinor Int                                  @default(0) @map("worker_compensation_minor")
+  status                  EmployerCancellationObligationStatus @default(RECORDED)
+  computedByUserId        String                               @map("computed_by_user_id") @db.Uuid
+  computedAt              DateTime                             @default(now()) @map("computed_at") @db.Timestamptz(3)
+  createdAt               DateTime                             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime                             @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   cancellation EmployerRequestCancellation @relation(fields: [cancellationId], references: [id], onDelete: Cascade)
-  organization EmployerOrganization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  jobRequest   JobRequest                 @relation(fields: [jobRequestId], references: [id], onDelete: Cascade)
+  organization EmployerOrganization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  jobRequest   JobRequest                  @relation(fields: [jobRequestId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, status], map: "employer_cancellation_obligations_org_status_idx")
   @@map("employer_cancellation_obligations")
@@ -795,32 +800,32 @@ enum EmployerCapacityReductionStatus {
 // (idempotency is by idempotency_key). Holds an embedded commercial-obligation
 // snapshot for the affected confirmed assignments (never PAID; no worker-facing money).
 model EmployerCapacityReduction {
-  id                       String                          @id @default(uuid()) @db.Uuid
-  organizationId           String                          @map("organization_id") @db.Uuid
-  jobRequestId             String                          @map("job_request_id") @db.Uuid
-  initiatedByUserId        String                          @map("initiated_by_user_id") @db.Uuid
-  cause                    EmployerCancellationCause       @default(EMPLOYER_CANCELLED)
-  status                   EmployerCapacityReductionStatus @default(requested)
-  previousTarget           Int                             @map("previous_target")
-  newTarget                Int                             @map("new_target")
-  removedUnfilledCapacity  Int                             @map("removed_unfilled_capacity")
-  affectedConfirmedCount   Int                             @map("affected_confirmed_count")
-  selectedAssignmentIds    Json                            @map("selected_assignment_ids")
-  expectedRequestVersion   Int                             @map("expected_request_version")
-  obligationAmountMinor    Int?                            @map("obligation_amount_minor")
-  governedRateMinor        Int?                            @map("governed_rate_minor")
-  currency                 String
-  minimumShiftHours        Int?                            @map("minimum_shift_hours")
-  cutoffHours              Int?                            @map("cutoff_hours")
-  contractId               String?                         @map("contract_id") @db.Uuid
-  contractVersion          String?                         @map("contract_version")
-  idempotencyKey           String                          @unique @map("idempotency_key")
-  handoffAttempts          Int                             @default(0) @map("handoff_attempts")
-  lastHandoffAt            DateTime?                        @map("last_handoff_at") @db.Timestamptz(3)
-  reconciliationNote       String?                         @map("reconciliation_note")
-  version                  Int                             @default(1)
-  createdAt                DateTime                        @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt                DateTime                        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                      String                          @id @default(uuid()) @db.Uuid
+  organizationId          String                          @map("organization_id") @db.Uuid
+  jobRequestId            String                          @map("job_request_id") @db.Uuid
+  initiatedByUserId       String                          @map("initiated_by_user_id") @db.Uuid
+  cause                   EmployerCancellationCause       @default(EMPLOYER_CANCELLED)
+  status                  EmployerCapacityReductionStatus @default(requested)
+  previousTarget          Int                             @map("previous_target")
+  newTarget               Int                             @map("new_target")
+  removedUnfilledCapacity Int                             @map("removed_unfilled_capacity")
+  affectedConfirmedCount  Int                             @map("affected_confirmed_count")
+  selectedAssignmentIds   Json                            @map("selected_assignment_ids")
+  expectedRequestVersion  Int                             @map("expected_request_version")
+  obligationAmountMinor   Int?                            @map("obligation_amount_minor")
+  governedRateMinor       Int?                            @map("governed_rate_minor")
+  currency                String
+  minimumShiftHours       Int?                            @map("minimum_shift_hours")
+  cutoffHours             Int?                            @map("cutoff_hours")
+  contractId              String?                         @map("contract_id") @db.Uuid
+  contractVersion         String?                         @map("contract_version")
+  idempotencyKey          String                          @unique @map("idempotency_key")
+  handoffAttempts         Int                             @default(0) @map("handoff_attempts")
+  lastHandoffAt           DateTime?                       @map("last_handoff_at") @db.Timestamptz(3)
+  reconciliationNote      String?                         @map("reconciliation_note")
+  version                 Int                             @default(1)
+  createdAt               DateTime                        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime                        @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   organization EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   jobRequest   JobRequest           @relation(fields: [jobRequestId], references: [id], onDelete: Cascade)
@@ -894,29 +899,29 @@ model OrganizationMembership {
 }
 
 model Residence {
-  id              String          @id @default(uuid()) @db.Uuid
-  publicId        String          @unique @map("public_id")
-  organizationId  String          @map("organization_id") @db.Uuid
-  name            String
-  status          ResidenceStatus @default(draft)
-  addressSummary  String?         @map("address_summary")
-  city            String?
-  region          String?
-  country         String?
-  province           String?   @db.Char(2)
-  postalCode         String?   @map("postal_code")
-  addressLine1       String?   @map("address_line1")
-  addressLine2       String?   @map("address_line2")
+  id                 String          @id @default(uuid()) @db.Uuid
+  publicId           String          @unique @map("public_id")
+  organizationId     String          @map("organization_id") @db.Uuid
+  name               String
+  status             ResidenceStatus @default(draft)
+  addressSummary     String?         @map("address_summary")
+  city               String?
+  region             String?
+  country            String?
+  province           String?         @db.Char(2)
+  postalCode         String?         @map("postal_code")
+  addressLine1       String?         @map("address_line1")
+  addressLine2       String?         @map("address_line2")
   latitude           Float?
   longitude          Float?
-  geocodePrecision   String?   @map("geocode_precision")
-  geocodeProvider    String?   @map("geocode_provider")
-  geocodeProviderRef String?   @map("geocode_provider_ref")
-  geocodeResolvedAt  DateTime? @map("geocode_resolved_at") @db.Timestamptz(3)
-  createdByUserId String?         @map("created_by_user_id") @db.Uuid
-  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
-  archivedAt      DateTime?       @map("archived_at") @db.Timestamptz(3)
+  geocodePrecision   String?         @map("geocode_precision")
+  geocodeProvider    String?         @map("geocode_provider")
+  geocodeProviderRef String?         @map("geocode_provider_ref")
+  geocodeResolvedAt  DateTime?       @map("geocode_resolved_at") @db.Timestamptz(3)
+  createdByUserId    String?         @map("created_by_user_id") @db.Uuid
+  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  archivedAt         DateTime?       @map("archived_at") @db.Timestamptz(3)
 
   organization      EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   createdBy         User?                @relation("ResidenceCreatedByUser", fields: [createdByUserId], references: [id], onDelete: SetNull)
@@ -980,13 +985,13 @@ model WorkGroup {
   createdAt                DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  roleDefinitions   RoleDefinition[]
-  jobRequests       JobRequest[]
-  dispatchReviews   DispatchReview[]
-  workerOfferTerms  WorkerOfferTermsVersion[]
-  assignments       Assignment[]
-  attendanceRecords AttendanceRecord[]
-  timesheets        Timesheet[]
+  roleDefinitions     RoleDefinition[]
+  jobRequests         JobRequest[]
+  dispatchReviews     DispatchReview[]
+  workerOfferTerms    WorkerOfferTermsVersion[]
+  assignments         Assignment[]
+  attendanceRecords   AttendanceRecord[]
+  timesheets          Timesheet[]
   workerJobCategories WorkerJobCategory[]
 
   @@index([status, displayOrder], map: "work_groups_status_display_order_idx")
@@ -1169,81 +1174,81 @@ model EmployerOrder {
 }
 
 model JobRequest {
-  id                 String            @id @default(uuid()) @db.Uuid
-  jobRequestNumber   String            @unique @map("job_request_number")
-  organizationId     String            @map("organization_id") @db.Uuid
-  residenceId        String            @map("residence_id") @db.Uuid
-  departmentId       String            @map("department_id") @db.Uuid
-  workGroupId        String            @map("work_group_id") @db.Uuid
-  roleDefinitionId   String            @map("role_definition_id") @db.Uuid
-  orderId            String?           @map("order_id") @db.Uuid
-  creatorUserId      String            @map("creator_user_id") @db.Uuid
-  title              String
-  description        String?
-  numberOfWorkers    Int               @default(1) @map("number_of_workers")
+  id                       String            @id @default(uuid()) @db.Uuid
+  jobRequestNumber         String            @unique @map("job_request_number")
+  organizationId           String            @map("organization_id") @db.Uuid
+  residenceId              String            @map("residence_id") @db.Uuid
+  departmentId             String            @map("department_id") @db.Uuid
+  workGroupId              String            @map("work_group_id") @db.Uuid
+  roleDefinitionId         String            @map("role_definition_id") @db.Uuid
+  orderId                  String?           @map("order_id") @db.Uuid
+  creatorUserId            String            @map("creator_user_id") @db.Uuid
+  title                    String
+  description              String?
+  numberOfWorkers          Int               @default(1) @map("number_of_workers")
   // Hybrid auto-offer: when true, approving+pricing the job opens it for direct worker claim
   // (first eligible worker to tap Accept is assigned instantly, up to numberOfWorkers slots).
   // When false, the job keeps the manual admin shortlist→offer→accept dispatch path unchanged.
-  openClaim          Boolean           @default(false) @map("open_claim")
-  urgency            JobRequestUrgency @default(normal)
-  worksiteDistanceKm Float?            @map("worksite_distance_km") // for the distance (gas/time) surcharge
-  requestType        JobRequestType    @map("request_type")
-  timezone           String
-  startAt            DateTime          @map("start_at") @db.Timestamptz(3)
-  endAt              DateTime          @map("end_at") @db.Timestamptz(3)
-  isMultiDay         Boolean           @default(false) @map("is_multi_day")
-  hasRecurringIntent Boolean           @default(false) @map("has_recurring_intent")
+  openClaim                Boolean           @default(false) @map("open_claim")
+  urgency                  JobRequestUrgency @default(normal)
+  worksiteDistanceKm       Float?            @map("worksite_distance_km") // for the distance (gas/time) surcharge
+  requestType              JobRequestType    @map("request_type")
+  timezone                 String
+  startAt                  DateTime          @map("start_at") @db.Timestamptz(3)
+  endAt                    DateTime          @map("end_at") @db.Timestamptz(3)
+  isMultiDay               Boolean           @default(false) @map("is_multi_day")
+  hasRecurringIntent       Boolean           @default(false) @map("has_recurring_intent")
   // Employer-chosen job length: "short_term" (shifts up to 4 weeks) | "long_term" (contract over 4
   // weeks). Only changes pricing when EMPLOYER_PLANS_ENABLED is on.
-  jobLength          String            @default("short_term") @map("job_length")
+  jobLength                String            @default("short_term") @map("job_length")
   // Long-term jobs only (EMPLOYER_PLANS_ENABLED): the pay the employer offers and pays the worker
   // directly (a listing, Joblop holds no rate). Amount or range in cents, per "hour" or "year".
-  payOfferedMinMinor Int?              @map("pay_offered_min_minor")
-  payOfferedMaxMinor Int?              @map("pay_offered_max_minor")
-  payOfferedUnit     String?           @map("pay_offered_unit")
+  payOfferedMinMinor       Int?              @map("pay_offered_min_minor")
+  payOfferedMaxMinor       Int?              @map("pay_offered_max_minor")
+  payOfferedUnit           String?           @map("pay_offered_unit")
   // Certificates the employer requires (keys from @rwos/shared REQUIRED_CERTIFICATE_KEYS). A worker
   // can claim, apply, accept an offer or be assigned only while holding each one (staff-verified,
   // not expired). "other" is free text in requiredCertificateOther, checked by a person.
-  requiredCertificates     String[]        @default([]) @map("required_certificates")
-  requiredCertificateOther String?         @map("required_certificate_other")
-  status             JobRequestStatus  @default(draft)
-  adminReviewReason  String?           @map("admin_review_reason")
-  version            Int               @default(1)
-  createdByUserId    String            @map("created_by_user_id") @db.Uuid
-  updatedByUserId    String?           @map("updated_by_user_id") @db.Uuid
-  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt          DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
-  submittedAt        DateTime?         @map("submitted_at") @db.Timestamptz(3)
-  cancelledAt        DateTime?         @map("cancelled_at") @db.Timestamptz(3)
-  expiredAt          DateTime?         @map("expired_at") @db.Timestamptz(3)
-  archivedAt         DateTime?         @map("archived_at") @db.Timestamptz(3)
+  requiredCertificates     String[]          @default([]) @map("required_certificates")
+  requiredCertificateOther String?           @map("required_certificate_other")
+  status                   JobRequestStatus  @default(draft)
+  adminReviewReason        String?           @map("admin_review_reason")
+  version                  Int               @default(1)
+  createdByUserId          String            @map("created_by_user_id") @db.Uuid
+  updatedByUserId          String?           @map("updated_by_user_id") @db.Uuid
+  createdAt                DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  submittedAt              DateTime?         @map("submitted_at") @db.Timestamptz(3)
+  cancelledAt              DateTime?         @map("cancelled_at") @db.Timestamptz(3)
+  expiredAt                DateTime?         @map("expired_at") @db.Timestamptz(3)
+  archivedAt               DateTime?         @map("archived_at") @db.Timestamptz(3)
 
-  organization      EmployerOrganization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  residence         Residence                       @relation(fields: [organizationId, residenceId], references: [organizationId, id], onDelete: Restrict)
-  department        Department                      @relation(fields: [organizationId, residenceId, departmentId], references: [organizationId, residenceId, id], onDelete: Restrict)
-  workGroup         WorkGroup                       @relation(fields: [workGroupId], references: [id], onDelete: Restrict)
-  roleDefinition    RoleDefinition                  @relation(fields: [workGroupId, roleDefinitionId], references: [workGroupId, id], onDelete: Restrict)
-  creator           User                            @relation("JobRequestCreator", fields: [creatorUserId], references: [id], onDelete: Restrict)
-  createdBy         User                            @relation("JobRequestCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  updatedBy         User?                           @relation("JobRequestUpdatedByUser", fields: [updatedByUserId], references: [id], onDelete: SetNull)
-  calendarProfile   StaffingRequestCalendarProfile?
-  pricingSnapshot   RequestPricingSnapshot?
-  jobListing        JobListing?
-  order             EmployerOrder?                  @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  dispatchReviews   DispatchReview[]
-  workerOffers      WorkerOffer[]
-  assignments       Assignment[]
-  attendanceRecords AttendanceRecord[]
-  timesheets        Timesheet[]
-  cancellation      EmployerRequestCancellation?
+  organization            EmployerOrganization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  residence               Residence                        @relation(fields: [organizationId, residenceId], references: [organizationId, id], onDelete: Restrict)
+  department              Department                       @relation(fields: [organizationId, residenceId, departmentId], references: [organizationId, residenceId, id], onDelete: Restrict)
+  workGroup               WorkGroup                        @relation(fields: [workGroupId], references: [id], onDelete: Restrict)
+  roleDefinition          RoleDefinition                   @relation(fields: [workGroupId, roleDefinitionId], references: [workGroupId, id], onDelete: Restrict)
+  creator                 User                             @relation("JobRequestCreator", fields: [creatorUserId], references: [id], onDelete: Restrict)
+  createdBy               User                             @relation("JobRequestCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy               User?                            @relation("JobRequestUpdatedByUser", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  calendarProfile         StaffingRequestCalendarProfile?
+  pricingSnapshot         RequestPricingSnapshot?
+  jobListing              JobListing?
+  order                   EmployerOrder?                   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  dispatchReviews         DispatchReview[]
+  workerOffers            WorkerOffer[]
+  assignments             Assignment[]
+  attendanceRecords       AttendanceRecord[]
+  timesheets              Timesheet[]
+  cancellation            EmployerRequestCancellation?
   cancellationObligations EmployerCancellationObligation[]
-  capacityReductions EmployerCapacityReduction[]
-  changeProposals EmployerRequestChangeProposal[]
-  savedByWorkers WorkerSavedJob[]
-  workerInterests WorkerJobInterest[]
-  bonuses JobBonus[]
+  capacityReductions      EmployerCapacityReduction[]
+  changeProposals         EmployerRequestChangeProposal[]
+  savedByWorkers          WorkerSavedJob[]
+  workerInterests         WorkerJobInterest[]
+  bonuses                 JobBonus[]
   lateCancellationCharges LateCancellationCharge[]
-  unfilledShiftAlerts UnfilledShiftAlert[]
+  unfilledShiftAlerts     UnfilledShiftAlert[]
 
   @@unique([id, organizationId, residenceId, departmentId, workGroupId, roleDefinitionId], map: "job_requests_operational_scope_key")
   @@index([jobRequestNumber], map: "job_requests_job_request_number_idx")
@@ -1440,38 +1445,38 @@ model MarketWageReference {
 // per-allowance employer/worker splits. Payroll pays W from here; each audience view reads only its
 // own side (worker = W, employer = E); the platform margin is the difference. One snapshot per request.
 model RequestPricingSnapshot {
-  id                        String   @id @default(uuid()) @db.Uuid
-  jobRequestId              String   @unique @map("job_request_id") @db.Uuid
-  organizationId            String   @map("organization_id") @db.Uuid
-  contractId                String   @map("contract_id") @db.Uuid
-  contractVersion           String   @map("contract_version")
-  currency                  String
-  marginPpm                 Int      @map("margin_ppm")
-  employerHourlyRateMinor   Int      @map("employer_hourly_rate_minor")
-  workerHourlyRateMinor     Int      @map("worker_hourly_rate_minor")
-  platformHourlyMarginMinor Int      @map("platform_hourly_margin_minor")
-  transportEmployerMinor    Int      @default(0) @map("transport_employer_minor")
-  transportWorkerMinor      Int      @default(0) @map("transport_worker_minor")
-  mealEmployerMinor         Int      @default(0) @map("meal_employer_minor")
-  mealWorkerMinor           Int      @default(0) @map("meal_worker_minor")
-  lodgingEmployerMinor      Int      @default(0) @map("lodging_employer_minor")
-  lodgingWorkerMinor        Int      @default(0) @map("lodging_worker_minor")
+  id                             String   @id @default(uuid()) @db.Uuid
+  jobRequestId                   String   @unique @map("job_request_id") @db.Uuid
+  organizationId                 String   @map("organization_id") @db.Uuid
+  contractId                     String   @map("contract_id") @db.Uuid
+  contractVersion                String   @map("contract_version")
+  currency                       String
+  marginPpm                      Int      @map("margin_ppm")
+  employerHourlyRateMinor        Int      @map("employer_hourly_rate_minor")
+  workerHourlyRateMinor          Int      @map("worker_hourly_rate_minor")
+  platformHourlyMarginMinor      Int      @map("platform_hourly_margin_minor")
+  transportEmployerMinor         Int      @default(0) @map("transport_employer_minor")
+  transportWorkerMinor           Int      @default(0) @map("transport_worker_minor")
+  mealEmployerMinor              Int      @default(0) @map("meal_employer_minor")
+  mealWorkerMinor                Int      @default(0) @map("meal_worker_minor")
+  lodgingEmployerMinor           Int      @default(0) @map("lodging_employer_minor")
+  lodgingWorkerMinor             Int      @default(0) @map("lodging_worker_minor")
   // Gap A — variable client pricing wired into the authoritative per-job money. Emergency is a
   // per-hour platform-kept surcharge (scales with billable hours); distance (gas + travel time) is a
   // flat per-shift amount split 50/50 worker/platform. Demand uplift stays a matching-time concept.
-  emergencySurchargePerHourMinor Int @default(0) @map("emergency_surcharge_per_hour_minor")
-  distanceSurchargeMinor    Int      @default(0) @map("distance_surcharge_minor")
-  distanceWorkerMinor       Int      @default(0) @map("distance_worker_minor")
-  distancePlatformMinor     Int      @default(0) @map("distance_platform_minor")
+  emergencySurchargePerHourMinor Int      @default(0) @map("emergency_surcharge_per_hour_minor")
+  distanceSurchargeMinor         Int      @default(0) @map("distance_surcharge_minor")
+  distanceWorkerMinor            Int      @default(0) @map("distance_worker_minor")
+  distancePlatformMinor          Int      @default(0) @map("distance_platform_minor")
   // Employer fixed plans (EMPLOYER_PLANS_ENABLED, default off). The plan in force when the snapshot
   // was captured and the discount it gave (ppm of the contract rate). Null / 0 = no plan.
-  employerPlanCode          String?  @map("employer_plan_code")
-  employerPlanDiscountPpm   Int      @default(0) @map("employer_plan_discount_ppm")
+  employerPlanCode               String?  @map("employer_plan_code")
+  employerPlanDiscountPpm        Int      @default(0) @map("employer_plan_discount_ppm")
   // Job length the snapshot was priced under. Null = captured with the flag off (today's short-term
   // rules). "long_term" = no 6-hour minimum on the invoice and no urgent surcharge.
-  jobLength                 String?  @map("job_length")
-  capturedByUserId          String   @map("captured_by_user_id") @db.Uuid
-  capturedAt                DateTime @default(now()) @map("captured_at") @db.Timestamptz(3)
+  jobLength                      String?  @map("job_length")
+  capturedByUserId               String   @map("captured_by_user_id") @db.Uuid
+  capturedAt                     DateTime @default(now()) @map("captured_at") @db.Timestamptz(3)
 
   jobRequest JobRequest @relation(fields: [jobRequestId], references: [id], onDelete: Cascade)
 
@@ -1588,22 +1593,21 @@ model WorkerIdentity {
   timesheets         Timesheet[]
   dispatchCandidates DispatchCandidate[]
 
-  savedJobs          WorkerSavedJob[]
-  jobInterests       WorkerJobInterest[]
-  payouts            WorkerPayout[]
-  disputes           WorkerDispute[]
-  verifications      WorkerVerification[]
-  hrProfile          HrProfile?
-  hrIntake           WorkerHrIntake?
-  hrCredentials      HrCredential[]
-  hrCases            HrCase[]
-  hrDocuments        HrDocument[]
+  savedJobs               WorkerSavedJob[]
+  jobInterests            WorkerJobInterest[]
+  payouts                 WorkerPayout[]
+  disputes                WorkerDispute[]
+  verifications           WorkerVerification[]
+  hrProfile               HrProfile?
+  hrIntake                WorkerHrIntake?
+  hrCredentials           HrCredential[]
+  hrCases                 HrCase[]
+  hrDocuments             HrDocument[]
   classificationElections WorkerClassificationElection[]
   taxProfile              WorkerTaxProfile?
+  jobCategories           WorkerJobCategory[]
 
   @@index([status], map: "worker_identities_status_idx")
-  jobCategories WorkerJobCategory[]
-
   @@map("worker_identities")
 }
 
@@ -1636,13 +1640,13 @@ model WorkerClassificationElection {
 // their fee, which the platform pays and the contractor remits. BEST-GUESS flow pending CPA sign-off;
 // money execution and remittance stay OFF behind the go-live gate.
 model WorkerTaxProfile {
-  workerIdentityId  String   @id @map("worker_identity_id") @db.Uuid
-  gstQstRegistered  Boolean  @default(false) @map("gst_qst_registered")
-  gstNumber         String?  @map("gst_number")
-  qstNumber         String?  @map("qst_number")
-  updatedByUserId   String?  @map("updated_by_user_id") @db.Uuid
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  workerIdentityId String   @id @map("worker_identity_id") @db.Uuid
+  gstQstRegistered Boolean  @default(false) @map("gst_qst_registered")
+  gstNumber        String?  @map("gst_number")
+  qstNumber        String?  @map("qst_number")
+  updatedByUserId  String?  @map("updated_by_user_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   workerIdentity WorkerIdentity @relation(fields: [workerIdentityId], references: [id], onDelete: Restrict)
 
@@ -1652,13 +1656,13 @@ model WorkerTaxProfile {
 // Dynamic offer engine P2 — worker offer preferences (mutable). What a worker needs to accept work,
 // fed to the acceptance model. See docs/matching/DYNAMIC_OFFER_ENGINE_DESIGN.md.
 model WorkerOfferPreference {
-  workerIdentityId   String   @id @map("worker_identity_id") @db.Uuid
-  minRatePerHourMinor Int     @default(0) @map("min_rate_per_hour_minor")
-  requiresTransport  Boolean  @default(false) @map("requires_transport")
-  maxDistanceKm      Int      @default(100) @map("max_distance_km")
-  updatedByUserId    String?  @map("updated_by_user_id") @db.Uuid
-  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  workerIdentityId    String   @id @map("worker_identity_id") @db.Uuid
+  minRatePerHourMinor Int      @default(0) @map("min_rate_per_hour_minor")
+  requiresTransport   Boolean  @default(false) @map("requires_transport")
+  maxDistanceKm       Int      @default(100) @map("max_distance_km")
+  updatedByUserId     String?  @map("updated_by_user_id") @db.Uuid
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("worker_offer_preferences")
 }
@@ -1667,27 +1671,27 @@ model WorkerOfferPreference {
 // recorded with the features it saw, the terms, the predicted acceptance, and (later) the outcome.
 // THIS is the training set the learned models (P3+) consume. No money flows through this table.
 model OfferDecisionEvent {
-  id                          String    @id @default(uuid()) @db.Uuid
-  jobRequestId                String?   @map("job_request_id") @db.Uuid
-  workerIdentityId            String    @map("worker_identity_id") @db.Uuid
-  baseRateMinor               Int       @map("base_rate_minor")
-  transportAllowanceMinor     Int       @map("transport_allowance_minor")
-  bonusMinor                  Int       @map("bonus_minor")
-  clientPriceMinor            Int       @map("client_price_minor")
-  workerCostMinor             Int       @map("worker_cost_minor")
-  marginMinor                 Int       @map("margin_minor")
-  acceptanceProbability       Float     @map("acceptance_probability")
-  modelKind                   String    @map("model_kind")
-  hours                       Int
-  distanceKm                  Int       @map("distance_km")
-  hoursUntilShift             Int       @map("hours_until_shift")
-  willingnessToPayPerHourMinor Int      @map("willingness_to_pay_per_hour_minor")
-  featReliability             Float     @map("feat_reliability")
-  featRequiresTransport       Boolean   @map("feat_requires_transport")
-  featMinRatePerHourMinor     Int       @map("feat_min_rate_per_hour_minor")
-  outcome                     String    @default("proposed") // proposed|offered|accepted|declined|ignored|expired
-  outcomeAt                   DateTime? @map("outcome_at") @db.Timestamptz(3)
-  createdAt                   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  id                           String    @id @default(uuid()) @db.Uuid
+  jobRequestId                 String?   @map("job_request_id") @db.Uuid
+  workerIdentityId             String    @map("worker_identity_id") @db.Uuid
+  baseRateMinor                Int       @map("base_rate_minor")
+  transportAllowanceMinor      Int       @map("transport_allowance_minor")
+  bonusMinor                   Int       @map("bonus_minor")
+  clientPriceMinor             Int       @map("client_price_minor")
+  workerCostMinor              Int       @map("worker_cost_minor")
+  marginMinor                  Int       @map("margin_minor")
+  acceptanceProbability        Float     @map("acceptance_probability")
+  modelKind                    String    @map("model_kind")
+  hours                        Int
+  distanceKm                   Int       @map("distance_km")
+  hoursUntilShift              Int       @map("hours_until_shift")
+  willingnessToPayPerHourMinor Int       @map("willingness_to_pay_per_hour_minor")
+  featReliability              Float     @map("feat_reliability")
+  featRequiresTransport        Boolean   @map("feat_requires_transport")
+  featMinRatePerHourMinor      Int       @map("feat_min_rate_per_hour_minor")
+  outcome                      String    @default("proposed") // proposed|offered|accepted|declined|ignored|expired
+  outcomeAt                    DateTime? @map("outcome_at") @db.Timestamptz(3)
+  createdAt                    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([workerIdentityId], map: "ode_worker_idx")
   @@index([jobRequestId], map: "ode_job_idx")
@@ -1829,21 +1833,21 @@ enum EmployerVerificationStatus {
 // A worker's verification record for a given type (identity / background_check). One active
 // record per (worker, type); re-verification transitions the same record + emits events.
 model WorkerVerification {
-  id               String                   @id @default(uuid()) @db.Uuid
-  workerIdentityId String                   @map("worker_identity_id") @db.Uuid
-  verificationType WorkerVerificationType   @map("verification_type")
-  status           WorkerVerificationStatus @default(unverified)
-  provider         String?
-  providerReference String?                 @map("provider_reference")
-  requestedAt      DateTime?                @map("requested_at") @db.Timestamptz(3)
-  completedAt      DateTime?                @map("completed_at") @db.Timestamptz(3)
-  expiresAt        DateTime?                @map("expires_at") @db.Timestamptz(3)
-  reviewedByUserId String?                  @map("reviewed_by_user_id") @db.Uuid
+  id                String                   @id @default(uuid()) @db.Uuid
+  workerIdentityId  String                   @map("worker_identity_id") @db.Uuid
+  verificationType  WorkerVerificationType   @map("verification_type")
+  status            WorkerVerificationStatus @default(unverified)
+  provider          String?
+  providerReference String?                  @map("provider_reference")
+  requestedAt       DateTime?                @map("requested_at") @db.Timestamptz(3)
+  completedAt       DateTime?                @map("completed_at") @db.Timestamptz(3)
+  expiresAt         DateTime?                @map("expires_at") @db.Timestamptz(3)
+  reviewedByUserId  String?                  @map("reviewed_by_user_id") @db.Uuid
   // Safe result metadata ONLY (normalized summary). Never raw identity documents.
-  resultMetadata   Json?                    @map("result_metadata")
-  createdAt        DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
-  version          Int                      @default(1)
+  resultMetadata    Json?                    @map("result_metadata")
+  createdAt         DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version           Int                      @default(1)
 
   worker WorkerIdentity @relation(fields: [workerIdentityId], references: [id], onDelete: Cascade)
 
@@ -1856,19 +1860,19 @@ model WorkerVerification {
 // An organization's business-verification lifecycle. One per organization; the org itself is
 // verified, not merely the user account.
 model EmployerVerification {
-  id               String                     @id @default(uuid()) @db.Uuid
-  organizationId   String                     @unique @map("organization_id") @db.Uuid
-  status           EmployerVerificationStatus @default(unverified)
-  provider         String?
-  providerReference String?                   @map("provider_reference")
-  requestedAt      DateTime?                  @map("requested_at") @db.Timestamptz(3)
-  completedAt      DateTime?                  @map("completed_at") @db.Timestamptz(3)
-  expiresAt        DateTime?                  @map("expires_at") @db.Timestamptz(3)
-  reviewedByUserId String?                    @map("reviewed_by_user_id") @db.Uuid
-  resultMetadata   Json?                      @map("result_metadata")
-  createdAt        DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(3)
-  version          Int                        @default(1)
+  id                String                     @id @default(uuid()) @db.Uuid
+  organizationId    String                     @unique @map("organization_id") @db.Uuid
+  status            EmployerVerificationStatus @default(unverified)
+  provider          String?
+  providerReference String?                    @map("provider_reference")
+  requestedAt       DateTime?                  @map("requested_at") @db.Timestamptz(3)
+  completedAt       DateTime?                  @map("completed_at") @db.Timestamptz(3)
+  expiresAt         DateTime?                  @map("expires_at") @db.Timestamptz(3)
+  reviewedByUserId  String?                    @map("reviewed_by_user_id") @db.Uuid
+  resultMetadata    Json?                      @map("result_metadata")
+  createdAt         DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version           Int                        @default(1)
 
   organization EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -1881,18 +1885,18 @@ model EmployerVerification {
 // review → verified/rejected → expiry/reverification). Actor, timestamp, source/provider,
 // prior/new state.
 model VerificationEvent {
-  id               String   @id @default(uuid()) @db.Uuid
-  subjectType      String   @map("subject_type") // "worker" | "employer"
-  subjectId        String   @map("subject_id") @db.Uuid
-  verificationType String?  @map("verification_type")
-  source           String // "worker" | "employer" | "admin" | "provider" | "system"
-  priorStatus      String?  @map("prior_status")
-  newStatus        String   @map("new_status")
-  provider         String?
-  providerReference String? @map("provider_reference")
-  actorUserId      String?  @map("actor_user_id") @db.Uuid
-  detail           Json?
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  id                String   @id @default(uuid()) @db.Uuid
+  subjectType       String   @map("subject_type") // "worker" | "employer"
+  subjectId         String   @map("subject_id") @db.Uuid
+  verificationType  String?  @map("verification_type")
+  source            String // "worker" | "employer" | "admin" | "provider" | "system"
+  priorStatus       String?  @map("prior_status")
+  newStatus         String   @map("new_status")
+  provider          String?
+  providerReference String?  @map("provider_reference")
+  actorUserId       String?  @map("actor_user_id") @db.Uuid
+  detail            Json?
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([subjectType, subjectId, createdAt], map: "verification_events_subject_idx")
   @@map("verification_events")
@@ -1956,30 +1960,30 @@ model HrProfile {
 // stored here; they stay as HrDocument/UploadedDocument pointers. All fields optional; an incomplete
 // intake must not block offers. Keep values country-neutral (no hardcoded province/licence lists here).
 model WorkerHrIntake {
-  id               String    @id @default(uuid()) @db.Uuid
-  workerIdentityId String    @unique @map("worker_identity_id") @db.Uuid
+  id                    String    @id @default(uuid()) @db.Uuid
+  workerIdentityId      String    @unique @map("worker_identity_id") @db.Uuid
   // personal
-  legalFirstName   String?   @map("legal_first_name")
-  legalLastName    String?   @map("legal_last_name")
-  phone            String?   @map("phone")
-  addressLine      String?   @map("address_line")
-  city             String?   @map("city")
-  province         String?   @map("province")
-  postalCode       String?   @map("postal_code")
+  legalFirstName        String?   @map("legal_first_name")
+  legalLastName         String?   @map("legal_last_name")
+  phone                 String?   @map("phone")
+  addressLine           String?   @map("address_line")
+  city                  String?   @map("city")
+  province              String?   @map("province")
+  postalCode            String?   @map("postal_code")
   // driving licence
-  hasDrivingLicence Boolean  @default(false) @map("has_driving_licence")
-  licenceClass      String?  @map("licence_class")
-  licenceExpiry     DateTime? @map("licence_expiry") @db.Date
+  hasDrivingLicence     Boolean   @default(false) @map("has_driving_licence")
+  licenceClass          String?   @map("licence_class")
+  licenceExpiry         DateTime? @map("licence_expiry") @db.Date
   // vehicle / transport
-  hasVehicle        Boolean  @default(false) @map("has_vehicle")
-  vehicleType       String?  @map("vehicle_type")
-  canTravelKm       Int?     @map("can_travel_km")
-  transportNotes    String?  @map("transport_notes")
+  hasVehicle            Boolean   @default(false) @map("has_vehicle")
+  vehicleType           String?   @map("vehicle_type")
+  canTravelKm           Int?      @map("can_travel_km")
+  transportNotes        String?   @map("transport_notes")
   // Explicit marketing-email consent (CASL). Null = not opted in; set to the opt-in time as consent proof.
   marketingEmailOptInAt DateTime? @map("marketing_email_opt_in_at") @db.Timestamptz(3)
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
-  version          Int       @default(1)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version               Int       @default(1)
 
   worker WorkerIdentity @relation(fields: [workerIdentityId], references: [id], onDelete: Cascade)
 
@@ -1989,21 +1993,21 @@ model WorkerHrIntake {
 // A worker credential/qualification. Multiple per worker. Renewal creates a NEW record and
 // links the old one via supersededById (history preserved).
 model HrCredential {
-  id                 String             @id @default(uuid()) @db.Uuid
-  workerIdentityId   String             @map("worker_identity_id") @db.Uuid
-  credentialType     String             @map("credential_type")
-  issuer             String?
-  issuedAt           DateTime?          @map("issued_at") @db.Timestamptz(3)
-  expiresAt          DateTime?          @map("expires_at") @db.Timestamptz(3)
-  status             HrCredentialStatus @default(valid)
+  id                    String             @id @default(uuid()) @db.Uuid
+  workerIdentityId      String             @map("worker_identity_id") @db.Uuid
+  credentialType        String             @map("credential_type")
+  issuer                String?
+  issuedAt              DateTime?          @map("issued_at") @db.Timestamptz(3)
+  expiresAt             DateTime?          @map("expires_at") @db.Timestamptz(3)
+  status                HrCredentialStatus @default(valid)
   // Reference to an authoritative verification (HR does not own verification). Never a raw
   // document — a pointer + safe metadata only.
-  verificationReference String?         @map("verification_reference")
-  safeMetadata       Json?              @map("safe_metadata")
-  supersededById     String?            @unique @map("superseded_by_id") @db.Uuid
-  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt          DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
-  version            Int                @default(1)
+  verificationReference String?            @map("verification_reference")
+  safeMetadata          Json?              @map("safe_metadata")
+  supersededById        String?            @unique @map("superseded_by_id") @db.Uuid
+  createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version               Int                @default(1)
 
   worker       WorkerIdentity @relation(fields: [workerIdentityId], references: [id], onDelete: Cascade)
   supersededBy HrCredential?  @relation("HrCredentialRenewal", fields: [supersededById], references: [id], onDelete: SetNull)
@@ -2077,29 +2081,29 @@ enum HrDocumentStatus {
 }
 
 model HrDocument {
-  id                   String           @id @default(uuid()) @db.Uuid
-  workerIdentityId     String           @map("worker_identity_id") @db.Uuid
-  documentType         String           @map("document_type")
-  issuingAuthority     String?          @map("issuing_authority")
-  jurisdiction         String?          // e.g. "CA-QC" (ISO-ish); never a hard-coded rule
-  issuedAt             DateTime?        @map("issued_at") @db.Timestamptz(3)
-  expiresAt            DateTime?        @map("expires_at") @db.Timestamptz(3)
-  status               HrDocumentStatus @default(submitted)
+  id                     String           @id @default(uuid()) @db.Uuid
+  workerIdentityId       String           @map("worker_identity_id") @db.Uuid
+  documentType           String           @map("document_type")
+  issuingAuthority       String?          @map("issuing_authority")
+  jurisdiction           String? // e.g. "CA-QC" (ISO-ish); never a hard-coded rule
+  issuedAt               DateTime?        @map("issued_at") @db.Timestamptz(3)
+  expiresAt              DateTime?        @map("expires_at") @db.Timestamptz(3)
+  status                 HrDocumentStatus @default(submitted)
   // A pointer into the secure document-storage provider — NEVER file bytes.
-  storageReference     String?          @map("storage_reference")
-  checksum             String?          // integrity hash (validation is a provider concern)
-  verificationReference String?         @map("verification_reference")
-  source               String           @default("worker") // worker | hr_admin | employer | system
-  reviewedByUserId     String?          @map("reviewed_by_user_id") @db.Uuid
-  reviewedAt           DateTime?        @map("reviewed_at") @db.Timestamptz(3)
-  reviewReason         String?          @map("review_reason")
+  storageReference       String?          @map("storage_reference")
+  checksum               String? // integrity hash (validation is a provider concern)
+  verificationReference  String?          @map("verification_reference")
+  source                 String           @default("worker") // worker | hr_admin | employer | system
+  reviewedByUserId       String?          @map("reviewed_by_user_id") @db.Uuid
+  reviewedAt             DateTime?        @map("reviewed_at") @db.Timestamptz(3)
+  reviewReason           String?          @map("review_reason")
   // Set by staff when verifying: the required-certificate key this document proves (for a generic
   // "certificate" upload). Null = proves only what its documentType maps to.
-  verifiedCertificateKey String?        @map("verified_certificate_key")
-  supersededById       String?          @unique @map("superseded_by_id") @db.Uuid
-  createdAt            DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt            DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
-  version              Int              @default(1)
+  verifiedCertificateKey String?          @map("verified_certificate_key")
+  supersededById         String?          @unique @map("superseded_by_id") @db.Uuid
+  createdAt              DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version                Int              @default(1)
 
   worker       WorkerIdentity @relation(fields: [workerIdentityId], references: [id], onDelete: Cascade)
   supersededBy HrDocument?    @relation("HrDocumentReplacement", fields: [supersededById], references: [id], onDelete: SetNull)
@@ -2115,20 +2119,20 @@ model HrDocument {
 // A compliance requirement as DATA (adapter mechanism, not hard-coded law). The resolver
 // selects requirements matching (jurisdiction, roleCategory, worksiteRef, effective date).
 model ComplianceRequirement {
-  id                    String    @id @default(uuid()) @db.Uuid
-  key                   String    @unique
-  description           String?
-  jurisdiction          String    // e.g. "CA-QC" — data, not a universal rule
-  roleCategory          String?   @map("role_category")
-  employerPolicyRef     String?   @map("employer_policy_ref")
-  worksiteRef           String?   @map("worksite_ref")
-  requiredDocumentType  String?   @map("required_document_type")
-  requiredCredentialType String?  @map("required_credential_type")
-  effectiveFrom         DateTime  @map("effective_from") @db.Timestamptz(3)
-  effectiveTo           DateTime? @map("effective_to") @db.Timestamptz(3)
-  active                Boolean   @default(true)
-  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                     String    @id @default(uuid()) @db.Uuid
+  key                    String    @unique
+  description            String?
+  jurisdiction           String // e.g. "CA-QC" — data, not a universal rule
+  roleCategory           String?   @map("role_category")
+  employerPolicyRef      String?   @map("employer_policy_ref")
+  worksiteRef            String?   @map("worksite_ref")
+  requiredDocumentType   String?   @map("required_document_type")
+  requiredCredentialType String?   @map("required_credential_type")
+  effectiveFrom          DateTime  @map("effective_from") @db.Timestamptz(3)
+  effectiveTo            DateTime? @map("effective_to") @db.Timestamptz(3)
+  active                 Boolean   @default(true)
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([jurisdiction, roleCategory, active], map: "compliance_requirements_jurisdiction_role_idx")
   @@map("compliance_requirements")
@@ -2136,17 +2140,17 @@ model ComplianceRequirement {
 
 // Append-only audit for governed document transitions.
 model HrDocumentEvent {
-  id               String   @id @default(uuid()) @db.Uuid
-  documentId       String   @map("document_id") @db.Uuid
-  workerIdentityId String   @map("worker_identity_id") @db.Uuid
-  eventType        String   @map("event_type")
-  priorState       String?  @map("prior_state")
-  newState         String   @map("new_state")
-  reason           String?
-  source           String
-  actorUserId      String?  @map("actor_user_id") @db.Uuid
-  documentReference String? @map("document_reference")
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  id                String   @id @default(uuid()) @db.Uuid
+  documentId        String   @map("document_id") @db.Uuid
+  workerIdentityId  String   @map("worker_identity_id") @db.Uuid
+  eventType         String   @map("event_type")
+  priorState        String?  @map("prior_state")
+  newState          String   @map("new_state")
+  reason            String?
+  source            String
+  actorUserId       String?  @map("actor_user_id") @db.Uuid
+  documentReference String?  @map("document_reference")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([workerIdentityId, createdAt], map: "hr_document_events_worker_created_at_idx")
   @@index([documentId, createdAt], map: "hr_document_events_document_idx")
@@ -2174,31 +2178,31 @@ enum WorkerJobInterestStatus {
 }
 
 model WorkerJobInterest {
-  id                 String                  @id @default(uuid()) @db.Uuid
-  workerIdentityId   String                  @map("worker_identity_id") @db.Uuid
-  jobRequestId       String                  @map("job_request_id") @db.Uuid
-  organizationId     String                  @map("organization_id") @db.Uuid
-  status             WorkerJobInterestStatus @default(submitted)
-  source             WorkerJobInterestSource @default(marketplace)
-  distanceKmAtInterest Float?                @map("distance_km_at_interest")
+  id                        String                  @id @default(uuid()) @db.Uuid
+  workerIdentityId          String                  @map("worker_identity_id") @db.Uuid
+  jobRequestId              String                  @map("job_request_id") @db.Uuid
+  organizationId            String                  @map("organization_id") @db.Uuid
+  status                    WorkerJobInterestStatus @default(submitted)
+  source                    WorkerJobInterestSource @default(marketplace)
+  distanceKmAtInterest      Float?                  @map("distance_km_at_interest")
   // Eligibility result captured at the moment interest was accepted (audit snapshot).
-  eligibilitySnapshot Json?                  @map("eligibility_snapshot")
+  eligibilitySnapshot       Json?                   @map("eligibility_snapshot")
   // Logical link to the governed offer once one is created for this interest (no FK — the
   // offer lifecycle stays authoritative in its own model).
-  workerOfferId      String?                 @map("worker_offer_id") @db.Uuid
+  workerOfferId             String?                 @map("worker_offer_id") @db.Uuid
   // The employer's favourite mark: a suggestion to Joblop staff, never an offer or a status change.
-  employerFavoritedAt       DateTime? @map("employer_favorited_at") @db.Timestamptz(3)
-  employerFavoritedByUserId String?   @map("employer_favorited_by_user_id") @db.Uuid
+  employerFavoritedAt       DateTime?               @map("employer_favorited_at") @db.Timestamptz(3)
+  employerFavoritedByUserId String?                 @map("employer_favorited_by_user_id") @db.Uuid
   // Long-term jobs: the employer chooses. "shortlisted" | "hired" | "not_selected" (null = no
   // decision yet). The worker's contact details are shown to the employer only once
   // employerContactRevealedAt is set (the employer chose Contact or Hire).
-  employerDecision          String?   @map("employer_decision")
-  employerDecidedAt         DateTime? @map("employer_decided_at") @db.Timestamptz(3)
-  employerDecidedByUserId   String?   @map("employer_decided_by_user_id") @db.Uuid
-  employerContactRevealedAt DateTime? @map("employer_contact_revealed_at") @db.Timestamptz(3)
-  createdAt          DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt          DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
-  version            Int                     @default(1)
+  employerDecision          String?                 @map("employer_decision")
+  employerDecidedAt         DateTime?               @map("employer_decided_at") @db.Timestamptz(3)
+  employerDecidedByUserId   String?                 @map("employer_decided_by_user_id") @db.Uuid
+  employerContactRevealedAt DateTime?               @map("employer_contact_revealed_at") @db.Timestamptz(3)
+  createdAt                 DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                 DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version                   Int                     @default(1)
 
   worker       WorkerIdentity       @relation(fields: [workerIdentityId], references: [id], onDelete: Cascade)
   jobRequest   JobRequest           @relation(fields: [jobRequestId], references: [id], onDelete: Cascade)
@@ -2213,37 +2217,37 @@ model WorkerJobInterest {
 }
 
 model WorkerOffer {
-  id                    String            @id @default(uuid()) @db.Uuid
-  dispatchReviewId      String            @map("dispatch_review_id") @db.Uuid
-  jobRequestId          String            @map("job_request_id") @db.Uuid
-  organizationId        String            @map("organization_id") @db.Uuid
-  residenceId           String            @map("residence_id") @db.Uuid
-  departmentId          String            @map("department_id") @db.Uuid
-  workerIdentityId      String            @map("worker_identity_id") @db.Uuid
-  currentTermsVersionId String?           @unique @map("current_terms_version_id") @db.Uuid
-  status                WorkerOfferStatus @default(draft)
-  expiresAt             DateTime          @map("expires_at") @db.Timestamptz(3)
-  approvedAt            DateTime?         @map("approved_at") @db.Timestamptz(3)
-  sentAt                DateTime?         @map("sent_at") @db.Timestamptz(3)
-  deliveredAt           DateTime?         @map("delivered_at") @db.Timestamptz(3)
-  viewedAt              DateTime?         @map("viewed_at") @db.Timestamptz(3)
-  respondedAt           DateTime?         @map("responded_at") @db.Timestamptz(3)
-  withdrawnAt           DateTime?         @map("withdrawn_at") @db.Timestamptz(3)
-  cancelledAt           DateTime?         @map("cancelled_at") @db.Timestamptz(3)
-  createdByUserId       String            @map("created_by_user_id") @db.Uuid
-  updatedByUserId       String?           @map("updated_by_user_id") @db.Uuid
-  approvedByUserId      String?           @map("approved_by_user_id") @db.Uuid
-  sentByUserId          String?           @map("sent_by_user_id") @db.Uuid
-  withdrawnByUserId     String?           @map("withdrawn_by_user_id") @db.Uuid
-  cancelledByUserId     String?           @map("cancelled_by_user_id") @db.Uuid
+  id                          String            @id @default(uuid()) @db.Uuid
+  dispatchReviewId            String            @map("dispatch_review_id") @db.Uuid
+  jobRequestId                String            @map("job_request_id") @db.Uuid
+  organizationId              String            @map("organization_id") @db.Uuid
+  residenceId                 String            @map("residence_id") @db.Uuid
+  departmentId                String            @map("department_id") @db.Uuid
+  workerIdentityId            String            @map("worker_identity_id") @db.Uuid
+  currentTermsVersionId       String?           @unique @map("current_terms_version_id") @db.Uuid
+  status                      WorkerOfferStatus @default(draft)
+  expiresAt                   DateTime          @map("expires_at") @db.Timestamptz(3)
+  approvedAt                  DateTime?         @map("approved_at") @db.Timestamptz(3)
+  sentAt                      DateTime?         @map("sent_at") @db.Timestamptz(3)
+  deliveredAt                 DateTime?         @map("delivered_at") @db.Timestamptz(3)
+  viewedAt                    DateTime?         @map("viewed_at") @db.Timestamptz(3)
+  respondedAt                 DateTime?         @map("responded_at") @db.Timestamptz(3)
+  withdrawnAt                 DateTime?         @map("withdrawn_at") @db.Timestamptz(3)
+  cancelledAt                 DateTime?         @map("cancelled_at") @db.Timestamptz(3)
+  createdByUserId             String            @map("created_by_user_id") @db.Uuid
+  updatedByUserId             String?           @map("updated_by_user_id") @db.Uuid
+  approvedByUserId            String?           @map("approved_by_user_id") @db.Uuid
+  sentByUserId                String?           @map("sent_by_user_id") @db.Uuid
+  withdrawnByUserId           String?           @map("withdrawn_by_user_id") @db.Uuid
+  cancelledByUserId           String?           @map("cancelled_by_user_id") @db.Uuid
   // Staff approved this worker although they miss a required certificate (or the job's "other"
   // certificate, which only a person can check). Logged in audit_events as certificate.override.
-  certificateOverrideAt       DateTime?     @map("certificate_override_at") @db.Timestamptz(3)
-  certificateOverrideByUserId String?       @map("certificate_override_by_user_id") @db.Uuid
-  certificateOverrideReason   String?       @map("certificate_override_reason")
-  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt             DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
-  version               Int               @default(1)
+  certificateOverrideAt       DateTime?         @map("certificate_override_at") @db.Timestamptz(3)
+  certificateOverrideByUserId String?           @map("certificate_override_by_user_id") @db.Uuid
+  certificateOverrideReason   String?           @map("certificate_override_reason")
+  createdAt                   DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                   DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version                     Int               @default(1)
 
   dispatchReview      DispatchReview               @relation(fields: [dispatchReviewId], references: [id], onDelete: Restrict)
   jobRequest          JobRequest                   @relation(fields: [jobRequestId], references: [id], onDelete: Restrict)
@@ -2449,19 +2453,19 @@ model AttendanceRecord {
   cancelledAt                  DateTime?        @map("cancelled_at") @db.Timestamptz(3)
   version                      Int              @default(1)
 
-  assignment     Assignment           @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
-  jobRequest     JobRequest           @relation(fields: [jobRequestId], references: [id], onDelete: Restrict)
-  workerIdentity WorkerIdentity       @relation(fields: [workerIdentityId], references: [id], onDelete: Restrict)
-  organization   EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  residence      Residence            @relation(fields: [organizationId, residenceId], references: [organizationId, id], onDelete: Restrict)
-  department     Department           @relation(fields: [organizationId, residenceId, departmentId], references: [organizationId, residenceId, id], onDelete: Restrict)
-  workGroup      WorkGroup            @relation(fields: [workGroupId], references: [id], onDelete: Restrict)
-  roleDefinition RoleDefinition       @relation(fields: [workGroupId, roleDefinitionId], references: [workGroupId, id], onDelete: Restrict)
-  createdBy      User                 @relation("AttendanceCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  updatedBy      User?                @relation("AttendanceUpdatedByUser", fields: [updatedByUserId], references: [id], onDelete: SetNull)
-  checkedInBy    User?                @relation("AttendanceCheckedInByUser", fields: [checkedInByUserId], references: [id], onDelete: SetNull)
-  checkedOutBy   User?                @relation("AttendanceCheckedOutByUser", fields: [checkedOutByUserId], references: [id], onDelete: SetNull)
-  cancelledBy    User?                @relation("AttendanceCancelledByUser", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
+  assignment     Assignment              @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
+  jobRequest     JobRequest              @relation(fields: [jobRequestId], references: [id], onDelete: Restrict)
+  workerIdentity WorkerIdentity          @relation(fields: [workerIdentityId], references: [id], onDelete: Restrict)
+  organization   EmployerOrganization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  residence      Residence               @relation(fields: [organizationId, residenceId], references: [organizationId, id], onDelete: Restrict)
+  department     Department              @relation(fields: [organizationId, residenceId, departmentId], references: [organizationId, residenceId, id], onDelete: Restrict)
+  workGroup      WorkGroup               @relation(fields: [workGroupId], references: [id], onDelete: Restrict)
+  roleDefinition RoleDefinition          @relation(fields: [workGroupId, roleDefinitionId], references: [workGroupId, id], onDelete: Restrict)
+  createdBy      User                    @relation("AttendanceCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy      User?                   @relation("AttendanceUpdatedByUser", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  checkedInBy    User?                   @relation("AttendanceCheckedInByUser", fields: [checkedInByUserId], references: [id], onDelete: SetNull)
+  checkedOutBy   User?                   @relation("AttendanceCheckedOutByUser", fields: [checkedOutByUserId], references: [id], onDelete: SetNull)
+  cancelledBy    User?                   @relation("AttendanceCancelledByUser", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
   timesheet      Timesheet?
   hoursReports   AttendanceHoursReport[]
 
@@ -2479,23 +2483,23 @@ model AttendanceRecord {
 // prepared) or reject. One PENDING report per attendance record (partial unique index in the
 // migration). No money on this table.
 model AttendanceHoursReport {
-  id                  String    @id @default(uuid()) @db.Uuid
-  attendanceRecordId  String    @map("attendance_record_id") @db.Uuid
-  workerIdentityId    String    @map("worker_identity_id") @db.Uuid
-  organizationId      String    @map("organization_id") @db.Uuid
-  status              String    @default("pending") // pending | approved | rejected
-  reportedCheckInAt   DateTime  @map("reported_check_in_at") @db.Timestamptz(3)
-  reportedCheckOutAt  DateTime  @map("reported_check_out_at") @db.Timestamptz(3)
-  reason              String
-  submittedByUserId   String    @map("submitted_by_user_id") @db.Uuid
-  submittedAt         DateTime  @map("submitted_at") @db.Timestamptz(3)
-  approvedCheckInAt   DateTime? @map("approved_check_in_at") @db.Timestamptz(3)
-  approvedCheckOutAt  DateTime? @map("approved_check_out_at") @db.Timestamptz(3)
-  decidedByUserId     String?   @map("decided_by_user_id") @db.Uuid
-  decidedAt           DateTime? @map("decided_at") @db.Timestamptz(3)
-  decisionReason      String?   @map("decision_reason")
-  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                 String    @id @default(uuid()) @db.Uuid
+  attendanceRecordId String    @map("attendance_record_id") @db.Uuid
+  workerIdentityId   String    @map("worker_identity_id") @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  status             String    @default("pending") // pending | approved | rejected
+  reportedCheckInAt  DateTime  @map("reported_check_in_at") @db.Timestamptz(3)
+  reportedCheckOutAt DateTime  @map("reported_check_out_at") @db.Timestamptz(3)
+  reason             String
+  submittedByUserId  String    @map("submitted_by_user_id") @db.Uuid
+  submittedAt        DateTime  @map("submitted_at") @db.Timestamptz(3)
+  approvedCheckInAt  DateTime? @map("approved_check_in_at") @db.Timestamptz(3)
+  approvedCheckOutAt DateTime? @map("approved_check_out_at") @db.Timestamptz(3)
+  decidedByUserId    String?   @map("decided_by_user_id") @db.Uuid
+  decidedAt          DateTime? @map("decided_at") @db.Timestamptz(3)
+  decisionReason     String?   @map("decision_reason")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   attendanceRecord AttendanceRecord @relation(fields: [attendanceRecordId], references: [id], onDelete: Restrict)
 
@@ -2553,23 +2557,23 @@ model Timesheet {
   updatedAt                 DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
   version                   Int             @default(1)
 
-  assignment           Assignment                     @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
-  attendanceRecord     AttendanceRecord               @relation(fields: [attendanceRecordId], references: [id], onDelete: Restrict)
-  jobRequest           JobRequest                     @relation(fields: [jobRequestId], references: [id], onDelete: Restrict)
-  workerIdentity       WorkerIdentity                 @relation(fields: [workerIdentityId], references: [id], onDelete: Restrict)
-  organization         EmployerOrganization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  residence            Residence                      @relation(fields: [organizationId, residenceId], references: [organizationId, id], onDelete: Restrict)
-  department           Department                     @relation(fields: [organizationId, residenceId, departmentId], references: [organizationId, residenceId, id], onDelete: Restrict)
-  workGroup            WorkGroup                      @relation(fields: [workGroupId], references: [id], onDelete: Restrict)
-  roleDefinition       RoleDefinition                 @relation(fields: [workGroupId, roleDefinitionId], references: [workGroupId, id], onDelete: Restrict)
-  createdBy            User                           @relation("TimesheetCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  updatedBy            User?                          @relation("TimesheetUpdatedByUser", fields: [updatedByUserId], references: [id], onDelete: SetNull)
-  workerReviewedBy     User?                          @relation("TimesheetWorkerReviewedByUser", fields: [workerReviewedByUserId], references: [id], onDelete: SetNull)
-  employerReviewedBy   User?                          @relation("TimesheetEmployerReviewedByUser", fields: [employerReviewedByUserId], references: [id], onDelete: SetNull)
-  platformReviewedBy   User?                          @relation("TimesheetPlatformReviewedByUser", fields: [platformReviewedByUserId], references: [id], onDelete: SetNull)
-  lockedBy             User?                          @relation("TimesheetLockedByUser", fields: [lockedByUserId], references: [id], onDelete: SetNull)
-  calculationSnapshots TimesheetCalculationSnapshot[]
-  invoices             Invoice[]
+  assignment             Assignment                     @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
+  attendanceRecord       AttendanceRecord               @relation(fields: [attendanceRecordId], references: [id], onDelete: Restrict)
+  jobRequest             JobRequest                     @relation(fields: [jobRequestId], references: [id], onDelete: Restrict)
+  workerIdentity         WorkerIdentity                 @relation(fields: [workerIdentityId], references: [id], onDelete: Restrict)
+  organization           EmployerOrganization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  residence              Residence                      @relation(fields: [organizationId, residenceId], references: [organizationId, id], onDelete: Restrict)
+  department             Department                     @relation(fields: [organizationId, residenceId, departmentId], references: [organizationId, residenceId, id], onDelete: Restrict)
+  workGroup              WorkGroup                      @relation(fields: [workGroupId], references: [id], onDelete: Restrict)
+  roleDefinition         RoleDefinition                 @relation(fields: [workGroupId, roleDefinitionId], references: [workGroupId, id], onDelete: Restrict)
+  createdBy              User                           @relation("TimesheetCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy              User?                          @relation("TimesheetUpdatedByUser", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  workerReviewedBy       User?                          @relation("TimesheetWorkerReviewedByUser", fields: [workerReviewedByUserId], references: [id], onDelete: SetNull)
+  employerReviewedBy     User?                          @relation("TimesheetEmployerReviewedByUser", fields: [employerReviewedByUserId], references: [id], onDelete: SetNull)
+  platformReviewedBy     User?                          @relation("TimesheetPlatformReviewedByUser", fields: [platformReviewedByUserId], references: [id], onDelete: SetNull)
+  lockedBy               User?                          @relation("TimesheetLockedByUser", fields: [lockedByUserId], references: [id], onDelete: SetNull)
+  calculationSnapshots   TimesheetCalculationSnapshot[]
+  invoices               Invoice[]
   lateCancellationCharge LateCancellationCharge?
 
   @@index([organizationId, status, updatedAt], map: "timesheets_organization_id_status_updated_at_idx")
@@ -2654,29 +2658,29 @@ enum PayrollDeductionCategory {
 }
 
 model PayrollPeriod {
-  id                 String              @id @default(uuid()) @db.Uuid
-  organizationId     String              @map("organization_id") @db.Uuid
-  jurisdictionCountry String             @map("jurisdiction_country")
-  jurisdictionRegion String              @map("jurisdiction_region")
-  periodStart        DateTime            @map("period_start") @db.Timestamptz(3)
-  periodEnd          DateTime            @map("period_end") @db.Timestamptz(3)
-  timezone           String
-  status             PayrollPeriodStatus @default(open)
-  currency           String
-  ruleProviderKey    String              @map("rule_provider_key")
-  ruleProviderVersion String             @map("rule_provider_version")
-  synthetic          Boolean             @default(true)
-  createdByUserId    String              @map("created_by_user_id") @db.Uuid
-  reviewedByUserId   String?             @map("reviewed_by_user_id") @db.Uuid
-  approvedByUserId   String?             @map("approved_by_user_id") @db.Uuid
-  lockedByUserId     String?             @map("locked_by_user_id") @db.Uuid
-  approvedAt         DateTime?           @map("approved_at") @db.Timestamptz(3)
-  lockedAt           DateTime?           @map("locked_at") @db.Timestamptz(3)
-  version            Int                 @default(1)
-  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt          DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                  String              @id @default(uuid()) @db.Uuid
+  organizationId      String              @map("organization_id") @db.Uuid
+  jurisdictionCountry String              @map("jurisdiction_country")
+  jurisdictionRegion  String              @map("jurisdiction_region")
+  periodStart         DateTime            @map("period_start") @db.Timestamptz(3)
+  periodEnd           DateTime            @map("period_end") @db.Timestamptz(3)
+  timezone            String
+  status              PayrollPeriodStatus @default(open)
+  currency            String
+  ruleProviderKey     String              @map("rule_provider_key")
+  ruleProviderVersion String              @map("rule_provider_version")
+  synthetic           Boolean             @default(true)
+  createdByUserId     String              @map("created_by_user_id") @db.Uuid
+  reviewedByUserId    String?             @map("reviewed_by_user_id") @db.Uuid
+  approvedByUserId    String?             @map("approved_by_user_id") @db.Uuid
+  lockedByUserId      String?             @map("locked_by_user_id") @db.Uuid
+  approvedAt          DateTime?           @map("approved_at") @db.Timestamptz(3)
+  lockedAt            DateTime?           @map("locked_at") @db.Timestamptz(3)
+  version             Int                 @default(1)
+  createdAt           DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  calculations       PayrollCalculation[]
+  calculations PayrollCalculation[]
 
   @@unique([organizationId, jurisdictionCountry, jurisdictionRegion, periodStart, periodEnd], map: "payroll_periods_org_jurisdiction_window_key")
   @@index([organizationId, status, periodStart], map: "payroll_periods_org_status_start_idx")
@@ -2686,66 +2690,66 @@ model PayrollPeriod {
 }
 
 model PayrollCalculation {
-  id                  String                   @id @default(uuid()) @db.Uuid
-  payrollPeriodId     String                   @map("payroll_period_id") @db.Uuid
-  organizationId      String                   @map("organization_id") @db.Uuid
-  workerIdentityId    String                   @map("worker_identity_id") @db.Uuid
-  revision            Int
-  status              PayrollCalculationStatus @default(calculated)
-  jurisdictionCountry String                   @map("jurisdiction_country")
-  jurisdictionRegion  String                   @map("jurisdiction_region")
-  ruleProviderKey     String                   @map("rule_provider_key")
-  ruleProviderVersion String                   @map("rule_provider_version")
-  calculationPolicyVersion String              @map("calculation_policy_version")
-  workerClassification String                  @default("employee") @map("worker_classification")
-  currency            String
-  grossPayMinor       Int                      @map("gross_pay_minor")
-  totalDeductionsMinor Int                     @map("total_deductions_minor")
-  netPayMinor         Int                      @map("net_pay_minor")
-  totalEmployerCostMinor Int                   @map("total_employer_cost_minor")
-  synthetic           Boolean                  @default(true)
-  calculatedAt        DateTime                 @map("calculated_at") @db.Timestamptz(3)
-  createdByUserId     String                   @map("created_by_user_id") @db.Uuid
-  reviewedByUserId    String?                  @map("reviewed_by_user_id") @db.Uuid
-  approvedByUserId    String?                  @map("approved_by_user_id") @db.Uuid
-  rejectedByUserId    String?                  @map("rejected_by_user_id") @db.Uuid
-  approvedAt          DateTime?                @map("approved_at") @db.Timestamptz(3)
-  rejectedAt          DateTime?                @map("rejected_at") @db.Timestamptz(3)
-  supersededById      String?                  @map("superseded_by_id") @db.Uuid
-  reviewNote          String?                  @map("review_note")
+  id                               String                   @id @default(uuid()) @db.Uuid
+  payrollPeriodId                  String                   @map("payroll_period_id") @db.Uuid
+  organizationId                   String                   @map("organization_id") @db.Uuid
+  workerIdentityId                 String                   @map("worker_identity_id") @db.Uuid
+  revision                         Int
+  status                           PayrollCalculationStatus @default(calculated)
+  jurisdictionCountry              String                   @map("jurisdiction_country")
+  jurisdictionRegion               String                   @map("jurisdiction_region")
+  ruleProviderKey                  String                   @map("rule_provider_key")
+  ruleProviderVersion              String                   @map("rule_provider_version")
+  calculationPolicyVersion         String                   @map("calculation_policy_version")
+  workerClassification             String                   @default("employee") @map("worker_classification")
+  currency                         String
+  grossPayMinor                    Int                      @map("gross_pay_minor")
+  totalDeductionsMinor             Int                      @map("total_deductions_minor")
+  netPayMinor                      Int                      @map("net_pay_minor")
+  totalEmployerCostMinor           Int                      @map("total_employer_cost_minor")
+  synthetic                        Boolean                  @default(true)
+  calculatedAt                     DateTime                 @map("calculated_at") @db.Timestamptz(3)
+  createdByUserId                  String                   @map("created_by_user_id") @db.Uuid
+  reviewedByUserId                 String?                  @map("reviewed_by_user_id") @db.Uuid
+  approvedByUserId                 String?                  @map("approved_by_user_id") @db.Uuid
+  rejectedByUserId                 String?                  @map("rejected_by_user_id") @db.Uuid
+  approvedAt                       DateTime?                @map("approved_at") @db.Timestamptz(3)
+  rejectedAt                       DateTime?                @map("rejected_at") @db.Timestamptz(3)
+  supersededById                   String?                  @map("superseded_by_id") @db.Uuid
+  reviewNote                       String?                  @map("review_note")
   // Deterministic fingerprint over the immutable inputs + outputs — detects accidental drift and
   // proves a replay reproduced the same result. Not a cryptographic financial signature.
-  calculationFingerprint String                @default("") @map("calculation_fingerprint")
+  calculationFingerprint           String                   @default("") @map("calculation_fingerprint")
   // ── HR-5.1 Chunk 3: governed revision / correction lineage ──
   // familyRootId groups every revision + adjustment for one (period, worker) line. correctionType
   // distinguishes an ordinary pre-lock revision from an explicit post-lock adjustment. Deltas are
   // signed by DIRECTION (credit/debit) + non-negative absolute Money — never negative Money.
-  familyRootId        String                   @default("00000000-0000-0000-0000-000000000000") @map("family_root_id") @db.Uuid
-  previousCalculationId String?                @map("previous_calculation_id") @db.Uuid
-  previousFingerprint String?                  @map("previous_fingerprint")
-  correctionType      String?                  @map("correction_type")
-  correctionReason    String?                  @map("correction_reason")
-  correctedByUserId   String?                  @map("corrected_by_user_id") @db.Uuid
-  correctedAt         DateTime?                @map("corrected_at") @db.Timestamptz(3)
-  correlationKey      String?                  @map("correlation_key")
-  adjustsCalculationId String?                 @map("adjusts_calculation_id") @db.Uuid
-  adjustmentNetDirection String?               @map("adjustment_net_direction")
-  adjustmentNetDeltaMinor Int?                 @map("adjustment_net_delta_minor")
-  adjustmentGrossDirection String?             @map("adjustment_gross_direction")
-  adjustmentGrossDeltaMinor Int?               @map("adjustment_gross_delta_minor")
-  adjustmentDeductionsDirection String?        @map("adjustment_deductions_direction")
-  adjustmentDeductionsDeltaMinor Int?          @map("adjustment_deductions_delta_minor")
-  adjustmentEmployerCostDirection String?      @map("adjustment_employer_cost_direction")
-  adjustmentEmployerCostDeltaMinor Int?        @map("adjustment_employer_cost_delta_minor")
-  version             Int                      @default(1)
-  createdAt           DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt           DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
+  familyRootId                     String                   @default("00000000-0000-0000-0000-000000000000") @map("family_root_id") @db.Uuid
+  previousCalculationId            String?                  @map("previous_calculation_id") @db.Uuid
+  previousFingerprint              String?                  @map("previous_fingerprint")
+  correctionType                   String?                  @map("correction_type")
+  correctionReason                 String?                  @map("correction_reason")
+  correctedByUserId                String?                  @map("corrected_by_user_id") @db.Uuid
+  correctedAt                      DateTime?                @map("corrected_at") @db.Timestamptz(3)
+  correlationKey                   String?                  @map("correlation_key")
+  adjustsCalculationId             String?                  @map("adjusts_calculation_id") @db.Uuid
+  adjustmentNetDirection           String?                  @map("adjustment_net_direction")
+  adjustmentNetDeltaMinor          Int?                     @map("adjustment_net_delta_minor")
+  adjustmentGrossDirection         String?                  @map("adjustment_gross_direction")
+  adjustmentGrossDeltaMinor        Int?                     @map("adjustment_gross_delta_minor")
+  adjustmentDeductionsDirection    String?                  @map("adjustment_deductions_direction")
+  adjustmentDeductionsDeltaMinor   Int?                     @map("adjustment_deductions_delta_minor")
+  adjustmentEmployerCostDirection  String?                  @map("adjustment_employer_cost_direction")
+  adjustmentEmployerCostDeltaMinor Int?                     @map("adjustment_employer_cost_delta_minor")
+  version                          Int                      @default(1)
+  createdAt                        DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                        DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  payrollPeriod       PayrollPeriod            @relation(fields: [payrollPeriodId], references: [id], onDelete: Restrict)
-  workedTimeRefs      PayrollWorkedTimeReference[]
-  earningLines        PayrollEarningLine[]
-  deductionLines      PayrollDeductionLine[]
-  employerCostLines   PayrollEmployerCostLine[]
+  payrollPeriod     PayrollPeriod                @relation(fields: [payrollPeriodId], references: [id], onDelete: Restrict)
+  workedTimeRefs    PayrollWorkedTimeReference[]
+  earningLines      PayrollEarningLine[]
+  deductionLines    PayrollDeductionLine[]
+  employerCostLines PayrollEmployerCostLine[]
 
   @@unique([payrollPeriodId, workerIdentityId, revision], map: "payroll_calculations_period_worker_revision_key")
   @@index([organizationId, payrollPeriodId], map: "payroll_calculations_org_period_idx")
@@ -2764,31 +2768,31 @@ model PayrollCalculation {
 // instant — so a later contract/rate change can never re-base an existing calculation, and the
 // calculation is historically reproducible from its own snapshot.
 model PayrollWorkedTimeReference {
-  id                  String             @id @default(uuid()) @db.Uuid
-  payrollCalculationId String            @map("payroll_calculation_id") @db.Uuid
-  timesheetId         String             @map("timesheet_id") @db.Uuid
-  timesheetVersion    Int                @map("timesheet_version")
-  timesheetStatus     String             @map("timesheet_status")
-  payableMinutes      Int                @map("payable_minutes")
-  billableMinutes     Int                @map("billable_minutes")
-  scheduledStartAt    DateTime           @map("scheduled_start_at") @db.Timestamptz(3)
-  scheduledEndAt      DateTime           @map("scheduled_end_at") @db.Timestamptz(3)
-  assignmentId        String             @map("assignment_id") @db.Uuid
-  workGroupId         String             @map("work_group_id") @db.Uuid
-  roleDefinitionId    String             @map("role_definition_id") @db.Uuid
-  residenceId         String             @map("residence_id") @db.Uuid
+  id                     String   @id @default(uuid()) @db.Uuid
+  payrollCalculationId   String   @map("payroll_calculation_id") @db.Uuid
+  timesheetId            String   @map("timesheet_id") @db.Uuid
+  timesheetVersion       Int      @map("timesheet_version")
+  timesheetStatus        String   @map("timesheet_status")
+  payableMinutes         Int      @map("payable_minutes")
+  billableMinutes        Int      @map("billable_minutes")
+  scheduledStartAt       DateTime @map("scheduled_start_at") @db.Timestamptz(3)
+  scheduledEndAt         DateTime @map("scheduled_end_at") @db.Timestamptz(3)
+  assignmentId           String   @map("assignment_id") @db.Uuid
+  workGroupId            String   @map("work_group_id") @db.Uuid
+  roleDefinitionId       String   @map("role_definition_id") @db.Uuid
+  residenceId            String   @map("residence_id") @db.Uuid
   // rate snapshot (the committed EmployerContract rate that governed this shift)
-  compensationType    String             @default("hourly") @map("compensation_type")
-  contractId          String             @map("contract_id") @db.Uuid
-  contractVersion     String             @map("contract_version")
-  contractEffectiveFrom DateTime         @map("contract_effective_from") @db.Timestamptz(3)
-  appliedHourlyRateMinor Int             @map("applied_hourly_rate_minor")
-  currency            String
-  sourceEffectiveInstant DateTime        @map("source_effective_instant") @db.Timestamptz(3)
+  compensationType       String   @default("hourly") @map("compensation_type")
+  contractId             String   @map("contract_id") @db.Uuid
+  contractVersion        String   @map("contract_version")
+  contractEffectiveFrom  DateTime @map("contract_effective_from") @db.Timestamptz(3)
+  appliedHourlyRateMinor Int      @map("applied_hourly_rate_minor")
+  currency               String
+  sourceEffectiveInstant DateTime @map("source_effective_instant") @db.Timestamptz(3)
   // Job bonus paid for this shift (0 when none). Snapshotted so replay/verify stays reproducible.
-  bonusMinor          Int                @default(0) @map("bonus_minor")
+  bonusMinor             Int      @default(0) @map("bonus_minor")
 
-  payrollCalculation  PayrollCalculation @relation(fields: [payrollCalculationId], references: [id], onDelete: Cascade)
+  payrollCalculation PayrollCalculation @relation(fields: [payrollCalculationId], references: [id], onDelete: Cascade)
 
   @@index([payrollCalculationId], map: "payroll_worked_time_refs_calculation_idx")
   @@index([timesheetId], map: "payroll_worked_time_refs_timesheet_idx")
@@ -2796,37 +2800,37 @@ model PayrollWorkedTimeReference {
 }
 
 model PayrollEarningLine {
-  id                  String             @id @default(uuid()) @db.Uuid
-  payrollCalculationId String            @map("payroll_calculation_id") @db.Uuid
-  classification      String
-  description         String
-  quantityMinutes     Int?               @map("quantity_minutes")
-  rateMinor           Int?               @map("rate_minor")
-  amountMinor         Int                @map("amount_minor")
-  currency            String
+  id                    String  @id @default(uuid()) @db.Uuid
+  payrollCalculationId  String  @map("payroll_calculation_id") @db.Uuid
+  classification        String
+  description           String
+  quantityMinutes       Int?    @map("quantity_minutes")
+  rateMinor             Int?    @map("rate_minor")
+  amountMinor           Int     @map("amount_minor")
+  currency              String
   // Provenance: which governed contract version + source shift produced this earning (null for
   // derived earnings like vacation-pay accrual that are computed on the segment total).
-  sourceContractId    String?            @map("source_contract_id") @db.Uuid
-  sourceContractVersion String?          @map("source_contract_version")
-  sortOrder           Int                @default(0) @map("sort_order")
+  sourceContractId      String? @map("source_contract_id") @db.Uuid
+  sourceContractVersion String? @map("source_contract_version")
+  sortOrder             Int     @default(0) @map("sort_order")
 
-  payrollCalculation  PayrollCalculation @relation(fields: [payrollCalculationId], references: [id], onDelete: Cascade)
+  payrollCalculation PayrollCalculation @relation(fields: [payrollCalculationId], references: [id], onDelete: Cascade)
 
   @@index([payrollCalculationId], map: "payroll_earning_lines_calculation_idx")
   @@map("payroll_earning_lines")
 }
 
 model PayrollDeductionLine {
-  id                  String                   @id @default(uuid()) @db.Uuid
-  payrollCalculationId String                  @map("payroll_calculation_id") @db.Uuid
-  category            PayrollDeductionCategory
-  code                String
-  description         String
-  amountMinor         Int                      @map("amount_minor")
-  currency            String
-  sortOrder           Int                      @default(0) @map("sort_order")
+  id                   String                   @id @default(uuid()) @db.Uuid
+  payrollCalculationId String                   @map("payroll_calculation_id") @db.Uuid
+  category             PayrollDeductionCategory
+  code                 String
+  description          String
+  amountMinor          Int                      @map("amount_minor")
+  currency             String
+  sortOrder            Int                      @default(0) @map("sort_order")
 
-  payrollCalculation  PayrollCalculation       @relation(fields: [payrollCalculationId], references: [id], onDelete: Cascade)
+  payrollCalculation PayrollCalculation @relation(fields: [payrollCalculationId], references: [id], onDelete: Cascade)
 
   @@index([payrollCalculationId], map: "payroll_deduction_lines_calculation_idx")
   @@map("payroll_deduction_lines")
@@ -2835,16 +2839,16 @@ model PayrollDeductionLine {
 // Employer cost lines are kept STRICTLY separate from worker deduction lines — employer burden is
 // never inferred from a worker's net pay.
 model PayrollEmployerCostLine {
-  id                  String             @id @default(uuid()) @db.Uuid
-  payrollCalculationId String            @map("payroll_calculation_id") @db.Uuid
-  category            String
-  code                String
-  description         String
-  amountMinor         Int                @map("amount_minor")
-  currency            String
-  sortOrder           Int                @default(0) @map("sort_order")
+  id                   String @id @default(uuid()) @db.Uuid
+  payrollCalculationId String @map("payroll_calculation_id") @db.Uuid
+  category             String
+  code                 String
+  description          String
+  amountMinor          Int    @map("amount_minor")
+  currency             String
+  sortOrder            Int    @default(0) @map("sort_order")
 
-  payrollCalculation  PayrollCalculation @relation(fields: [payrollCalculationId], references: [id], onDelete: Cascade)
+  payrollCalculation PayrollCalculation @relation(fields: [payrollCalculationId], references: [id], onDelete: Cascade)
 
   @@index([payrollCalculationId], map: "payroll_employer_cost_lines_calculation_idx")
   @@map("payroll_employer_cost_lines")
@@ -2880,8 +2884,8 @@ model Invoice {
   createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt             DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  organization    EmployerOrganization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  timesheet       Timesheet                @relation(fields: [timesheetId], references: [id], onDelete: Restrict)
+  organization    EmployerOrganization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  timesheet       Timesheet                 @relation(fields: [timesheetId], references: [id], onDelete: Restrict)
   creditNotes     InvoiceCreditNote[]
   deliveries      InvoiceDeliveryReceipt[]
   paymentAttempts EmployerPaymentAttempt[]
@@ -2897,23 +2901,23 @@ model Invoice {
 }
 
 model InvoiceCreditNote {
-  id                   String   @id @default(uuid()) @db.Uuid
-  invoiceId            String   @map("invoice_id") @db.Uuid
-  organizationId       String   @map("organization_id") @db.Uuid
-  creditNoteNumber     String   @map("credit_note_number")
-  status               String   @default("draft")
-  version              Int      @default(1)
+  id                   String    @id @default(uuid()) @db.Uuid
+  invoiceId            String    @map("invoice_id") @db.Uuid
+  organizationId       String    @map("organization_id") @db.Uuid
+  creditNoteNumber     String    @map("credit_note_number")
+  status               String    @default("draft")
+  version              Int       @default(1)
   reason               String
-  calculationSnapshot  Json     @map("calculation_snapshot")
-  amountMinor          BigInt   @map("amount_minor")
-  currency             String   @default("CAD") @db.Char(3)
-  idempotencyKeyDigest String   @map("idempotency_key_digest") @db.Char(64)
+  calculationSnapshot  Json      @map("calculation_snapshot")
+  amountMinor          BigInt    @map("amount_minor")
+  currency             String    @default("CAD") @db.Char(3)
+  idempotencyKeyDigest String    @map("idempotency_key_digest") @db.Char(64)
   approvedAt           DateTime? @map("approved_at") @db.Timestamptz(3)
   rejectedAt           DateTime? @map("rejected_at") @db.Timestamptz(3)
   rejectedReason       String?   @map("rejected_reason")
-  issuedAt             DateTime @map("issued_at") @db.Timestamptz(3)
-  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  issuedAt             DateTime  @map("issued_at") @db.Timestamptz(3)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   invoice Invoice @relation(fields: [invoiceId, organizationId], references: [id, organizationId], onDelete: Restrict)
 
@@ -3228,7 +3232,7 @@ model AuditEvent {
   policyVersion         String?     @map("policy_version")
   createdAt             DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  actorReference AuditActorReference   @relation(fields: [actorReferenceId], references: [id], onDelete: Restrict)
+  actorReference AuditActorReference @relation(fields: [actorReferenceId], references: [id], onDelete: Restrict)
   // organizationId is an immutable historical snapshot, not a live reference: audit_events are
   // append-only (BEFORE UPDATE/DELETE triggers), so a SetNull FK made org deletion impossible.
   // Kept as a plain column with no FK; the org reference is preserved even after the org is gone.
@@ -3468,6 +3472,8 @@ model ExternalJobLead {
   firstSeenAt    DateTime  @default(now()) @map("first_seen_at") @db.Timestamptz(3)
   lastSeenAt     DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz(3)
 
+  crmContacts CrmContact[] @relation("CrmContactExternalJobLead")
+
   @@unique([source, sourceId], map: "external_job_leads_source_sourceid_key")
   @@index([province, city], map: "external_job_leads_province_city_idx")
   @@map("external_job_leads")
@@ -3478,15 +3484,15 @@ model ExternalJobLead {
 // alert them as matching jobs appear. One row per email (upsert). Consent is the act of submitting;
 // confirmedAt is set if/when a confirmation step is added. No money, no account required.
 model JobAlertSubscription {
-  id           String    @id @default(uuid()) @db.Uuid
-  email        String    @unique
-  roleKeywords String?   @map("role_keywords")
-  province     String?
-  locale       String?
-  source       String    @default("public_landing")
-  confirmedAt  DateTime? @map("confirmed_at") @db.Timestamptz(3)
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id               String    @id @default(uuid()) @db.Uuid
+  email            String    @unique
+  roleKeywords     String?   @map("role_keywords")
+  province         String?
+  locale           String?
+  source           String    @default("public_landing")
+  confirmedAt      DateTime? @map("confirmed_at") @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
   // Random base64url secret for the one-click unsubscribe link. Nullable so rows made before it
   // existed stay valid; the sender fills it before the first email goes out.
   unsubscribeToken String?   @unique @map("unsubscribe_token")
@@ -3617,14 +3623,14 @@ model Referral {
 // inbox) plus best-effort email (reusing the existing mailer; fail-closed when unconfigured). Country-
 // neutral: the holiday OCCASIONS come from the active CountryProfile, not from these tables. No money.
 model PlatformGreeting {
-  id              String                      @id @default(uuid()) @db.Uuid
-  occasionKey     String?                     @map("occasion_key") // holiday key from the country profile, or null for a custom greeting
-  templateKey     String                      @map("template_key") // card design: "holiday" | "thank_you" | "welcome" | "custom"
+  id              String                     @id @default(uuid()) @db.Uuid
+  occasionKey     String?                    @map("occasion_key") // holiday key from the country profile, or null for a custom greeting
+  templateKey     String                     @map("template_key") // card design: "holiday" | "thank_you" | "welcome" | "custom"
   title           String
   message         String
-  audienceScope   String                      @map("audience_scope") // "all" | "workers" | "employers" | "selected"
-  createdByUserId String                      @map("created_by_user_id") @db.Uuid
-  createdAt       DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
+  audienceScope   String                     @map("audience_scope") // "all" | "workers" | "employers" | "selected"
+  createdByUserId String                     @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
   deliveries      PlatformGreetingDelivery[]
 
   @@index([createdAt], map: "platform_greetings_created_idx")
@@ -3744,15 +3750,15 @@ model EmployerPlan {
 // Employer plan purchase orders — mirrors CvProOrder. Monthly, one period per order. Methods:
 // "e_transfer" (employer claims, staff confirms) and "stripe" (TEST-mode hosted Checkout only).
 model EmployerPlanOrder {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String    @map("organization_id") @db.Uuid
-  plan           String // "shift_pro" | "shift_business" | "contract_plus" (the code implies the track)
-  priceMinor     Int       @map("price_minor")
-  currency       String
-  periodMonths   Int       @map("period_months")
-  method         String    @default("e_transfer") // "e_transfer" | "stripe"
-  status         String // "pending_payment" | "payment_claimed" | "paid" | "canceled" | "refund_check"
-  paymentRef     String?   @map("payment_ref")
+  id                  String    @id @default(uuid()) @db.Uuid
+  organizationId      String    @map("organization_id") @db.Uuid
+  plan                String // "shift_pro" | "shift_business" | "contract_plus" (the code implies the track)
+  priceMinor          Int       @map("price_minor")
+  currency            String
+  periodMonths        Int       @map("period_months")
+  method              String    @default("e_transfer") // "e_transfer" | "stripe"
+  status              String // "pending_payment" | "payment_claimed" | "paid" | "canceled" | "refund_check"
+  paymentRef          String?   @map("payment_ref")
   // Short code the employer puts in the Interac message (e.g. JL-7F3K2). Null on older orders.
   shortRef            String?   @unique(map: "employer_plan_orders_short_ref_key") @map("short_ref")
   claimedAt           DateTime? @map("claimed_at") @db.Timestamptz(3)
@@ -3762,13 +3768,13 @@ model EmployerPlanOrder {
   amountReceivedMinor Int?      @map("amount_received_minor")
   staffNote           String?   @map("staff_note")
   // GST/QST breakdown charged on the order (null on orders created before taxes were added).
-  subtotalMinor  Int?      @map("subtotal_minor")
-  gstMinor       Int?      @map("gst_minor")
-  qstMinor       Int?      @map("qst_minor")
-  totalMinor     Int?      @map("total_minor")
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
-  paidAt         DateTime? @map("paid_at") @db.Timestamptz(3)
+  subtotalMinor       Int?      @map("subtotal_minor")
+  gstMinor            Int?      @map("gst_minor")
+  qstMinor            Int?      @map("qst_minor")
+  totalMinor          Int?      @map("total_minor")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  paidAt              DateTime? @map("paid_at") @db.Timestamptz(3)
 
   organization EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   receipt      PaymentReceipt?
@@ -3782,17 +3788,17 @@ model EmployerPlanOrder {
 // workers only while now < listedUntil (evaluated at read time, no cron). One row per job request.
 // trialEndsAt is set when the listing started on the org's one free trial.
 model JobListing {
-  id             String    @id @default(uuid()) @db.Uuid
-  jobRequestId   String    @unique @map("job_request_id") @db.Uuid
-  organizationId String    @map("organization_id") @db.Uuid
-  status         String // "trialing" | "active" (last action; visibility is listedUntil > now)
-  trialEndsAt    DateTime? @map("trial_ends_at") @db.Timestamptz(3)
-  listedUntil    DateTime? @map("listed_until") @db.Timestamptz(3)
+  id               String    @id @default(uuid()) @db.Uuid
+  jobRequestId     String    @unique @map("job_request_id") @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  status           String // "trialing" | "active" (last action; visibility is listedUntil > now)
+  trialEndsAt      DateTime? @map("trial_ends_at") @db.Timestamptz(3)
+  listedUntil      DateTime? @map("listed_until") @db.Timestamptz(3)
   // Renewal reminders: the listed-until date each reminder was last sent for (see EmployerPlan).
   reminder7SentFor DateTime? @map("reminder7_sent_for") @db.Timestamptz(3)
   reminder1SentFor DateTime? @map("reminder1_sent_for") @db.Timestamptz(3)
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   jobRequest   JobRequest           @relation(fields: [jobRequestId], references: [id], onDelete: Cascade)
   organization EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -3806,19 +3812,19 @@ model JobListing {
 // Long-term job listing purchase orders — one month per order, paid in advance. Methods:
 // "e_transfer" (employer claims, staff confirms) and "stripe" (TEST-mode hosted Checkout only).
 model JobListingOrder {
-  id             String    @id @default(uuid()) @db.Uuid
-  jobListingId   String    @map("job_listing_id") @db.Uuid
-  organizationId String    @map("organization_id") @db.Uuid
-  months         Int       @default(1)
-  subtotalMinor  Int       @map("subtotal_minor")
-  gstMinor       Int       @map("gst_minor")
-  qstMinor       Int       @map("qst_minor")
-  totalMinor     Int       @map("total_minor")
-  currency       String
-  discountKind   String    @default("none") @map("discount_kind") // "first_month_half" | "none"
-  method         String    @default("e_transfer") // "e_transfer" | "stripe"
-  status         String // "pending_payment" | "payment_claimed" | "paid" | "canceled"
-  paymentRef     String?   @map("payment_ref")
+  id                  String    @id @default(uuid()) @db.Uuid
+  jobListingId        String    @map("job_listing_id") @db.Uuid
+  organizationId      String    @map("organization_id") @db.Uuid
+  months              Int       @default(1)
+  subtotalMinor       Int       @map("subtotal_minor")
+  gstMinor            Int       @map("gst_minor")
+  qstMinor            Int       @map("qst_minor")
+  totalMinor          Int       @map("total_minor")
+  currency            String
+  discountKind        String    @default("none") @map("discount_kind") // "first_month_half" | "none"
+  method              String    @default("e_transfer") // "e_transfer" | "stripe"
+  status              String // "pending_payment" | "payment_claimed" | "paid" | "canceled"
+  paymentRef          String?   @map("payment_ref")
   // Short code the employer puts in the Interac message (e.g. JL-7F3K2). Null on older orders.
   shortRef            String?   @unique(map: "job_listing_orders_short_ref_key") @map("short_ref")
   claimedAt           DateTime? @map("claimed_at") @db.Timestamptz(3)
@@ -3826,9 +3832,9 @@ model JobListingOrder {
   cancelReason        String?   @map("cancel_reason") // "staff_rejected"
   amountReceivedMinor Int?      @map("amount_received_minor")
   staffNote           String?   @map("staff_note")
-  paidAt         DateTime? @map("paid_at") @db.Timestamptz(3)
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  paidAt              DateTime? @map("paid_at") @db.Timestamptz(3)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   jobListing   JobListing           @relation(fields: [jobListingId], references: [id], onDelete: Restrict)
   organization EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
@@ -3894,17 +3900,17 @@ model PaymentReceiptSequence {
 // and, on paid, the PaymentIntent reference. No card data touches JobLop. TEST ONLY, gated behind
 // INVOICE_TEST_MODE_ENABLED + STRIPE_TEST_* ; FINANCE_LIVE_ENABLED stays off and no money is moved here.
 model EmployerInvoiceCheckout {
-  id               String    @id @default(uuid()) @db.Uuid
-  organizationId   String    @map("organization_id") @db.Uuid
-  invoiceId        String    @map("invoice_id") @db.Uuid
-  amountMinor      BigInt    @map("amount_minor")
-  currency         String    @default("CAD") @db.Char(3)
-  method           String    @default("stripe") // only "stripe" (hosted TEST checkout) in Phase 1
-  status           String // "pending_payment" | "paid" | "canceled"
-  checkoutSessionId String?  @map("checkout_session_id")
-  paymentRef       String?   @map("payment_ref") // Stripe PaymentIntent id, set on paid
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  paidAt           DateTime? @map("paid_at") @db.Timestamptz(3)
+  id                String    @id @default(uuid()) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  invoiceId         String    @map("invoice_id") @db.Uuid
+  amountMinor       BigInt    @map("amount_minor")
+  currency          String    @default("CAD") @db.Char(3)
+  method            String    @default("stripe") // only "stripe" (hosted TEST checkout) in Phase 1
+  status            String // "pending_payment" | "paid" | "canceled"
+  checkoutSessionId String?   @map("checkout_session_id")
+  paymentRef        String?   @map("payment_ref") // Stripe PaymentIntent id, set on paid
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  paidAt            DateTime? @map("paid_at") @db.Timestamptz(3)
 
   invoice Invoice @relation(fields: [invoiceId, organizationId], references: [id, organizationId], onDelete: Restrict)
 
@@ -4166,4 +4172,81 @@ model MessageDeliveryFailure {
 
   @@index([failedAt], map: "message_delivery_failures_failed_at_idx")
   @@map("message_delivery_failures")
+}
+
+// ── CRM core (phase 1: pipeline + contacts) ─────────────────────────────────────────────────────
+// A dedicated, staff-only sales/relationship surface. Additive only. Nothing here sends marketing
+// email or moves money: the marketing phase is separate and reads live consent from the User row.
+enum CrmContactType {
+  worker
+  employer
+  lead
+}
+
+enum CrmContactStage {
+  new
+  contacted
+  qualified
+  active
+  dormant
+}
+
+enum CrmActivityKind {
+  note
+  call
+  email
+  stage_change
+  task
+}
+
+// One row per person/company tracked in the pipeline. Optional links tie a contact back to the real
+// User, EmployerOrganization or imported ExternalJobLead it came from; all are SetNull so deleting a
+// source never deletes CRM history. `marketingOptInAt` is a display-only cached mirror of
+// users.marketing_email_opt_in_at — the marketing phase must re-read live consent before any send.
+model CrmContact {
+  id                String          @id @default(uuid()) @db.Uuid
+  type              CrmContactType
+  userId            String?         @map("user_id") @db.Uuid
+  organizationId    String?         @map("organization_id") @db.Uuid
+  externalJobLeadId String?         @map("external_job_lead_id") @db.Uuid
+  name              String?
+  email             String?
+  phone             String?
+  stage             CrmContactStage @default(new)
+  assigneeUserId    String?         @map("assignee_user_id") @db.Uuid
+  source            String          @default("manual")
+  marketingOptInAt  DateTime?       @map("marketing_opt_in_at") @db.Timestamptz(3)
+  createdByUserId   String?         @map("created_by_user_id") @db.Uuid
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user            User?                 @relation("CrmContactUser", fields: [userId], references: [id], onDelete: SetNull)
+  organization    EmployerOrganization? @relation("CrmContactOrganization", fields: [organizationId], references: [id], onDelete: SetNull)
+  externalJobLead ExternalJobLead?      @relation("CrmContactExternalJobLead", fields: [externalJobLeadId], references: [id], onDelete: SetNull)
+  assignee        User?                 @relation("CrmContactAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  createdBy       User?                 @relation("CrmContactCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  activities      CrmActivity[]
+
+  @@unique([externalJobLeadId], map: "crm_contacts_external_job_lead_id_key")
+  @@index([stage, updatedAt], map: "crm_contacts_stage_updated_at_idx")
+  @@index([type, stage], map: "crm_contacts_type_stage_idx")
+  @@index([assigneeUserId], map: "crm_contacts_assignee_user_id_idx")
+  @@map("crm_contacts")
+}
+
+// The activity timeline for a contact: notes, logged calls/emails, stage moves and tasks. `body`
+// holds staff-written text; `actorUserId` is the staff member who logged it (SetNull if they leave).
+model CrmActivity {
+  id          String          @id @default(uuid()) @db.Uuid
+  contactId   String          @map("contact_id") @db.Uuid
+  kind        CrmActivityKind
+  body        String?
+  actorUserId String?         @map("actor_user_id") @db.Uuid
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  contact CrmContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  actor   User?      @relation("CrmActivityActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([contactId, createdAt], map: "crm_activities_contact_id_created_at_idx")
+  @@map("crm_activities")
 }

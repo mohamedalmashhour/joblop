@@ -130,6 +130,7 @@ jobs:
           - api
           - employer
           - admin
+          - crm
           - worker
           - auth-limiter
           - candidate-source
