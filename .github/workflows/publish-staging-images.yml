@@ -65,8 +65,8 @@ jobs:
           git merge-base --is-ancestor "$RELEASE_SHA" HEAD
           git checkout --detach "$RELEASE_SHA"
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
-          test "$(jq -r '.services | length' container-build-matrix.json)" = "8"
-          test "$(jq -r '[.services[].name] | unique | length' container-build-matrix.json)" = "8"
+          test "$(jq -r '.services | length' container-build-matrix.json)" = "9"
+          test "$(jq -r '[.services[].name] | unique | length' container-build-matrix.json)" = "9"
           echo "sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
           echo "timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
 
@@ -85,6 +85,8 @@ jobs:
             dockerfile: apps/employer/Dockerfile
           - service: admin
             dockerfile: apps/admin/Dockerfile
+          - service: crm
+            dockerfile: apps/crm/Dockerfile
           - service: worker
             dockerfile: apps/mobile/Dockerfile
           - service: auth-limiter
