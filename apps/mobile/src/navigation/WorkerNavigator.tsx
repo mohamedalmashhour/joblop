@@ -268,6 +268,7 @@ export function WorkerNavigator({
             onOpenDocuments={() => push({ name: "documents" })}
             onOpenCv={() => push({ name: "cvBuilder" })}
             onOpenSetup={() => push({ name: "onboarding" })}
+            onSignOut={() => void signOut()}
           />
         );
       case "documents":

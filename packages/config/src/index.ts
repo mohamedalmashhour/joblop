@@ -80,6 +80,11 @@ const runtimeConfigSchema = z
     // double-gated: it only sends when SMS_ENABLED=enabled AND the key + sender are present. Defaults OFF.
     SMS_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
     SMS_SENDER: z.string().min(1).max(32).optional(),
+    // App-store review sign-in: ONE demo worker number whose sign-in code is fixed and never texted,
+    // because a store reviewer cannot receive our text. Off unless BOTH are set. The number must
+    // belong to a demo worker account with no real person's data.
+    STORE_REVIEW_PHONE: z.string().regex(/^\+[1-9]\d{7,14}$/).optional(),
+    STORE_REVIEW_CODE: z.string().regex(/^\d{6}$/).optional(),
     // Shared secret for the pre-shift reminder sweep trigger (a scheduled cron calls the internal
     // endpoint with this token). Fail-closed: when unset, the sweep endpoint is disabled (404).
     SHIFT_REMINDER_SWEEP_TOKEN: z.string().min(16).optional(),
@@ -496,6 +501,10 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
     // Transactional SMS (Brevo): reuses the Brevo key. Enabled only when SMS_ENABLED=enabled.
     smsEnabled: parsed.SMS_ENABLED === "enabled",
     smsSender: parsed.SMS_SENDER,
+    storeReviewSignIn:
+      parsed.STORE_REVIEW_PHONE && parsed.STORE_REVIEW_CODE
+        ? { phone: parsed.STORE_REVIEW_PHONE, code: parsed.STORE_REVIEW_CODE }
+        : null,
     smsApiKey: parsed.BREVO_API_KEY,
     // True only when the key + sender are present; the enable flag is a separate money gate.
     hasSmsDelivery: Boolean(parsed.BREVO_API_KEY && parsed.SMS_SENDER),

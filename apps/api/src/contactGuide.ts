@@ -56,7 +56,7 @@ OTHER
 - The phone app can send notifications (job confirmed, shift tomorrow, cancelled or changed, staff replied, payment sent) once the worker turns them on.
 - /inbox holds greetings and certificates.
 - Signing in: enter the mobile number, then the 6-digit code sent by text. It is valid for 10 minutes. There is no password to reset.
-- Deleting an account: there is no button. See /account-deletion, and pass the request to the Joblop team. Some records must be kept.
+- Deleting an account: in the phone app, Profile has a "Delete my account" button that sends the request to the Joblop team. On the website there is no button: see /account-deletion, and pass the request to the Joblop team. Some records must be kept.
 
 WHAT WORKERS CANNOT SEE: other workers, employer pay rates or Joblop's margin, and internal HR notes.`;
 

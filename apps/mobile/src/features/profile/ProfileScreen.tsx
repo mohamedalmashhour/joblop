@@ -5,7 +5,7 @@ import type { JobCategoryChoice, MobileSessionTransport, WorkerIntake, WorkerPro
 import { Badge, BodyText, Button, Card, ErrorState, Heading, Input, LoadingState, ScreenContainer, Section, SmallText } from "../../ui/primitives";
 import { useLocale } from "../../i18n/LocaleContext";
 import { LOCALES, localeLabel, type Locale } from "../../i18n/strings";
-import { LegalLinks } from "../legal";
+import { DeleteAccountCard, LegalLinks } from "../legal";
 import { formatLocale } from "../marketplace/marketplaceContent";
 import { formatExpiry } from "../documents/documentsContent";
 import { categoryLabelKey, credentialStatusKey, intakeBody, standingKey } from "./profileContent";
@@ -17,17 +17,20 @@ type State =
 
 // "My profile" — the website's HR profile page in the app: standing, your details (with the same
 // consent and text-message words), credentials and their expiry, "Jobs I want", a link to Documents,
-// the language your offers and notices use (saved on your account), and Terms / Privacy / Delete.
+// the language your offers and notices use (saved on your account), Terms / Privacy, and the in-app
+// "Delete my account" request.
 export function ProfileScreen({
   transport,
   onOpenDocuments,
   onOpenCv,
-  onOpenSetup
+  onOpenSetup,
+  onSignOut
 }: {
   transport: MobileSessionTransport | null;
   onOpenDocuments: () => void;
   onOpenCv: () => void;
   onOpenSetup?: () => void;
+  onSignOut: () => void;
 }) {
   const { t, locale } = useLocale();
   const [state, setState] = useState<State>({ status: "loading" });
@@ -127,8 +130,9 @@ export function ProfileScreen({
           <Card>
             <Heading>{t("legal.title")}</Heading>
             <SmallText>{t("legal.intro")}</SmallText>
-            <LegalLinks />
+            <LegalLinks pages={["terms", "privacy"]} />
           </Card>
+          <DeleteAccountCard transport={transport} onSignOut={onSignOut} />
           <SmallText>{t("hr.footer")}</SmallText>
         </View>
       </ScrollView>

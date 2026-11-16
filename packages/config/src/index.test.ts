@@ -441,4 +441,15 @@ describe("production readiness settings", () => {
       publicSignupFlag: null
     });
   });
+
+  it("turns on the store-review sign-in only when both the number and the code are set and well formed", () => {
+    expect(getRuntimeConfig({ RWOS_ENV: "test" }).storeReviewSignIn).toBeNull();
+    expect(getRuntimeConfig({ RWOS_ENV: "test", STORE_REVIEW_PHONE: "+15145550100" }).storeReviewSignIn).toBeNull();
+    expect(getRuntimeConfig({ RWOS_ENV: "test", STORE_REVIEW_CODE: "424242" }).storeReviewSignIn).toBeNull();
+    expect(
+      getRuntimeConfig({ RWOS_ENV: "test", STORE_REVIEW_PHONE: "+15145550100", STORE_REVIEW_CODE: "424242" }).storeReviewSignIn
+    ).toEqual({ phone: "+15145550100", code: "424242" });
+    expect(() => getRuntimeConfig({ RWOS_ENV: "test", STORE_REVIEW_PHONE: "5145550100", STORE_REVIEW_CODE: "424242" })).toThrow();
+    expect(() => getRuntimeConfig({ RWOS_ENV: "test", STORE_REVIEW_PHONE: "+15145550100", STORE_REVIEW_CODE: "4242" })).toThrow();
+  });
 });

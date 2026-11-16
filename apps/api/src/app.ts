@@ -2039,7 +2039,12 @@ export function buildApi(options: BuildApiOptions = {}) {
       const rateLimit = await consumeAuthenticationRateLimit(authRateLimiter, { action: "sign_in", ip: request.ip, email: phone });
       if (!rateLimit) return sendAuthenticationUnavailable(reply);
       if (!rateLimit.allowed) return sendAuthenticationRateLimited(reply, rateLimit.retryAfterSeconds);
-      const outcome = await requestStaffPhoneCode(prisma, smsSender, { phone, now: new Date(), audience }).catch(() => "not_sent" as const);
+      const outcome = await requestStaffPhoneCode(prisma, smsSender, {
+        phone,
+        now: new Date(),
+        audience,
+        storeReview: runtimeConfig.storeReviewSignIn
+      }).catch(() => "not_sent" as const);
       if (outcome === "not_sent") logger.error("api.staff_phone.text_not_sent", { requestId: request.id, audience });
       return reply.code(202).send({ status: "code_requested" });
     });
