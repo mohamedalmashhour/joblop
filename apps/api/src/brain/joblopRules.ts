@@ -1,4 +1,5 @@
 import type { ActionOutcome, BrainRule, DetectedIssue } from "@rwos/brain";
+import type { JoblopCeoContext } from "./joblopCeoRules";
 import { ATTENDANCE_DEVIATION_FLAGS, attendanceDeviationFlags } from "@rwos/shared";
 import { hoursReportDeadline } from "../hoursReport";
 import { unfilledThreshold } from "../unfilledShiftAlerts";
@@ -158,7 +159,7 @@ export type JoblopBrainContext = Readonly<{
   data: JoblopBrainData;
   effects: JoblopBrainEffects;
   /** The CEO strategy persona's read model + its two money-free governed capabilities. */
-  ceo: import("./joblopCeoRules").JoblopCeoContext;
+  ceo: JoblopCeoContext;
 }>;
 
 // ── Pure checks ──

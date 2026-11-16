@@ -2,7 +2,7 @@ import type { DetectedIssue } from "@rwos/brain";
 import { describe, expect, it } from "vitest";
 import { ceoContext, emptyKpis } from "./brainTestFixtures";
 import {
-  JOBLOP_CEO_RULES,
+  type JOBLOP_CEO_RULES,
   ceoEmployerChurnRule,
   ceoFillRateDroppingRule,
   ceoMarketingOpportunityRule,
