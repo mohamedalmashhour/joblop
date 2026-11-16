@@ -46,6 +46,10 @@ type Payload = {
 };
 type State = { status: "loading" } | { status: "denied" } | { status: "error" } | { status: "ready"; data: Payload };
 
+// The CEO strategy persona's rule keys (mirrors JOBLOP_CEO_RULE_KEYS on the API) — shown in their own
+// section. Advisory by default: in Live mode only the two CEO switches run on their own.
+const CEO_RULE_KEYS = new Set(["ceo_fill_rate_dropping", "ceo_supply_demand_imbalance", "ceo_employer_churn", "ceo_stalled_pipeline", "ceo_marketing_opportunity"]);
+
 const when = (iso: string) => new Date(iso).toLocaleString("en-CA", { timeZone: "America/Toronto", dateStyle: "medium", timeStyle: "short" });
 const total = (counts: Record<string, number>) => Object.values(counts).reduce((a, b) => a + b, 0);
 
@@ -102,6 +106,35 @@ export function BrainPanel() {
   const { data } = state;
   const ruleName = (key: string) => copy.ruleNames[key] ?? key;
   const actionName = (key: string) => copy.switchNames[key] ?? key;
+
+  const ceoIssues = data.issues.filter((i) => CEO_RULE_KEYS.has(i.ruleKey));
+  const opsIssues = data.issues.filter((i) => !CEO_RULE_KEYS.has(i.ruleKey));
+
+  const renderIssue = (issue: Issue) => (
+    <li key={issue.id} style={{ ...styles.issue, ...(issue.severity === "urgent" ? styles.urgent : {}) }}>
+      <div style={styles.issueHead}>
+        <span style={styles.badge}>{copy.severity[issue.severity]}</span>
+        <span style={styles.muted}>{ruleName(issue.ruleKey)} · {when(issue.detectedAt)}</span>
+      </div>
+      <p style={styles.issueText}>{issue.summary}</p>
+      {copy.ruleHelp[issue.ruleKey] ? <p style={styles.muted}>{copy.ruleHelp[issue.ruleKey]}</p> : null}
+      <div style={styles.row}>
+        {issue.recommendedAction ? (
+          <>
+            <span style={styles.muted}>{copy.recommended}: {actionName(issue.recommendedAction)}</span>
+            <button type="button" disabled={busy !== null} onClick={() => void post(issue.id, `/api/brain/issues/${encodeURIComponent(issue.id)}/do`)} style={styles.goldButton}>
+              {copy.doIt}
+            </button>
+          </>
+        ) : (
+          <span style={styles.muted}>{copy.personNeeded}</span>
+        )}
+        <button type="button" disabled={busy !== null} onClick={() => void post(`close-${issue.id}`, `/api/brain/issues/${encodeURIComponent(issue.id)}/dismiss`)} style={styles.ghostButton}>
+          {copy.close}
+        </button>
+      </div>
+    </li>
+  );
 
   return (
     <div style={styles.wrap}>
@@ -186,38 +219,22 @@ export function BrainPanel() {
         </ul>
       </section>
 
+      <section style={styles.card} aria-labelledby="brain-ceo">
+        <h2 id="brain-ceo" style={styles.h2}>{copy.ceoHeading}</h2>
+        <p style={styles.help}>{copy.ceoHelp}</p>
+        {ceoIssues.length === 0 ? (
+          <p style={styles.help}>{copy.ceoEmpty}</p>
+        ) : (
+          <ul style={styles.issueList}>{ceoIssues.map(renderIssue)}</ul>
+        )}
+      </section>
+
       <section style={styles.card} aria-labelledby="brain-issues">
         <h2 id="brain-issues" style={styles.h2}>{copy.issuesHeading}</h2>
-        {data.issues.length === 0 ? (
+        {opsIssues.length === 0 ? (
           <p style={styles.help}>{copy.issuesEmpty}</p>
         ) : (
-          <ul style={styles.issueList}>
-            {data.issues.map((issue) => (
-              <li key={issue.id} style={{ ...styles.issue, ...(issue.severity === "urgent" ? styles.urgent : {}) }}>
-                <div style={styles.issueHead}>
-                  <span style={styles.badge}>{copy.severity[issue.severity]}</span>
-                  <span style={styles.muted}>{ruleName(issue.ruleKey)} · {when(issue.detectedAt)}</span>
-                </div>
-                <p style={styles.issueText}>{issue.summary}</p>
-                {copy.ruleHelp[issue.ruleKey] ? <p style={styles.muted}>{copy.ruleHelp[issue.ruleKey]}</p> : null}
-                <div style={styles.row}>
-                  {issue.recommendedAction ? (
-                    <>
-                      <span style={styles.muted}>{copy.recommended}: {actionName(issue.recommendedAction)}</span>
-                      <button type="button" disabled={busy !== null} onClick={() => void post(issue.id, `/api/brain/issues/${encodeURIComponent(issue.id)}/do`)} style={styles.goldButton}>
-                        {copy.doIt}
-                      </button>
-                    </>
-                  ) : (
-                    <span style={styles.muted}>{copy.personNeeded}</span>
-                  )}
-                  <button type="button" disabled={busy !== null} onClick={() => void post(`close-${issue.id}`, `/api/brain/issues/${encodeURIComponent(issue.id)}/dismiss`)} style={styles.ghostButton}>
-                    {copy.close}
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <ul style={styles.issueList}>{opsIssues.map(renderIssue)}</ul>
         )}
       </section>
 

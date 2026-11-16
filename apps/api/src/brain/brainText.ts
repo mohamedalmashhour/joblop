@@ -239,7 +239,13 @@ export const RULE_TITLES: Record<string, Titles> = {
   invoice_overdue: { en: "Overdue invoice", fr: "Facture en retard", ar: "فاتورة متأخرة" },
   job_missing_info: { en: "Job submitted with missing information", fr: "Mission soumise avec des informations manquantes", ar: "مهمة أُرسلت بمعلومات ناقصة" },
   // Phase 2: one row per action card the assistant showed (resolved at once; not a problem).
-  assistant: { en: "Assistant action cards shown", fr: "Cartes d'action de l'assistant affichées", ar: "بطاقات إجراءات المساعد المعروضة" }
+  assistant: { en: "Assistant action cards shown", fr: "Cartes d'action de l'assistant affichées", ar: "بطاقات إجراءات المساعد المعروضة" },
+  // CEO persona — platform-strategy signals (advisory).
+  ceo_fill_rate_dropping: { en: "CEO: fill rate is dropping", fr: "PDG : le taux de pourvoi baisse", ar: "الرئيس التنفيذي: معدل شغل الوظائف ينخفض" },
+  ceo_supply_demand_imbalance: { en: "CEO: supply short of demand in a region", fr: "PDG : offre insuffisante dans une région", ar: "الرئيس التنفيذي: نقص في العرض بمنطقة ما" },
+  ceo_employer_churn: { en: "CEO: employers going quiet", fr: "PDG : des employeurs deviennent inactifs", ar: "الرئيس التنفيذي: أصحاب عمل يتوقفون عن النشاط" },
+  ceo_stalled_pipeline: { en: "CEO: requests stalling before dispatch", fr: "PDG : des demandes bloquées avant la répartition", ar: "الرئيس التنفيذي: طلبات متوقفة قبل الإرسال" },
+  ceo_marketing_opportunity: { en: "CEO: consented contacts with no recent campaign", fr: "PDG : contacts consentants sans campagne récente", ar: "الرئيس التنفيذي: جهات موافِقة دون حملة حديثة" }
 };
 
 export const ACTION_TITLES: Record<string, Titles> = {
@@ -263,7 +269,10 @@ export const ACTION_TITLES: Record<string, Titles> = {
   "assistant.duplicate_request": { en: "Assistant: employer copied a request", fr: "Assistant : un employeur a copié une demande", ar: "المساعد: صاحب عمل نسخ طلبًا" },
   "assistant.brain_do_it": { en: "Assistant: staff ran a Brain action", fr: "Assistant : le personnel a lancé une action du cerveau", ar: "المساعد: الفريق شغّل إجراءً من العقل" },
   "assistant.approve_request": { en: "Assistant: staff approved a request", fr: "Assistant : le personnel a approuvé une demande", ar: "المساعد: الفريق وافق على طلب" },
-  "assistant.approve_timesheet": { en: "Assistant: staff approved hours", fr: "Assistant : le personnel a approuvé des heures", ar: "المساعد: الفريق وافق على الساعات" }
+  "assistant.approve_timesheet": { en: "Assistant: staff approved hours", fr: "Assistant : le personnel a approuvé des heures", ar: "المساعد: الفريق وافق على الساعات" },
+  // CEO persona — the two money-free governed actions (drafts/tasks; never sends, never money).
+  ceo_queue_crm_task: { en: "CEO: queue a CRM follow-up task for staff", fr: "PDG : créer une tâche de suivi CRM pour le personnel", ar: "الرئيس التنفيذي: إنشاء مهمة متابعة في CRM للفريق" },
+  ceo_draft_campaign: { en: "CEO: draft a marketing campaign (never sent)", fr: "PDG : rédiger une campagne marketing (jamais envoyée)", ar: "الرئيس التنفيذي: صياغة حملة تسويقية (لا تُرسَل أبدًا)" }
 };
 
 const title = (table: Record<string, Titles>, key: string, language: WorkerLanguage) => table[key]?.[language] ?? key;
