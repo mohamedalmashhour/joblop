@@ -11,7 +11,7 @@ describe("staging image publication workflow policy", () => {
   it("is manual, staging-gated and incapable of deployment", () => {
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).toContain("environment: staging");
-    expect(workflow).toContain("PUBLISH_EIGHT_IMAGES_NO_DEPLOY");
+    expect(workflow).toContain("PUBLISH_NINE_IMAGES_NO_DEPLOY");
     expect(workflow).toContain("deployed: false");
     expect(workflow).not.toMatch(/gcloud run deploy|terraform apply|kubectl apply/);
   });
@@ -27,13 +27,13 @@ describe("staging image publication workflow policy", () => {
     expect(workflow).not.toMatch(/uses:\s+[^\s]+@(v\d+|main|master)\b/);
   });
 
-  it("publishes exactly the eight container-matrix services", () => {
-    expect(matrix.services).toHaveLength(8);
+  it("publishes exactly the nine container-matrix services", () => {
+    expect(matrix.services).toHaveLength(9);
     for (const service of matrix.services) {
       expect(workflow).toContain(`service: ${service.name}`);
       expect(workflow).toContain(`dockerfile: ${service.dockerfile}`);
     }
-    expect(workflow).toContain('test "${#digest_files[@]}" = "8"');
+    expect(workflow).toContain('test "${#digest_files[@]}" = "9"');
     expect(workflow).toContain("@sha256:[a-f0-9]{64}");
   });
 

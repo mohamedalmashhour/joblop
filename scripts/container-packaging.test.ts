@@ -8,6 +8,7 @@ describe("Cloud Run application packaging", () => {
     "api",
     "employer",
     "admin",
+    "crm",
     "mobile",
     "auth-limiter",
     "candidate-source",
@@ -32,7 +33,7 @@ describe("Cloud Run application packaging", () => {
     expect(dockerignore).toContain("external-validation-evidence");
   });
 
-  it.each(["employer", "admin"])(
+  it.each(["employer", "admin", "crm"])(
     "copies the shared ESLint configuration into the %s build context",
     (application) => {
       expect(read(`apps/${application}/Dockerfile`)).toContain(
@@ -56,6 +57,7 @@ describe("Cloud Run application packaging", () => {
     "api",
     "employer",
     "admin",
+    "crm",
     "auth-limiter",
     "candidate-source",
     "offer-delivery",
@@ -74,6 +76,7 @@ describe("Cloud Run application packaging", () => {
       "api",
       "employer",
       "admin",
+      "crm",
       "worker",
       "auth-limiter",
       "candidate-source",
@@ -82,7 +85,7 @@ describe("Cloud Run application packaging", () => {
     ]);
     for (const service of matrix.services) {
       expect(service.dockerfile).toMatch(
-        /^apps\/(api|employer|admin|mobile|auth-limiter|candidate-source|offer-delivery|qa-reset)\/Dockerfile$/
+        /^apps\/(api|employer|admin|crm|mobile|auth-limiter|candidate-source|offer-delivery|qa-reset)\/Dockerfile$/
       );
     }
   });

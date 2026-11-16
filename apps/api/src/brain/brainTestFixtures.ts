@@ -12,6 +12,8 @@ import type {
   UnfilledJobRow,
   UnreportedShiftRow
 } from "./joblopRules";
+import type { JoblopCeoContext, JoblopCeoData, KpiSnapshot } from "./joblopCeoRules";
+import type { CeoCampaignDraftInput, CeoCrmTaskInput, JoblopCeoEffects } from "./joblopCeoEffects";
 
 // TEST ONLY: fixtures and fakes for the Joblop brain tests.
 
@@ -82,9 +84,63 @@ export function fakeEffects(outcome: ActionOutcome = { status: "done", detail: "
   return { effects, calls };
 }
 
-export const context = (rows: FakeRows, effects?: JoblopBrainEffects): JoblopBrainContext => ({
+// ── CEO persona fakes ──
+
+export const emptyKpis = (over: Partial<KpiSnapshot> = {}): KpiSnapshot => ({
+  periodKey: "2026-W46",
+  activeWorkers: 0,
+  priorActiveWorkers: 0,
+  activeEmployers: 0,
+  priorActiveEmployers: 0,
+  openJobs: 0,
+  openPlaces: 0,
+  filledPlaces: 0,
+  fillRate: 1,
+  offersSent: 0,
+  offersAccepted: 0,
+  acceptanceRate: 0,
+  priorAcceptanceRate: 0,
+  ordersCompleted: 0,
+  priorOrdersCompleted: 0,
+  requestsSubmitted: 0,
+  requestsApproved: 0,
+  dormantEmployers: 0,
+  caslConsentedContacts: 0,
+  caslConsentedNoRecentCampaign: 0,
+  segments: [],
+  ...over
+});
+
+export const fakeCeoData = (snapshot: KpiSnapshot = emptyKpis()): JoblopCeoData => ({
+  platformKpis: async () => snapshot
+});
+
+export type CeoEffectCall = { name: keyof JoblopCeoEffects; input: CeoCrmTaskInput | CeoCampaignDraftInput };
+
+export function fakeCeoEffects(outcome: ActionOutcome = { status: "done", detail: "ok", resolvesIssue: false }) {
+  const calls: CeoEffectCall[] = [];
+  const effects: JoblopCeoEffects = {
+    queueCrmTask: async (input) => {
+      calls.push({ name: "queueCrmTask", input });
+      return outcome;
+    },
+    draftMarketingCampaign: async (input) => {
+      calls.push({ name: "draftMarketingCampaign", input });
+      return outcome;
+    }
+  };
+  return { effects, calls };
+}
+
+export const ceoContext = (snapshot?: KpiSnapshot, effects?: JoblopCeoEffects): JoblopCeoContext => ({
+  data: fakeCeoData(snapshot),
+  effects: effects ?? fakeCeoEffects().effects
+});
+
+export const context = (rows: FakeRows, effects?: JoblopBrainEffects, ceo?: JoblopCeoContext): JoblopBrainContext => ({
   data: fakeData(rows),
-  effects: effects ?? fakeEffects().effects
+  effects: effects ?? fakeEffects().effects,
+  ceo: ceo ?? ceoContext()
 });
 
 export const unfilledJob = (over: Partial<UnfilledJobRow> = {}): UnfilledJobRow => ({

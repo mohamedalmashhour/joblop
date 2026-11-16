@@ -21,7 +21,7 @@ describe("calendar request persistence boundary", () => {
   it("adds one calendar profile to the authoritative JobRequest lifecycle", () => {
     expect(schema).toContain("model StaffingRequestCalendarProfile");
     expect(schema).toContain("jobRequestId");
-    expect(schema).toContain("calendarProfile   StaffingRequestCalendarProfile?");
+    expect(schema).toMatch(/calendarProfile\s+StaffingRequestCalendarProfile\?/);
     expect(migration).toContain('REFERENCES "job_requests"("id")');
     expect(migration).toContain('"staffing_request_calendar_profiles_job_request_id_key"');
   });
