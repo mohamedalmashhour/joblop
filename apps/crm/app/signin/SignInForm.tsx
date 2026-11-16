@@ -2,15 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import type { Route } from "next";
 import { ui } from "../ui";
 
 type Step = "phone" | "code";
 
 // Same-site return path only (leading single slash, no "//" or scheme), so ?next can never redirect
 // off-site. Defaults to the pipeline board.
-function safeReturnPath(next: string | null): string {
-  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/";
-  return next;
+function safeReturnPath(next: string | null): Route {
+  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/" as Route;
+  return next as Route;
 }
 
 export function SignInForm() {
