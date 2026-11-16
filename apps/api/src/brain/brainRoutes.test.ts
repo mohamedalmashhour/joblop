@@ -115,6 +115,8 @@ describe("brain routes", () => {
         "auto_approve_timesheet",
         "notify_worker_report_hours",
         "close_unreported_shift",
+        "ceo_queue_crm_task",
+        "ceo_draft_campaign",
         "daily_summary_email"
       ]);
       expect(body.switches.every((s) => s.enabled === false)).toBe(true);

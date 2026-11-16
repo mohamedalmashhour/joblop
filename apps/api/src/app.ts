@@ -350,6 +350,8 @@ import { latestHoursReports, registerHoursReportRoutes } from "./hoursReportRout
 import { createPrismaDeliveryFailureRecorder, purgeOldDeliveryBodies, withEmailFailureRecording, withSmsFailureRecording } from "./brain/deliveryFailures";
 import { createJoblopBrain } from "./brain/joblopBrain";
 import { createPrismaJoblopBrainData } from "./brain/joblopData";
+import { createPrismaJoblopCeoData } from "./brain/joblopCeoData";
+import { createJoblopCeoEffects } from "./brain/joblopCeoEffects";
 import { createJoblopBrainEffects, type JoblopBrainDomain } from "./brain/joblopEffects";
 import { createPrismaBrainStore } from "./brain/prismaBrainStore";
 import { assistantSwitchKeys, createAssistantService } from "./assistant/assistantService";
@@ -11358,6 +11360,8 @@ export function buildApi(options: BuildApiOptions = {}) {
       ? createJoblopBrain({
           store: brainStore,
           data: createPrismaJoblopBrainData(prisma, (jobs) => remainingOpenings(prisma, jobs)),
+          ceoData: createPrismaJoblopCeoData(prisma),
+          ceoEffects: createJoblopCeoEffects({ log: brainLog }),
           effects: createJoblopBrainEffects({
             prisma,
             emailSender,

@@ -27,6 +27,9 @@ export type BrainCopy = {
   ruleHelp: Record<string, string>;
   issuesHeading: string;
   issuesEmpty: string;
+  ceoHeading: string;
+  ceoHelp: string;
+  ceoEmpty: string;
   recommended: string;
   personNeeded: string;
   doIt: string;
@@ -102,6 +105,8 @@ export const brainText: PageText<BrainCopy> = {
       daily_summary_email: "Daily summary email to staff",
       notify_worker_report_hours: "Tell a worker with no check-in to report their hours (12 h)",
       close_unreported_shift: "Close a shift with no hours reported in time (employer told)",
+      ceo_queue_crm_task: "CEO: queue a CRM follow-up task for staff",
+      ceo_draft_campaign: "CEO: draft a marketing campaign (never sent)",
       "remind_worker_timesheet": "Remind a worker to confirm their hours (email, or text without email)",
       "assistant.claim_open_job": "Assistant: a worker claimed a job",
       "assistant.cancel_my_shift": "Assistant: a worker cancelled a shift",
@@ -126,9 +131,16 @@ export const brainText: PageText<BrainCopy> = {
       job_missing_info: "Job missing information",
       "hours_not_prepared": "Shift ended, no hours prepared",
       hours_not_reported: "No check-in: worker has 12 h to report hours",
-      shift_not_recorded: "Not recorded: no hours reported in time"
+      shift_not_recorded: "Not recorded: no hours reported in time",
+      ceo_fill_rate_dropping: "CEO: fill rate is dropping",
+      ceo_supply_demand_imbalance: "CEO: supply short of demand in a region",
+      ceo_employer_churn: "CEO: employers going quiet",
+      ceo_stalled_pipeline: "CEO: requests stalling before dispatch",
+      ceo_marketing_opportunity: "CEO: consented contacts with no recent campaign"
     },
     switchHelp: {
+      ceo_queue_crm_task: "In Live mode, the CEO advisor may queue a staff follow-up task in the CRM. Money-free; nothing is sent.",
+      ceo_draft_campaign: "In Live mode, the CEO advisor may prepare a campaign DRAFT. It is never sent — a person reviews and sends it.",
       "remind_worker_timesheet": "24 h after the shift, if the worker has not confirmed their hours. The employer is asked only after the worker confirms.",
       "remind_worker_check_in": "10 min after the start. The employer also gets one short email saying the worker has not checked in yet and Joblop is on it.",
       "offer_employer_bonus": "Only for jobs on the job board, and never again after the employer said no.",
@@ -141,10 +153,18 @@ export const brainText: PageText<BrainCopy> = {
       "timesheet_unconfirmed": "24 h after the shift: first the worker is reminded, then the employer once the worker has confirmed.",
       "hours_not_prepared": "The shift ended over 2 h ago and no timesheet exists yet. A person must check it.",
       hours_not_reported: "The shift ended with no check-in. The worker can report the hours until 12 h after the end; otherwise it is not recorded.",
-      shift_not_recorded: "The 12 h passed with no hours reported: no hours, no pay, no invoice unless staff enter the hours."
+      shift_not_recorded: "The 12 h passed with no hours reported: no hours, no pay, no invoice unless staff enter the hours.",
+      ceo_fill_rate_dropping: "Fewer open places are being filled. Strategic — a person decides on supply growth and pricing.",
+      ceo_supply_demand_imbalance: "A region has many open places and a low fill rate. The advisor can queue a staff task to grow supply there.",
+      ceo_employer_churn: "Employers who posted last week have gone quiet. The advisor can queue a staff re-engagement task.",
+      ceo_stalled_pipeline: "Many requests were submitted but few approved. The advisor can queue a staff task to unblock intake.",
+      ceo_marketing_opportunity: "A pool of CASL-consented contacts has had no recent campaign. The advisor can draft (never send) an outreach."
     },
     issuesHeading: "Open problems",
     issuesEmpty: "No open problems.",
+    ceoHeading: "CEO advisor — strategy",
+    ceoHelp: "Weekly strategy signals from platform trends. Advisory by default: most are notes for a person. In Live mode, only the two switches above (queue a CRM task, draft a campaign) ever run on their own — never money, never a send.",
+    ceoEmpty: "No strategy signals this week.",
     recommended: "Suggested",
     personNeeded: "A person must handle this.",
     doIt: "Do it",
@@ -218,6 +238,8 @@ export const brainText: PageText<BrainCopy> = {
       daily_summary_email: "Résumé quotidien par courriel au personnel",
       notify_worker_report_hours: "Aviser un travailleur sans pointage de déclarer ses heures (12 h)",
       close_unreported_shift: "Fermer un quart sans heures déclarées à temps (employeur avisé)",
+      ceo_queue_crm_task: "PDG : créer une tâche de suivi CRM pour le personnel",
+      ceo_draft_campaign: "PDG : rédiger une campagne marketing (jamais envoyée)",
       "remind_worker_timesheet": "Rappeler à un travailleur de confirmer ses heures (courriel, ou texto sans courriel)",
       "assistant.claim_open_job": "Assistant : un travailleur a pris un emploi",
       "assistant.cancel_my_shift": "Assistant : un travailleur a annulé un quart",
@@ -242,9 +264,16 @@ export const brainText: PageText<BrainCopy> = {
       job_missing_info: "Mission avec informations manquantes",
       "hours_not_prepared": "Quart terminé, heures non préparées",
       hours_not_reported: "Sans pointage : le travailleur a 12 h pour déclarer ses heures",
-      shift_not_recorded: "Non enregistré : aucune heure déclarée à temps"
+      shift_not_recorded: "Non enregistré : aucune heure déclarée à temps",
+      ceo_fill_rate_dropping: "PDG : le taux de pourvoi baisse",
+      ceo_supply_demand_imbalance: "PDG : offre insuffisante dans une région",
+      ceo_employer_churn: "PDG : des employeurs deviennent inactifs",
+      ceo_stalled_pipeline: "PDG : des demandes bloquées avant la répartition",
+      ceo_marketing_opportunity: "PDG : contacts consentants sans campagne récente"
     },
     switchHelp: {
+      ceo_queue_crm_task: "En mode Actif, le conseiller PDG peut créer une tâche de suivi dans le CRM. Sans argent; rien n’est envoyé.",
+      ceo_draft_campaign: "En mode Actif, le conseiller PDG peut préparer un BROUILLON de campagne. Jamais envoyé — une personne le révise et l’envoie.",
       "remind_worker_timesheet": "24 h après le quart, si le travailleur n’a pas confirmé ses heures. L’employeur n’est sollicité qu’après la confirmation du travailleur.",
       "remind_worker_check_in": "10 min après le début. L’employeur reçoit aussi un court courriel : le travailleur n’est pas encore arrivé et Joblop s’en occupe.",
       "offer_employer_bonus": "Seulement pour les emplois sur le babillard, et plus jamais après un refus de l’employeur.",
@@ -257,10 +286,18 @@ export const brainText: PageText<BrainCopy> = {
       "timesheet_unconfirmed": "24 h après le quart : d’abord un rappel au travailleur, puis à l’employeur une fois que le travailleur a confirmé.",
       "hours_not_prepared": "Le quart est terminé depuis plus de 2 h et aucune feuille de temps n’existe encore. Une personne doit vérifier.",
       hours_not_reported: "Le quart s’est terminé sans pointage. Le travailleur peut déclarer ses heures jusqu’à 12 h après la fin; sinon, il n’est pas enregistré.",
-      shift_not_recorded: "Les 12 h sont passées sans déclaration : aucune heure, aucune paie, aucune facture, sauf si le personnel saisit les heures."
+      shift_not_recorded: "Les 12 h sont passées sans déclaration : aucune heure, aucune paie, aucune facture, sauf si le personnel saisit les heures.",
+      ceo_fill_rate_dropping: "Moins de places ouvertes sont pourvues. Stratégique — une personne décide de la croissance de l’offre et de la tarification.",
+      ceo_supply_demand_imbalance: "Une région a beaucoup de places ouvertes et un faible taux de pourvoi. Le conseiller peut créer une tâche pour y accroître l’offre.",
+      ceo_employer_churn: "Des employeurs actifs la semaine dernière sont devenus silencieux. Le conseiller peut créer une tâche de reprise de contact.",
+      ceo_stalled_pipeline: "Beaucoup de demandes soumises, peu approuvées. Le conseiller peut créer une tâche pour débloquer l’admission.",
+      ceo_marketing_opportunity: "Un groupe de contacts consentants (LCAP) n’a pas eu de campagne récente. Le conseiller peut rédiger (jamais envoyer) une relance."
     },
     issuesHeading: "Problèmes ouverts",
     issuesEmpty: "Aucun problème ouvert.",
+    ceoHeading: "Conseiller PDG — stratégie",
+    ceoHelp: "Signaux stratégiques hebdomadaires tirés des tendances de la plateforme. Consultatif par défaut : la plupart sont des notes pour une personne. En mode Actif, seuls les deux interrupteurs ci-dessus (créer une tâche CRM, rédiger une campagne) s’exécutent seuls — jamais d’argent, jamais d’envoi.",
+    ceoEmpty: "Aucun signal stratégique cette semaine.",
     recommended: "Suggestion",
     personNeeded: "Une personne doit s’en occuper.",
     doIt: "Le faire",
@@ -334,6 +371,8 @@ export const brainText: PageText<BrainCopy> = {
       daily_summary_email: "ملخص يومي بالبريد للموظفين",
       notify_worker_report_hours: "إبلاغ عامل دون تسجيل وصول بالإبلاغ عن ساعاته (12 ساعة)",
       close_unreported_shift: "إغلاق مناوبة لم يُبلَغ عن ساعاتها في الوقت المحدد (يُبلَّغ صاحب العمل)",
+      ceo_queue_crm_task: "الرئيس التنفيذي: إنشاء مهمة متابعة في CRM للفريق",
+      ceo_draft_campaign: "الرئيس التنفيذي: صياغة حملة تسويقية (لا تُرسَل أبدًا)",
       "remind_worker_timesheet": "تذكير العامل بتأكيد ساعاته (بريد، أو رسالة نصية إن لم يكن لديه بريد)",
       "assistant.claim_open_job": "المساعد: عامل أخذ وظيفة",
       "assistant.cancel_my_shift": "المساعد: عامل ألغى مناوبة",
@@ -358,9 +397,16 @@ export const brainText: PageText<BrainCopy> = {
       job_missing_info: "وظيفة تنقصها معلومات",
       "hours_not_prepared": "انتهت المناوبة دون تحضير الساعات",
       hours_not_reported: "دون تسجيل وصول: أمام العامل 12 ساعة للإبلاغ عن ساعاته",
-      shift_not_recorded: "غير مسجّلة: لم يُبلَغ عن أي ساعات في الوقت المحدد"
+      shift_not_recorded: "غير مسجّلة: لم يُبلَغ عن أي ساعات في الوقت المحدد",
+      ceo_fill_rate_dropping: "الرئيس التنفيذي: معدل شغل الوظائف ينخفض",
+      ceo_supply_demand_imbalance: "الرئيس التنفيذي: نقص في العرض بمنطقة ما",
+      ceo_employer_churn: "الرئيس التنفيذي: أصحاب عمل يتوقفون عن النشاط",
+      ceo_stalled_pipeline: "الرئيس التنفيذي: طلبات متوقفة قبل الإرسال",
+      ceo_marketing_opportunity: "الرئيس التنفيذي: جهات موافِقة دون حملة حديثة"
     },
     switchHelp: {
+      ceo_queue_crm_task: "في الوضع المباشر، يمكن لمستشار الرئيس التنفيذي إنشاء مهمة متابعة في CRM. بلا مال؛ ولا يُرسَل شيء.",
+      ceo_draft_campaign: "في الوضع المباشر، يمكن لمستشار الرئيس التنفيذي إعداد مسوّدة حملة. لا تُرسَل أبدًا — يراجعها شخص ويرسلها.",
       "remind_worker_timesheet": "بعد 24 ساعة من المناوبة إذا لم يؤكد العامل ساعاته. لا يُطلب من صاحب العمل التأكيد إلا بعد تأكيد العامل.",
       "remind_worker_check_in": "بعد 10 دقائق من البدء. ويتلقى صاحب العمل أيضًا بريدًا قصيرًا يفيد بأن العامل لم يسجّل وصوله بعد وأن Joblop تتابع الأمر.",
       "offer_employer_bonus": "فقط للوظائف المنشورة على لوحة الوظائف، ولا يُعاد العرض بعد رفض صاحب العمل.",
@@ -373,10 +419,18 @@ export const brainText: PageText<BrainCopy> = {
       "timesheet_unconfirmed": "بعد 24 ساعة من المناوبة: يُذكَّر العامل أولًا، ثم صاحب العمل بعد أن يؤكد العامل.",
       "hours_not_prepared": "انتهت المناوبة منذ أكثر من ساعتين ولا يوجد سجل دوام بعد. يجب أن يتحقق شخص من ذلك.",
       hours_not_reported: "انتهت المناوبة دون تسجيل وصول. يمكن للعامل الإبلاغ عن ساعاته حتى 12 ساعة بعد النهاية؛ وإلا فلن تُسجَّل.",
-      shift_not_recorded: "مرّت 12 ساعة دون الإبلاغ عن ساعات: لا ساعات ولا أجر ولا فاتورة، إلا إذا أدخل الفريق الساعات."
+      shift_not_recorded: "مرّت 12 ساعة دون الإبلاغ عن ساعات: لا ساعات ولا أجر ولا فاتورة، إلا إذا أدخل الفريق الساعات.",
+      ceo_fill_rate_dropping: "عدد الأماكن المشغولة يقل. استراتيجي — يقرر شخص بشأن نمو العرض والتسعير.",
+      ceo_supply_demand_imbalance: "منطقة بها أماكن مفتوحة كثيرة ومعدل شغل منخفض. يمكن للمستشار إنشاء مهمة لزيادة العرض هناك.",
+      ceo_employer_churn: "أصحاب عمل نشطون الأسبوع الماضي أصبحوا صامتين. يمكن للمستشار إنشاء مهمة لإعادة التواصل.",
+      ceo_stalled_pipeline: "طلبات كثيرة مُقدَّمة وقليل منها معتمد. يمكن للمستشار إنشاء مهمة لتسريع الاستقبال.",
+      ceo_marketing_opportunity: "مجموعة من الجهات الموافِقة دون حملة حديثة. يمكن للمستشار صياغة (دون إرسال) رسالة تواصل."
     },
     issuesHeading: "المشكلات المفتوحة",
     issuesEmpty: "لا توجد مشكلات مفتوحة.",
+    ceoHeading: "مستشار الرئيس التنفيذي — الاستراتيجية",
+    ceoHelp: "إشارات استراتيجية أسبوعية من اتجاهات المنصة. استشاري افتراضيًا: معظمها ملاحظات لشخص. في الوضع المباشر، لا يعمل تلقائيًا سوى المفتاحين أعلاه (إنشاء مهمة CRM، صياغة حملة) — لا مال ولا إرسال أبدًا.",
+    ceoEmpty: "لا إشارات استراتيجية هذا الأسبوع.",
     recommended: "المقترح",
     personNeeded: "يجب أن يتولى شخص هذا الأمر.",
     doIt: "نفّذ",

@@ -154,7 +154,12 @@ export interface JoblopBrainEffects {
   closeUnreportedShift(attendanceRecordId: string): Promise<ActionOutcome>;
 }
 
-export type JoblopBrainContext = Readonly<{ data: JoblopBrainData; effects: JoblopBrainEffects }>;
+export type JoblopBrainContext = Readonly<{
+  data: JoblopBrainData;
+  effects: JoblopBrainEffects;
+  /** The CEO strategy persona's read model + its two money-free governed capabilities. */
+  ceo: import("./joblopCeoRules").JoblopCeoContext;
+}>;
 
 // ── Pure checks ──
 
