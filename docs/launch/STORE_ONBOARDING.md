@@ -40,6 +40,24 @@ account/submit steps are owner-only. Money stays gated off; this is the app, not
 See `docs/launch/IOS_APP_STORE_SUBMISSION.md`. Summary: Apple Developer account → App ID `com.joblop.app`
 → fill `eas.json → submit.production.ios` → `eas build`/`eas submit` → TestFlight → submit.
 
+## Store review access (Apple App Review / Google Play review)
+
+Sign-in is by texted code, and a store reviewer cannot receive our text. So ONE demo worker number can
+be given a fixed code that is never texted. Worker sign-in only; staff and employer sign-in never
+qualify. The code is still stored hashed, expires in 10 minutes, works once and allows 5 wrong tries.
+
+Owner steps (API service environment, then redeploy):
+1. Create a **demo worker account** with no real person's data, on a number nobody owns
+   (for example a `+1 514 555 01xx` number).
+2. Set `STORE_REVIEW_PHONE` to that number in `+1XXXXXXXXXX` form and `STORE_REVIEW_CODE` to a 6-digit
+   code. Both must be set or the feature is off.
+3. In the store's review notes write: enter the number, tap "Text me a code", enter the code.
+4. Remove both variables when no review is in progress.
+
+**Account deletion (Apple guideline 5.1.1(v)):** signed-in workers ask for deletion inside the app —
+Profile → "Delete my account" → confirm. The request reaches staff as an "account" conversation handed
+to a person; staff verify and delete within 30 days, as `/account-deletion` describes.
+
 ## Google Play policy deadlines & triage (from the 2026-10-29 Play Developer Update)
 
 The Oct-2026 Play policy round **changes nothing we must do now** — JobLop requests **no** location,

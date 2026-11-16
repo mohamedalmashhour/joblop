@@ -137,7 +137,9 @@ describe("profile and CV", () => {
   it("saves the chosen language on the account from the profile page", () => {
     const profile = read("profile/ProfileScreen.tsx");
     expect(profile).toContain("transport.saveLanguage(next)");
-    expect(profile).toContain("<LegalLinks />");
+    // Terms and Privacy open the website; deleting the account is asked for inside the app.
+    expect(profile).toContain('<LegalLinks pages={["terms", "privacy"]} />');
+    expect(profile).toContain("<DeleteAccountCard");
   });
 
   it("builds the CV request like the website and shows the API's fallback note in the worker's language", () => {

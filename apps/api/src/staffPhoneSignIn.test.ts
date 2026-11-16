@@ -69,6 +69,49 @@ describe("requestStaffPhoneCode", () => {
   });
 });
 
+describe("store review sign-in", () => {
+  const review = { phone, code: "424242" };
+  const worker = { users: [{ id: "u", emailNormalized: "demo@example.test", workerIdentity: { id: "w" } }] };
+
+  it("stores the fixed code for the demo worker number and texts nothing", async () => {
+    const prisma = fake(worker);
+    const sender = sms();
+    expect(await requestStaffPhoneCode(prisma, sender, { phone, now, audience: "worker", storeReview: review })).toBe("sent");
+    expect(sender.send).not.toHaveBeenCalled();
+    expect(JSON.stringify(prisma.staffPhoneSignInCode.create.mock.calls)).toContain(hash("424242"));
+    expect(JSON.stringify(prisma.staffPhoneSignInCode.create.mock.calls)).not.toContain('"424242"');
+  });
+
+  it("then signs in through the usual one-time check", async () => {
+    const prisma = fake({ ...worker, code: row({ codeHash: hash("424242") }) });
+    expect(await verifyStaffPhoneCode(prisma, { phone, code: "424242", now, audience: "worker" })).toEqual({ emailNormalized: "demo@example.test" });
+    expect(await verifyStaffPhoneCode(fake({ ...worker, code: row({ codeHash: hash("424242") }) }), { phone, code: "000000", now, audience: "worker" })).toBeNull();
+  });
+
+  it("never applies to staff or employer sign-in, another number, or a number with no worker account", async () => {
+    for (const audience of ["staff", "employer"] as const) {
+      const prisma = fake({ users: [{ id: "u", emailNormalized: "x@example.test", memberships: [{ id: "m" }] }] });
+      const sender = sms();
+      await requestStaffPhoneCode(prisma, sender, { phone, now, audience, generateCode: () => "111111", storeReview: review });
+      expect(sender.send).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(prisma.staffPhoneSignInCode.create.mock.calls)).not.toContain(hash("424242"));
+    }
+    const other = fake(worker);
+    const sender = sms();
+    await requestStaffPhoneCode(other, sender, { phone, now, audience: "worker", generateCode: () => "111111", storeReview: { phone: "+15145550100", code: "424242" } });
+    expect(sender.send).toHaveBeenCalledTimes(1);
+    expect(await requestStaffPhoneCode(fake({ users: [] }), sms(), { phone, now, audience: "worker", storeReview: review })).toBe("not_staff");
+  });
+
+  it("is off when nothing is configured or the code is malformed", async () => {
+    for (const storeReview of [null, { phone, code: "12" }]) {
+      const sender = sms();
+      await requestStaffPhoneCode(fake(worker), sender, { phone, now, audience: "worker", storeReview });
+      expect(sender.send).toHaveBeenCalledTimes(1);
+    }
+  });
+});
+
 describe("verifyStaffPhoneCode", () => {
   it("accepts the right code once", async () => {
     const prisma = fake({ code: row() });

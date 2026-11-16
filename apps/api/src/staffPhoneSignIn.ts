@@ -82,13 +82,29 @@ async function findStaffUser(prisma: StaffPhonePrisma, phone: string) {
   return users.find((user) => user.id === grant?.userId) ?? null;
 }
 
+// App-store review: one demo worker number gets a fixed code that is never texted, because a store
+// reviewer cannot receive our text. Worker sign-in only; staff and employer numbers never qualify.
+// Everything else is unchanged: the number must be an active worker account, the code is stored as
+// a hash, expires, works once and allows the same number of wrong guesses.
+export type StoreReviewSignIn = Readonly<{ phone: string; code: string }>;
+
+function isStoreReviewRequest(review: StoreReviewSignIn | null | undefined, phone: string, audience: PhoneSignInAudience): review is StoreReviewSignIn {
+  return audience === "worker" && Boolean(review) && /^\d{6}$/.test(review!.code) && review!.phone === phone;
+}
+
 export type StaffCodeRequestOutcome = "sent" | "throttled" | "not_staff" | "not_sent";
 
 // The caller answers the same way for every outcome, so this never reveals whose number is staff.
 export async function requestStaffPhoneCode(
   prismaClient: unknown,
   sms: Pick<SmsSender, "send">,
-  input: { phone: string; now: Date; generateCode?: () => string; audience?: PhoneSignInAudience }
+  input: {
+    phone: string;
+    now: Date;
+    generateCode?: () => string;
+    audience?: PhoneSignInAudience;
+    storeReview?: StoreReviewSignIn | null;
+  }
 ): Promise<StaffCodeRequestOutcome> {
   const prisma = prismaClient as StaffPhonePrisma;
   const audience = input.audience ?? "staff";
@@ -99,7 +115,8 @@ export async function requestStaffPhoneCode(
     select: { id: true }
   });
   if (recent) return "throttled";
-  const code = (input.generateCode ?? (() => String(randomInt(0, 1_000_000)).padStart(6, "0")))();
+  const review = isStoreReviewRequest(input.storeReview, input.phone, audience) ? input.storeReview : null;
+  const code = review ? review.code : (input.generateCode ?? (() => String(randomInt(0, 1_000_000)).padStart(6, "0")))();
   await prisma.staffPhoneSignInCode.updateMany({
     where: { userId: user.id, consumedAt: null },
     data: { consumedAt: input.now }
@@ -113,6 +130,7 @@ export async function requestStaffPhoneCode(
       createdAt: input.now
     }
   });
+  if (review) return "sent";
   const sent = await sms.send({
     to: input.phone,
     text: signInCodeSms(resolveWorkerLanguage(user.primaryLanguage), code, audience === "staff")
