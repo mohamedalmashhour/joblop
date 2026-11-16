@@ -16,6 +16,7 @@ function between(source: string, start: string, end: string): string {
 }
 
 const actions = api("brain/joblopActions.ts");
+const ceoActions = api("brain/joblopCeoActions.ts");
 const rules = api("brain/joblopRules.ts");
 const titles = api("brain/brainText.ts");
 const tools = ["assistant/workerTools.ts", "assistant/employerTools.ts", "assistant/staffTools.ts"].map(api).join("\n");
@@ -23,6 +24,8 @@ const tools = ["assistant/workerTools.ts", "assistant/employerTools.ts", "assist
 /** Switches on the page: every action, the daily summary, the assistant switches. */
 const switchKeys = [
   ...[...between(actions, "JOBLOP_ACTION_KEYS", "] as const").matchAll(/\x22([a-z_]+)\x22/g)].map((m) => m[1]!),
+  // CEO persona's two money-free governed actions are also page switches.
+  ...[...between(ceoActions, "JOBLOP_CEO_ACTION_KEYS", "] as const").matchAll(/\x22([a-z_]+)\x22/g)].map((m) => m[1]!),
   ...[...actions.matchAll(/_SWITCH = \x22([a-z_.]+)\x22/g)].map((m) => m[1]!),
   ...[...tools.matchAll(/switchKey: \x22([a-z_.]+)\x22/g)].map((m) => m[1]!),
   "assistant",
@@ -45,7 +48,9 @@ describe("Brain page labels cover everything the API registers", () => {
   it("finds the registries (so this test cannot pass by reading nothing)", () => {
     expect(switchKeys).toContain("remind_worker_timesheet");
     expect(switchKeys).toContain("assistant.worker.claim_job");
+    expect(switchKeys).toContain("ceo_queue_crm_task");
     expect(ruleKeys).toContain("hours_not_prepared");
+    expect(ruleKeys).toContain("ceo_marketing_opportunity");
     expect(actionKeys).toContain("assistant.claim_open_job");
   });
 
