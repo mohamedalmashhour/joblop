@@ -12,7 +12,7 @@ on:
         required: true
         type: string
       confirmation:
-        description: Enter PUBLISH_EIGHT_IMAGES_NO_DEPLOY
+        description: Enter PUBLISH_NINE_IMAGES_NO_DEPLOY
         required: true
         type: string
 
@@ -49,7 +49,7 @@ jobs:
           set -euo pipefail
           [[ "$RELEASE_SHA" =~ ^[a-f0-9]{40}$ ]]
           [[ "$APPROVAL_REFERENCE" =~ ^RWOS-IMAGE-PUBLISH-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{3}$ ]]
-          [[ "$CONFIRMATION" == "PUBLISH_EIGHT_IMAGES_NO_DEPLOY" ]]
+          [[ "$CONFIRMATION" == "PUBLISH_NINE_IMAGES_NO_DEPLOY" ]]
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: main
@@ -179,7 +179,7 @@ jobs:
         with:
           pattern: staging-image-digest-*
           path: digest-evidence
-      - name: Validate and assemble the eight-image manifest
+      - name: Validate and assemble the nine-image manifest
         env:
           RELEASE_SHA: ${{ needs.authorize.outputs.release_sha }}
           APPROVAL_REFERENCE: ${{ inputs.approval_reference }}
@@ -187,11 +187,11 @@ jobs:
         run: |
           set -euo pipefail
           mapfile -t digest_files < <(find digest-evidence -name digest.txt -type f | sort)
-          test "${#digest_files[@]}" = "8"
+          test "${#digest_files[@]}" = "9"
           cat "${digest_files[@]}" | sort > image-digests.env
-          test "$(cut -d= -f1 image-digests.env | sort -u | wc -l | tr -d ' ')" = "8"
+          test "$(cut -d= -f1 image-digests.env | sort -u | wc -l | tr -d ' ')" = "9"
           while IFS='=' read -r service image; do
-            [[ "$service" =~ ^(api|employer|admin|worker|auth-limiter|candidate-source|offer-delivery|qa-reset)$ ]]
+            [[ "$service" =~ ^(api|employer|admin|crm|worker|auth-limiter|candidate-source|offer-delivery|qa-reset)$ ]]
             [[ "$image" =~ ^northamerica-northeast2-docker\.pkg\.dev/resident-workforce-os-staging/rwos-stg-ca-tor-containers/${service}@sha256:[a-f0-9]{64}$ ]]
           done < image-digests.env
           jq -n \
@@ -201,7 +201,7 @@ jobs:
             --rawfile digests image-digests.env \
             '{schemaVersion: 1, releaseSha: $releaseSha, approvalReference: $approvalReference, buildTimestamp: $buildTimestamp, deployed: false, digests: ($digests | split("\n") | map(select(length > 0) | split("=") | {(.[0]): .[1]}) | add)}' \
             > staging-image-publication-manifest.json
-          jq -e '.deployed == false and (.digests | length) == 8' staging-image-publication-manifest.json >/dev/null
+          jq -e '.deployed == false and (.digests | length) == 9' staging-image-publication-manifest.json >/dev/null
       - name: Preserve publication manifest
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
