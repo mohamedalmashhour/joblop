@@ -52,9 +52,9 @@ export async function POST(request: Request) {
   // The residence-create API accepts the worksite jurisdiction as `region` + `country` (it ignores
   // a "province" field). The onboarding province selector carries the Canadian region code
   // (QC, ON, …); forward it as `region` and set the country so the worksite is created WITH a
-  // jurisdiction instead of none. NOTE: the payroll jurisdiction resolver currently reads the
-  // separate `province` column, so a worksite created here still needs the region/province column
-  // reconciliation (see the region-vs-province finding) before payroll can resolve it.
+  // jurisdiction instead of none. The payroll jurisdiction resolver reconciles the two columns —
+  // it reads `province ?? region` (see apps/api/src/payrollRepository.ts) — so a worksite created
+  // here through the `region` field resolves for payroll without any further column migration.
   const result = await gateway.request(
     `/organizations/${encodeURIComponent(context.organizationId)}/residences`,
     "POST",

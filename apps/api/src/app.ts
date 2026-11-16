@@ -215,6 +215,7 @@ import {
 import { createAdzunaClient } from "./jobScannerClient";
 import { upsertLeads, queryStoredLeads } from "./jobScannerRepository";
 import { startJobScannerSchedule, type ScanQuery } from "./jobScannerScheduler";
+import { startPaymentSweepSchedule } from "./paymentSweepSchedule";
 import { type WorkerCvProfile, type TargetJob } from "./cvBuilder";
 import { getCvProvider } from "./cvBuilderClaude";
 import { createCvAsset, listCvAssets, deleteCvAsset } from "./cvAssetRepository";
@@ -318,7 +319,8 @@ import { createPrismaPaymentRepository, type PaymentRepository } from "./payment
 import { reconcileInvoiceCheckoutPaid, isInvoiceCollectionEnabled } from "./employerInvoiceCollection";
 import { registerEmployerInvoiceCheckoutRoutes } from "./employerInvoiceCheckoutRoutes";
 import { createEmployerInvoiceWebhook, type CheckoutSessionEventLike } from "./employerInvoiceWebhook";
-import { createStripeTestClient } from "./stripeTestProvider";
+import { createStripeTestClient, createStripeTestPaymentProvider } from "./stripeTestProvider";
+import { selectPaymentProvider, isStripeProviderConfigured } from "./paymentProviderSelection";
 import { stripeTestEnvFromProcess } from "./cvProStripeCheckout";
 
 export interface BuildApiOptions {
@@ -1027,10 +1029,44 @@ export function buildApi(options: BuildApiOptions = {}) {
       : null);
   const invoiceRepository =
     options.invoiceRepository ?? (prisma ? createPrismaInvoiceRepository(prisma) : null);
+  // Payment-provider selection (money-golive-readiness). The repository binds the REAL Stripe provider
+  // ONLY when the finance go-live gate is OPEN *and* a complete Stripe test credential set is present;
+  // in every other case — including the entire committed/default configuration, where the gate is
+  // closed — it stays on the local fake, byte-for-byte unchanged. See paymentProviderSelection.ts.
+  // Flipping the gate is a separate deliberate step (staging first → CPA sign-off → controlled test
+  // transaction); binding the provider here is only the mechanism, it moves no money by itself. The
+  // provider is built lazily, only when the repository is actually constructed.
+  const buildPaymentProvider = () =>
+    selectPaymentProvider({
+      financeLive,
+      stripeConfigured: isStripeProviderConfigured(runtimeConfig),
+      createLocalFake: () => createLocalFakePaymentProvider(),
+      // Reached only on the gated real branch, so no Stripe client is constructed unless both
+      // conditions hold. This instance serves the repository's execute()/reconcile() path only;
+      // webhook signature verification stays on the dedicated webhook route + recovery handler, so the
+      // replay store here is a guard that must never be exercised from the repository path.
+      createStripe: () =>
+        createStripeTestPaymentProvider({
+          client: createStripeTestClient(stripeTestEnvFromProcess()),
+          webhookSecret: runtimeConfig.stripeTestWebhookSecret!,
+          replayStore: {
+            async recordOnce() {
+              throw new Error(
+                "Webhook replay must be handled by the dedicated Stripe webhook route, not the payment repository."
+              );
+            }
+          }
+        })
+    });
   const paymentRepository =
     options.paymentRepository ??
     (prisma && runtimeConfig.localPaymentEnabled
-      ? createPrismaPaymentRepository(prisma, createLocalFakePaymentProvider())
+      ? (() => {
+          const selected = buildPaymentProvider();
+          // Safe, non-sensitive: records WHICH provider was bound (never a key/secret).
+          logger.info("payment.provider.bound", { kind: selected.kind, financeLive });
+          return createPrismaPaymentRepository(prisma, selected.provider);
+        })()
       : null);
 
   if (invoiceRepository) {
@@ -9043,6 +9079,26 @@ export function buildApi(options: BuildApiOptions = {}) {
       });
       const stop = startJobScannerSchedule({ prisma, client, queries, intervalMinutes, logger });
       app.addHook("onClose", async () => stop());
+    }
+  }
+
+  // Aged-`processing` reconciliation sweep (money-golive-readiness) — the BACKSTOP behind webhook-first
+  // recovery. OFF by default: it only schedules when PAYMENT_SWEEP_INTERVAL_MIN is set AND a
+  // reconcile-capable payment repository exists. Even when scheduled it is inert until an operator
+  // enables the Postgres kill-switch row (fail-closed), and every pass runs behind a durable
+  // cross-instance lease; it only ever calls the query-only, version-guarded reconcile and moves no
+  // money. It is deliberately NOT enabled in committed/prod config — leave PAYMENT_SWEEP_INTERVAL_MIN
+  // unset there and arm the kill switch only in a controlled rollout.
+  if (prisma && paymentRepository && process.env.PAYMENT_SWEEP_INTERVAL_MIN) {
+    const sweepIntervalMinutes = Number(process.env.PAYMENT_SWEEP_INTERVAL_MIN);
+    if (Number.isFinite(sweepIntervalMinutes) && sweepIntervalMinutes > 0) {
+      const stopSweep = startPaymentSweepSchedule({
+        prisma,
+        reconcile: (reconcileInput) => paymentRepository.reconcile(reconcileInput),
+        intervalMinutes: sweepIntervalMinutes,
+        logger
+      });
+      app.addHook("onClose", async () => stopSweep());
     }
   }
 
