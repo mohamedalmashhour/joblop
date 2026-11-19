@@ -138,10 +138,11 @@ export async function requestStaffPhoneCode(
     }
   });
   if (review) return "sent";
-  const text = signInCodeSms(resolveWorkerLanguage((user as { primaryLanguage?: string | null }).primaryLanguage ?? null), code, audience === "staff");
+  const language = resolveWorkerLanguage((user as { primaryLanguage?: string | null }).primaryLanguage ?? null);
+  const text = signInCodeSms(language, code, audience === "staff");
   // When Twilio Verify is configured it is the only SMS route for sign-in codes (no Brevo SMS).
   const useTwilio = Boolean(input.twilio?.configured);
-  const sent = useTwilio ? { status: "skipped" as const } : await sms.send({ to: input.phone, text }).catch(() => ({ status: "error" as const }));
+  const sent = useTwilio ? { status: "skipped" as const } : await sms.send({ to: input.phone, text: signInCodeSms(language, code, audience === "staff") }).catch(() => ({ status: "error" as const }));
   let emailed = false;
   if (input.email && user.emailNormalized) {
     const mail = await input.email
