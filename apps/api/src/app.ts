@@ -2046,7 +2046,8 @@ export function buildApi(options: BuildApiOptions = {}) {
         phone,
         now: new Date(),
         audience,
-        storeReview: runtimeConfig.storeReviewSignIn
+        storeReview: runtimeConfig.storeReviewSignIn,
+        email: emailSender
       }).catch(() => "not_sent" as const);
       if (outcome === "not_sent") logger.error("api.staff_phone.text_not_sent", { requestId: request.id, audience });
       return reply.code(202).send({ status: "code_requested" });

@@ -1,5 +1,6 @@
 import { createHash, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import type { SmsSender } from "./mailer/smsSender";
+import type { EmailSender } from "./mailer/emailSender";
 import { signInCodeSms } from "./notifications/smsBrand";
 import { resolveWorkerLanguage } from "./notifications/workerLanguage";
 // Sign-in codes go by text only; see notifications/noticeChannels.ts.
@@ -104,6 +105,9 @@ export async function requestStaffPhoneCode(
     generateCode?: () => string;
     audience?: PhoneSignInAudience;
     storeReview?: StoreReviewSignIn | null;
+    // Backup delivery: the same code is also emailed to the account's address, so sign-in keeps
+    // working while SMS is unavailable (e.g. carrier sender approval pending).
+    email?: Pick<EmailSender, "send">;
   }
 ): Promise<StaffCodeRequestOutcome> {
   const prisma = prismaClient as StaffPhonePrisma;
@@ -131,11 +135,16 @@ export async function requestStaffPhoneCode(
     }
   });
   if (review) return "sent";
-  const sent = await sms.send({
-    to: input.phone,
-    text: signInCodeSms(resolveWorkerLanguage(user.primaryLanguage), code, audience === "staff")
-  });
-  return sent.status === "sent" ? "sent" : "not_sent";
+  const text = signInCodeSms(resolveWorkerLanguage((user as { primaryLanguage?: string | null }).primaryLanguage ?? null), code, audience === "staff");
+  const sent = await sms.send({ to: input.phone, text }).catch(() => ({ status: "error" as const }));
+  let emailed = false;
+  if (input.email && user.emailNormalized) {
+    const mail = await input.email
+      .send({ to: user.emailNormalized, subject: `Joblop — ${code}`, text })
+      .catch(() => ({ status: "error" as const }));
+    emailed = mail.status === "sent";
+  }
+  return sent.status === "sent" || emailed ? "sent" : "not_sent";
 }
 
 // Returns the account to sign in, or null. Wrong guesses use up the code, and a code works once.

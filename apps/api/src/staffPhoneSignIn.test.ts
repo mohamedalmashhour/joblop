@@ -69,6 +69,30 @@ describe("requestStaffPhoneCode", () => {
   });
 });
 
+describe("email backup for phone codes", () => {
+  const failingSms = () => ({ send: vi.fn(async () => ({ status: "skipped" as const, reason: "disabled" as const })) });
+  const mailer = (status: "sent" | "error" = "sent") => ({ send: vi.fn(async () => (status === "sent" ? { status: "sent" as const, id: "m" } : { status: "error" as const })) });
+
+  it("emails the same code to the account when SMS cannot go out", async () => {
+    const email = mailer();
+    expect(await requestStaffPhoneCode(fake(), failingSms(), { phone, now, generateCode: () => "246810", email })).toBe("sent");
+    expect(email.send).toHaveBeenCalledTimes(1);
+    const msg = (email.send.mock.calls[0] as unknown[])[0] as { to: string; text: string };
+    expect(msg.to).toBe("staff@example.test");
+    expect(msg.text).toContain("246810");
+  });
+
+  it("still reports not_sent when neither SMS nor email went out", async () => {
+    expect(await requestStaffPhoneCode(fake(), failingSms(), { phone, now, email: mailer("error") })).toBe("not_sent");
+  });
+
+  it("emails nothing to a number that is not staff", async () => {
+    const email = mailer();
+    expect(await requestStaffPhoneCode(fake({ users: [] }), failingSms(), { phone, now, email })).toBe("not_staff");
+    expect(email.send).not.toHaveBeenCalled();
+  });
+});
+
 describe("store review sign-in", () => {
   const review = { phone, code: "424242" };
   const worker = { users: [{ id: "u", emailNormalized: "demo@example.test", workerIdentity: { id: "w" } }] };
