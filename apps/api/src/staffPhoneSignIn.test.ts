@@ -69,6 +69,51 @@ describe("requestStaffPhoneCode", () => {
   });
 });
 
+describe("email backup for phone codes", () => {
+  const failingSms = () => ({ send: vi.fn(async () => ({ status: "skipped" as const, reason: "disabled" as const })) });
+  const mailer = (status: "sent" | "error" = "sent") => ({ send: vi.fn(async () => (status === "sent" ? { status: "sent" as const, id: "m" } : { status: "error" as const })) });
+
+  it("emails the same code to the account when SMS cannot go out", async () => {
+    const email = mailer();
+    expect(await requestStaffPhoneCode(fake(), failingSms(), { phone, now, generateCode: () => "246810", email })).toBe("sent");
+    expect(email.send).toHaveBeenCalledTimes(1);
+    const msg = (email.send.mock.calls[0] as unknown[])[0] as { to: string; text: string };
+    expect(msg.to).toBe("staff@example.test");
+    expect(msg.text).toContain("246810");
+  });
+
+  it("still reports not_sent when neither SMS nor email went out", async () => {
+    expect(await requestStaffPhoneCode(fake(), failingSms(), { phone, now, email: mailer("error") })).toBe("not_sent");
+  });
+
+  it("emails nothing to a number that is not staff", async () => {
+    const email = mailer();
+    expect(await requestStaffPhoneCode(fake({ users: [] }), failingSms(), { phone, now, email })).toBe("not_staff");
+    expect(email.send).not.toHaveBeenCalled();
+  });
+});
+
+describe("Twilio Verify for phone codes", () => {
+  const tw = (approve = "777777") => ({ configured: true, start: vi.fn(async () => true), check: vi.fn(async (_p: string, c: string) => c === approve) });
+
+  it("uses Twilio (not Brevo SMS) and still emails the backup code", async () => {
+    const brevo = sms(); const twilio = tw(); const email = { send: vi.fn(async () => ({ status: "sent" as const, id: "m" })) };
+    expect(await requestStaffPhoneCode(fake(), brevo, { phone, now, email, twilio })).toBe("sent");
+    expect(brevo.send).not.toHaveBeenCalled();
+    expect(twilio.start).toHaveBeenCalledWith(phone);
+    expect(email.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts Twilio's code at verify time", async () => {
+    const prisma = fake({ code: row() });
+    expect(await verifyStaffPhoneCode(prisma, { phone, code: "777777", now, twilio: tw() })).toEqual({ emailNormalized: "staff@example.test" });
+  });
+
+  it("refuses a code neither we nor Twilio issued", async () => {
+    expect(await verifyStaffPhoneCode(fake({ code: row() }), { phone, code: "999999", now, twilio: tw() })).toBeNull();
+  });
+});
+
 describe("store review sign-in", () => {
   const review = { phone, code: "424242" };
   const worker = { users: [{ id: "u", emailNormalized: "demo@example.test", workerIdentity: { id: "w" } }] };

@@ -1,5 +1,7 @@
 import { createHash, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import type { SmsSender } from "./mailer/smsSender";
+import type { EmailSender } from "./mailer/emailSender";
+import type { TwilioVerify } from "./mailer/twilioVerify";
 import { signInCodeSms } from "./notifications/smsBrand";
 import { resolveWorkerLanguage } from "./notifications/workerLanguage";
 // Sign-in codes go by text only; see notifications/noticeChannels.ts.
@@ -104,6 +106,11 @@ export async function requestStaffPhoneCode(
     generateCode?: () => string;
     audience?: PhoneSignInAudience;
     storeReview?: StoreReviewSignIn | null;
+    // Backup delivery: the same code is also emailed to the account's address, so sign-in keeps
+    // working while SMS is unavailable (e.g. carrier sender approval pending).
+    email?: Pick<EmailSender, "send">;
+    // Twilio Verify: also texts a Twilio-generated code (accepted at verify time).
+    twilio?: Pick<TwilioVerify, "start" | "configured">;
   }
 ): Promise<StaffCodeRequestOutcome> {
   const prisma = prismaClient as StaffPhonePrisma;
@@ -131,17 +138,26 @@ export async function requestStaffPhoneCode(
     }
   });
   if (review) return "sent";
-  const sent = await sms.send({
-    to: input.phone,
-    text: signInCodeSms(resolveWorkerLanguage(user.primaryLanguage), code, audience === "staff")
-  });
-  return sent.status === "sent" ? "sent" : "not_sent";
+  const language = resolveWorkerLanguage((user as { primaryLanguage?: string | null }).primaryLanguage ?? null);
+  const text = signInCodeSms(language, code, audience === "staff");
+  // When Twilio Verify is configured it is the only SMS route for sign-in codes (no Brevo SMS).
+  const useTwilio = Boolean(input.twilio?.configured);
+  const sent = useTwilio ? { status: "skipped" as const } : await sms.send({ to: input.phone, text: signInCodeSms(language, code, audience === "staff") }).catch(() => ({ status: "error" as const }));
+  let emailed = false;
+  if (input.email && user.emailNormalized) {
+    const mail = await input.email
+      .send({ to: user.emailNormalized, subject: `Joblop — ${code}`, text })
+      .catch(() => ({ status: "error" as const }));
+    emailed = mail.status === "sent";
+  }
+  const twilioSent = useTwilio && input.twilio ? await input.twilio.start(input.phone).catch(() => false) : false;
+  return sent.status === "sent" || emailed || twilioSent ? "sent" : "not_sent";
 }
 
 // Returns the account to sign in, or null. Wrong guesses use up the code, and a code works once.
 export async function verifyStaffPhoneCode(
   prismaClient: unknown,
-  input: { phone: string; code: string; now: Date; audience?: PhoneSignInAudience }
+  input: { phone: string; code: string; now: Date; audience?: PhoneSignInAudience; twilio?: Pick<TwilioVerify, "check" | "configured"> }
 ): Promise<Readonly<{ emailNormalized: string }> | null> {
   const prisma = prismaClient as StaffPhonePrisma;
   const audience = input.audience ?? "staff";
@@ -160,7 +176,10 @@ export async function verifyStaffPhoneCode(
   if (counted.count !== 1) return null;
   const stored = Buffer.from(row.codeHash, "hex");
   const presented = digest(user.id, input.code);
-  if (stored.length !== presented.length || !timingSafeEqual(stored, presented)) return null;
+  const ownMatch = stored.length === presented.length && timingSafeEqual(stored, presented);
+  // The attempt is already counted above, so a Twilio check cannot be used to bypass the attempt limit.
+  const twilioMatch = !ownMatch && input.twilio?.configured ? await input.twilio.check(input.phone, input.code).catch(() => false) : false;
+  if (!ownMatch && !twilioMatch) return null;
   const consumed = await prisma.staffPhoneSignInCode.updateMany({
     where: { id: row.id, consumedAt: null },
     data: { consumedAt: input.now }

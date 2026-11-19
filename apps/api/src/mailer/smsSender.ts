@@ -43,7 +43,12 @@ export function createSmsSender(options: {
   sender: string | undefined;
   enabled: boolean;
   fetch?: SmsFetch;
+  // Twilio Messaging (replaces Brevo SMS when all three are set). `twilioFrom` is an approved
+  // Twilio number (E.164) or a Messaging Service SID (MG...).
+  twilio?: { accountSid?: string | undefined; authToken?: string | undefined; from?: string | undefined };
 }): SmsSender {
+  const tw = options.twilio;
+  if (tw?.accountSid && tw.authToken && tw.from) return createTwilioSmsSender({ ...tw, enabled: options.enabled, fetch: options.fetch } as Parameters<typeof createTwilioSmsSender>[0]);
   const { apiKey, sender, enabled } = options;
   const configured = Boolean(apiKey && sender);
   if (!configured) {
@@ -85,6 +90,34 @@ export function createSmsSender(options: {
               ? data.reference
               : "";
         return { status: "sent", id };
+      } catch {
+        return { status: "error" };
+      }
+    }
+  };
+}
+
+function createTwilioSmsSender(options: { accountSid: string; authToken: string; from: string; enabled: boolean; fetch?: SmsFetch }): SmsSender {
+  const doFetch = options.fetch ?? fetch;
+  const auth = `Basic ${Buffer.from(`${options.accountSid}:${options.authToken}`).toString("base64")}`;
+  return {
+    configured: true,
+    enabled: options.enabled,
+    async send(message) {
+      if (!options.enabled) return { status: "skipped", reason: "disabled" };
+      const digits = toBrevoRecipient(message.to);
+      if (digits.length < 8) return { status: "skipped", reason: "no_recipient" };
+      const params = new URLSearchParams({ To: `+${digits}`, Body: message.text });
+      params.set(/^MG/i.test(options.from) ? "MessagingServiceSid" : "From", options.from);
+      try {
+        const response = await doFetch(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(options.accountSid)}/Messages.json`, {
+          method: "POST",
+          headers: { authorization: auth, "content-type": "application/x-www-form-urlencoded" },
+          body: params.toString()
+        });
+        if (!response.ok) return { status: "error" };
+        const data = (await response.json().catch(() => ({}))) as { sid?: unknown };
+        return { status: "sent", id: typeof data.sid === "string" ? data.sid : "" };
       } catch {
         return { status: "error" };
       }

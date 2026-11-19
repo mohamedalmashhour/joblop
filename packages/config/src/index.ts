@@ -80,6 +80,13 @@ const runtimeConfigSchema = z
     // double-gated: it only sends when SMS_ENABLED=enabled AND the key + sender are present. Defaults OFF.
     SMS_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
     SMS_SENDER: z.string().min(1).max(32).optional(),
+    // Twilio Verify (SMS codes via Twilio's pre-approved senders; works in Canada without our own
+    // toll-free approval). Active only when all three are set.
+    TWILIO_ACCOUNT_SID: z.string().min(1).optional(),
+    TWILIO_AUTH_TOKEN: z.string().min(1).optional(),
+    TWILIO_VERIFY_SERVICE_SID: z.string().min(1).optional(),
+    // Twilio Messaging sender for non-code texts (reminders): an approved Twilio number or MG... service.
+    TWILIO_FROM: z.string().min(1).optional(),
     // App-store review sign-in: ONE demo worker number whose sign-in code is fixed and never texted,
     // because a store reviewer cannot receive our text. Off unless BOTH are set. The number must
     // belong to a demo worker account with no real person's data.
@@ -501,6 +508,10 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
     // Transactional SMS (Brevo): reuses the Brevo key. Enabled only when SMS_ENABLED=enabled.
     smsEnabled: parsed.SMS_ENABLED === "enabled",
     smsSender: parsed.SMS_SENDER,
+    twilioAccountSid: parsed.TWILIO_ACCOUNT_SID,
+    twilioAuthToken: parsed.TWILIO_AUTH_TOKEN,
+    twilioVerifyServiceSid: parsed.TWILIO_VERIFY_SERVICE_SID,
+    twilioFrom: parsed.TWILIO_FROM,
     storeReviewSignIn:
       parsed.STORE_REVIEW_PHONE && parsed.STORE_REVIEW_CODE
         ? { phone: parsed.STORE_REVIEW_PHONE, code: parsed.STORE_REVIEW_CODE }
