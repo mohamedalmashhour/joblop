@@ -305,6 +305,7 @@ import {
   type AddEmailService
 } from "./addEmail";
 import { createEmailSender, type EmailSender } from "./mailer/emailSender";
+import { createTwilioVerify } from "./mailer/twilioVerify";
 import { createSmsSender, type SmsSender } from "./mailer/smsSender";
 import { registerInstantContactRoutes } from "./instantContactRoutes";
 import { activeBonusByJob, coverageBonusSuggestion, latestBonusByJob, registerJobBonusRoutes } from "./jobBonusRoutes";
@@ -751,13 +752,19 @@ export function buildApi(options: BuildApiOptions = {}) {
     createSmsSender({
       apiKey: runtimeConfig.smsApiKey,
       sender: runtimeConfig.smsSender,
-      enabled: runtimeConfig.smsEnabled
+      enabled: runtimeConfig.smsEnabled,
+      twilio: { accountSid: runtimeConfig.twilioAccountSid, authToken: runtimeConfig.twilioAuthToken, from: runtimeConfig.twilioFrom }
     });
   // Brain: failed email/SMS sends are recorded (message_delivery_failures) so the brain can find and
   // re-send them. Recording never changes a send's result and never throws.
   const deliveryFailureRecorder = prisma ? createPrismaDeliveryFailureRecorder(prisma) : null;
   const emailSender = deliveryFailureRecorder ? withEmailFailureRecording(rawEmailSender, deliveryFailureRecorder) : rawEmailSender;
   const smsSender = deliveryFailureRecorder ? withSmsFailureRecording(rawSmsSender, deliveryFailureRecorder) : rawSmsSender;
+  const twilioVerify = createTwilioVerify({
+    accountSid: runtimeConfig.twilioAccountSid,
+    authToken: runtimeConfig.twilioAuthToken,
+    serviceSid: runtimeConfig.twilioVerifyServiceSid
+  });
   // Push notifications to the phone app (Expo). Needs the database for device tokens; with none
   // registered it sends nothing. EXPO_ACCESS_TOKEN is optional (only if the Expo project enforces it).
   const expoAccessToken = environment.EXPO_ACCESS_TOKEN?.trim();
@@ -2047,7 +2054,8 @@ export function buildApi(options: BuildApiOptions = {}) {
         now: new Date(),
         audience,
         storeReview: runtimeConfig.storeReviewSignIn,
-        email: emailSender
+        email: emailSender,
+        twilio: twilioVerify
       }).catch(() => "not_sent" as const);
       if (outcome === "not_sent") logger.error("api.staff_phone.text_not_sent", { requestId: request.id, audience });
       return reply.code(202).send({ status: "code_requested" });
@@ -2062,7 +2070,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       const rateLimit = await consumeAuthenticationRateLimit(authRateLimiter, { action: "sign_in", ip: request.ip, email: phone });
       if (!rateLimit) return sendAuthenticationUnavailable(reply);
       if (!rateLimit.allowed) return sendAuthenticationRateLimited(reply, rateLimit.retryAfterSeconds);
-      const verified = await verifyStaffPhoneCode(prisma, { phone, code, now: new Date(), audience });
+      const verified = await verifyStaffPhoneCode(prisma, { phone, code, now: new Date(), audience, twilio: twilioVerify });
       if (!verified) return denied();
       const result = await authService.signInWithVerifiedStaffPhone({
         emailNormalized: verified.emailNormalized,

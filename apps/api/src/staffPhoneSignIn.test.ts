@@ -93,6 +93,27 @@ describe("email backup for phone codes", () => {
   });
 });
 
+describe("Twilio Verify for phone codes", () => {
+  const tw = (approve = "777777") => ({ configured: true, start: vi.fn(async () => true), check: vi.fn(async (_p: string, c: string) => c === approve) });
+
+  it("uses Twilio (not Brevo SMS) and still emails the backup code", async () => {
+    const brevo = sms(); const twilio = tw(); const email = { send: vi.fn(async () => ({ status: "sent" as const, id: "m" })) };
+    expect(await requestStaffPhoneCode(fake(), brevo, { phone, now, email, twilio })).toBe("sent");
+    expect(brevo.send).not.toHaveBeenCalled();
+    expect(twilio.start).toHaveBeenCalledWith(phone);
+    expect(email.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts Twilio's code at verify time", async () => {
+    const prisma = fake({ code: row() });
+    expect(await verifyStaffPhoneCode(prisma, { phone, code: "777777", now, twilio: tw() })).toEqual({ emailNormalized: "staff@example.test" });
+  });
+
+  it("refuses a code neither we nor Twilio issued", async () => {
+    expect(await verifyStaffPhoneCode(fake({ code: row() }), { phone, code: "999999", now, twilio: tw() })).toBeNull();
+  });
+});
+
 describe("store review sign-in", () => {
   const review = { phone, code: "424242" };
   const worker = { users: [{ id: "u", emailNormalized: "demo@example.test", workerIdentity: { id: "w" } }] };
