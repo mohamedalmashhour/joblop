@@ -8,7 +8,6 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Joblop Admin",
     short_name: "Joblop Admin",
     description: "Joblop staff workspace.",
-    id: "/joblop-admin",
     start_url: "/",
     scope: "/",
     display: "standalone",
