@@ -82,7 +82,8 @@ export function createPrismaPayrollRateResolver(prisma: PrismaClient): PayrollRa
 
 // AUTHORITATIVE jurisdiction resolver — derives country + region from the worksite Residence, never
 // from caller input. Country falls back to CA only where Residence.country is null (documented CA
-// domain assumption); region comes from the reliably-populated Residence.province.
+// domain assumption); the region code is read as `province ?? region`, reconciling seeded residences
+// (which populate `province`) with API-provisioned worksites (which populate `region`).
 export function createPrismaPayrollJurisdictionResolver(prisma: PrismaClient): PayrollJurisdictionResolver {
   return {
     async resolve(input): Promise<PayrollJurisdiction | null> {

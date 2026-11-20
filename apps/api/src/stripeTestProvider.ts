@@ -188,17 +188,56 @@ export function createStripeTestPaymentProvider(
       }
       return event;
     },
-    // Stage 2b.4-C3-D: query-only reconcile. Stripe can retrieve a PaymentIntent ONLY by its id. For an
-    // indeterminate operation that returned NO PaymentIntent id, there is no read-only lookup — reported
-    // as a provider-specific limitation (C3-C): we return "not_found" rather than re-POSTing a charge.
-    // This is unmounted at runtime; it exists to conform to the port and preserve the query-only invariant.
+    // Stage 2b.4-C3-D / money-golive-readiness: query-only reconcile. Stripe can retrieve a PaymentIntent
+    // ONLY by its id, so this is the BACKSTOP behind webhook-first recovery (the primary resolver). It
+    // NEVER calls authorize/capture/refund/void and never re-POSTs a charge — it only reads. Every error
+    // is classified the SAME way execute() classifies indeterminacy, so a provider-side failure can NEVER
+    // terminalize a payment to `failed`:
+    //   • resource_missing / HTTP 404 on an id WE HOLD → outcome "not_found". The provider-specific
+    //     reconcile policy (STRIPE_RECONCILE_POLICY.absenceProvesNonExecution = false) + a durable
+    //     reference maps this to remain_processing. A Stripe 404 is NOT proof the charge never executed,
+    //     so we never fail it here; the webhook (or a later retrieve) is the authority.
+    //   • network / 5xx / rate-limit / timeout / any other throw → outcome "unknown" → remain_processing.
+    //   • a live-mode object still HARD-throws (test-only invariant; identical to execute()).
+    // With NO providerOperationReference (no PaymentIntent id was ever captured) we return "not_found" with
+    // a null reference → the policy routes it to manual_or_webhook_required. This is never a Search miss
+    // (Stripe Search is eventually consistent and is NEVER used as a non-execution proof) and never
+    // terminalizes the attempt.
     async reconcile(query) {
       if (!query.providerOperationReference) {
         return { provider: "stripe_test", outcome: "not_found", providerOperationReference: null, reason: "none" };
       }
-      const intent = await options.client.paymentIntents.retrieve(opaqueRequired(query.providerOperationReference));
-      const result = paymentIntentResult(intent, true);
-      return { provider: "stripe_test", outcome: result.outcome, providerOperationReference: result.providerOperationReference, reason: result.reason };
+      try {
+        const intent = await options.client.paymentIntents.retrieve(
+          opaqueRequired(query.providerOperationReference)
+        );
+        const result = paymentIntentResult(intent, true);
+        return {
+          provider: "stripe_test",
+          outcome: result.outcome,
+          providerOperationReference: result.providerOperationReference,
+          reason: result.reason
+        };
+      } catch (error) {
+        if (error instanceof LiveModeStripeObjectError) throw error;
+        if (isStripeResourceMissing(error)) {
+          // Ambiguous absence on an id we HOLD — never proof of non-execution for Stripe. Policy keeps it
+          // `processing` (remain_processing) because we have a durable reference; it NEVER becomes failed.
+          return {
+            provider: "stripe_test",
+            outcome: "not_found",
+            providerOperationReference: query.providerOperationReference,
+            reason: "none"
+          };
+        }
+        // Network / 5xx / rate-limit / timeout / any other provider error → indeterminate. Stay processing.
+        return {
+          provider: "stripe_test",
+          outcome: "unknown",
+          providerOperationReference: query.providerOperationReference,
+          reason: "unknown_outcome"
+        };
+      }
     }
   };
 }
@@ -289,4 +328,17 @@ function opaque(value: string) {
 
 function isDeterministicStripeDecline(error: unknown) {
   return error instanceof Stripe.errors.StripeCardError;
+}
+
+// A Stripe "the object does not exist" signal: a StripeInvalidRequestError carrying code
+// "resource_missing" (the canonical form) or an HTTP 404. This is the ONLY error class that may map to
+// the reconcile outcome "not_found"; for Stripe that outcome still never terminalizes a held payment
+// (the provider policy treats absence as non-authoritative). Any other error is indeterminate.
+function isStripeResourceMissing(error: unknown): boolean {
+  if (error instanceof Stripe.errors.StripeInvalidRequestError) {
+    if (error.code === "resource_missing") return true;
+    if (error.statusCode === 404) return true;
+  }
+  const raw = error as { code?: string; statusCode?: number } | null;
+  return raw?.code === "resource_missing" || raw?.statusCode === 404;
 }

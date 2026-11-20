@@ -1,8 +1,10 @@
 import { createLocalFakePaymentProvider, PaymentProviderPreflightError, type PaymentProviderPort, type ProviderPaymentResult, type ProviderReconcileResult } from "@rwos/shared";
 import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
+import Stripe from "stripe";
 import { createPrismaPaymentRepository } from "./paymentRepository";
 import { deriveProviderOperationKey } from "./paymentProviderOperationKey";
+import { createStripeTestPaymentProvider } from "./stripeTestProvider";
 
 const organizationId = "00000000-0000-4000-8000-00000000000a";
 const row = {
@@ -557,5 +559,104 @@ describe("payment reconcile() application finalize (Stage 2b.4-C3-E)", () => {
     const serialized = JSON.stringify(h.target.employerPaymentEvent.create.mock.calls[0]![0].data);
     expect(serialized).not.toMatch(/sk_(test|live)|pan|4111|idempotency|secret|op-ref/i);
     expect(serialized).toContain("manual_or_webhook_required"); // only the safe classification
+  });
+});
+
+// money-golive-readiness — REAL Stripe adapter reconcile wired end-to-end through
+// paymentRepository.reconcile(). The outcome is produced by the actual hardened adapter from a provider
+// error (resource_missing / 5xx / network), NOT a hand-written ProviderReconcileResult, proving the
+// classification + provider-specific policy together NEVER terminalize a held payment to `failed`.
+describe("REAL Stripe adapter reconcile → paymentRepository.reconcile disposition (money-golive-readiness)", () => {
+  function stripeProvider(retrieve: (id: string) => Promise<unknown>): PaymentProviderPort {
+    const client = {
+      customers: { create: vi.fn() },
+      setupIntents: { create: vi.fn() },
+      paymentIntents: { create: vi.fn(), capture: vi.fn(), cancel: vi.fn(), retrieve: vi.fn(retrieve) },
+      refunds: { create: vi.fn() },
+      webhooks: { constructEvent: vi.fn() }
+    };
+    return createStripeTestPaymentProvider({
+      client: client as never,
+      webhookSecret: "whsec_synthetic",
+      replayStore: { async recordOnce() { return true; } }
+    });
+  }
+  function reconcileHarness(opts: {
+    authorizationReference: string | null;
+    retrieve: (id: string) => Promise<unknown>;
+    operation?: string;
+    finalAttempt?: Record<string, unknown>;
+  }) {
+    const target = setup(stripeProvider(opts.retrieve));
+    const attempt = { ...row, state: "processing", version: 2, authorizationReference: opts.authorizationReference };
+    target.employerPaymentAttempt.findFirst.mockReset();
+    target.employerPaymentAttempt.findFirst
+      .mockResolvedValueOnce(attempt)
+      .mockResolvedValue(opts.finalAttempt ?? attempt);
+    target.employerPaymentEvent.findFirst.mockImplementation(async (args: unknown) => {
+      const where = (args as { where: { eventType?: string; providerEventReference?: string } }).where;
+      if (where?.eventType === "provider_call_started") {
+        return { id: "E-authorize", operation: opts.operation ?? "authorize", operationAmountMinor: 10_500n };
+      }
+      if (where?.providerEventReference) return null;
+      return null;
+    });
+    return target;
+  }
+
+  it("resource_missing on an id WE HOLD → stays processing (NEVER failed), no money writes, no manual signal", async () => {
+    const t = reconcileHarness({
+      authorizationReference: "pi_held",
+      retrieve: async () => {
+        throw new Stripe.errors.StripeInvalidRequestError({
+          type: "invalid_request_error", code: "resource_missing", statusCode: 404, message: "No such payment_intent: pi_held"
+        });
+      }
+    });
+    expect((await t.repository.reconcile({ paymentId: row.id, organizationId })).state).toBe("processing");
+    expect(t.employerPaymentAttempt.updateMany).not.toHaveBeenCalled();
+    expect(t.employerPaymentAllocation.create).not.toHaveBeenCalled();
+    expect(t.employerPaymentRefund.create).not.toHaveBeenCalled();
+    expect(t.employerPaymentEvent.create).not.toHaveBeenCalled(); // durable ref → remain_processing, no manual signal
+  });
+
+  it("resource_missing with NO durable reference (no id ever captured) → stays processing + records manual/webhook signal, NEVER failed", async () => {
+    const t = reconcileHarness({
+      authorizationReference: null,
+      retrieve: async () => { throw new Error("retrieve must not be called without an id"); }
+    });
+    expect((await t.repository.reconcile({ paymentId: row.id, organizationId })).state).toBe("processing");
+    expect(t.employerPaymentAttempt.updateMany).not.toHaveBeenCalled();
+    expect(t.employerPaymentEvent.create).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(t.employerPaymentEvent.create.mock.calls[0]![0].data)).toContain("manual_or_webhook_required");
+  });
+
+  it("a 5xx StripeAPIError on a held id → stays processing (indeterminate), no writes", async () => {
+    const t = reconcileHarness({
+      authorizationReference: "pi_held",
+      retrieve: async () => { throw new Stripe.errors.StripeAPIError({ type: "api_error", statusCode: 500, message: "server error" }); }
+    });
+    expect((await t.repository.reconcile({ paymentId: row.id, organizationId })).state).toBe("processing");
+    expect(t.employerPaymentAttempt.updateMany).not.toHaveBeenCalled();
+    expect(t.employerPaymentEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("a network StripeConnectionError on a held id → stays processing", async () => {
+    const t = reconcileHarness({
+      authorizationReference: "pi_held",
+      retrieve: async () => { throw new Stripe.errors.StripeConnectionError({ message: "network down" }); }
+    });
+    expect((await t.repository.reconcile({ paymentId: row.id, organizationId })).state).toBe("processing");
+  });
+
+  it("a succeeded PaymentIntent on a held id → terminalizes (authorized) — the positive reconcile path still works", async () => {
+    const t = reconcileHarness({
+      authorizationReference: "pi_held",
+      operation: "authorize",
+      retrieve: async () => ({ id: "pi_held", status: "succeeded", livemode: false }),
+      finalAttempt: { ...row, state: "authorized", version: 3, authorizationReference: "pi_held" }
+    });
+    expect((await t.repository.reconcile({ paymentId: row.id, organizationId })).state).toBe("authorized");
+    expect(t.employerPaymentAttempt.updateMany).toHaveBeenCalledTimes(1);
   });
 });
