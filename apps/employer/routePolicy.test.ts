@@ -13,6 +13,7 @@ describe("employer production route policy", () => {
       "/plans",
       "/privacy",
       "/health",
+      "/manifest.webmanifest",
       "/ready",
       "/signin",
       "/signup/employer",

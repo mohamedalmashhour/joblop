@@ -7,13 +7,15 @@ import { dictionaries, type MessageKey } from "./i18n/messages";
 
 // Employer site — set NEXT_PUBLIC_EMPLOYER_URL in production.
 const EMPLOYER_URL = process.env.NEXT_PUBLIC_EMPLOYER_URL ?? "http://localhost:3100";
+// Staff admin workspace — shown in the "For teams" footer row only when NEXT_PUBLIC_ADMIN_URL is set.
+const ADMIN_URL = process.env.NEXT_PUBLIC_ADMIN_URL ?? "";
 
 // Footer words per language. The site locale is "en-CA" / "fr-CA" / "ar", so it is mapped with
 // legalLanguageFor (an exact match on the bare "fr" never matched "fr-CA").
-export const footerWords: Readonly<Record<LegalLanguage, { terms: string; privacy: string; deletion: string }>> = {
-  en: { terms: "Terms", privacy: "Privacy", deletion: "Delete my account" },
-  fr: { terms: "Conditions d’utilisation", privacy: "Confidentialité", deletion: "Supprimer mon compte" },
-  ar: { terms: "الشروط", privacy: "الخصوصية", deletion: "حذف حسابي" }
+export const footerWords: Readonly<Record<LegalLanguage, { terms: string; privacy: string; deletion: string; teams: string; employer: string; admin: string }>> = {
+  en: { terms: "Terms", privacy: "Privacy", deletion: "Delete my account", teams: "For teams", employer: "Employer", admin: "Admin" },
+  fr: { terms: "Conditions d’utilisation", privacy: "Confidentialité", deletion: "Supprimer mon compte", teams: "Pour les équipes", employer: "Employeur", admin: "Administration" },
+  ar: { terms: "الشروط", privacy: "الخصوصية", deletion: "حذف حسابي", teams: "للفِرق", employer: "صاحب العمل", admin: "الإدارة" }
 };
 
 export const footerLinks = ["/terms", "/privacy", "/account-deletion"] as const;
@@ -50,6 +52,20 @@ export function Footer({ locale }: { locale: string }) {
         <a href={EMPLOYER_URL} style={footerLinkStyle}>{site("foot.employers")}</a>
         <a href="/about#contact" style={footerLinkStyle}>{site("foot.contact")}</a>
       </nav>
+      {/* For teams: installable Employer and Admin workspaces, each with its own app icon. */}
+      <nav aria-label={words.teams} style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+        <span>{words.teams}:</span>
+        <a href={EMPLOYER_URL} style={teamLinkStyle}>
+          <img src="/team-employer.png" alt="" width={28} height={28} style={teamIconStyle} />
+          {words.employer}
+        </a>
+        {ADMIN_URL ? (
+          <a href={ADMIN_URL} style={teamLinkStyle}>
+            <img src="/team-admin.png" alt="" width={28} height={28} style={teamIconStyle} />
+            {words.admin}
+          </a>
+        ) : null}
+      </nav>
       <nav style={{ display: "flex", gap: "0 20px", flexWrap: "wrap" }}>
         <Link href="/terms" style={footerLinkStyle}>
           {words.terms}
@@ -67,3 +83,6 @@ export function Footer({ locale }: { locale: string }) {
 
 // 44px tall so each footer link is easy to tap on phones.
 const footerLinkStyle = { alignItems: "center", color: "#f8b808", display: "inline-flex", minHeight: 44, textDecoration: "none" } as const;
+
+const teamLinkStyle = { ...footerLinkStyle, display: "inline-flex", alignItems: "center", gap: 6 } as const;
+const teamIconStyle = { borderRadius: 7, display: "block" } as const;

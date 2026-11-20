@@ -27,7 +27,8 @@ export async function generateMetadata(): Promise<Metadata> {
         { url: "/icon.png", type: "image/png", sizes: "512x512" }
       ],
       apple: "/apple-touch-icon.png"
-    }
+    },
+    appleWebApp: { capable: true, title: "Joblop Employer", statusBarStyle: "black" }
   };
 }
 
