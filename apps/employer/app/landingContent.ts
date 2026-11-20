@@ -76,7 +76,7 @@ export interface LandingContent {
 
 const en: LandingContent = {
   header: {
-    navLinks: ["How It Works", "Employers", "Workers", "Pricing", "About"],
+    navLinks: ["How It Works", "Employers", "Pricing", "About"],
     ctaGetStarted: "Get Started",
     ctaRequestAccess: "Request Access",
     openMenu: "Open menu",
@@ -85,10 +85,10 @@ const en: LandingContent = {
   },
   staging: { label: "STAGING", synthetic: "SYNTHETIC DATA", noPayment: "NO REAL PAYMENT", noProdData: "NO PRODUCTION CUSTOMER DATA" },
   hero: {
-    line1: "Find work.",
-    line2: "Find people.",
+    line1: "Find reliable people.",
+    line2: "Fill every shift.",
     line3: "Move forward.",
-    lede: "Joblop connects local workers with people and businesses that need help. Fast. Simple. Reliable.",
+    lede: "Joblop brings your business verified local workers, matched, confirmed and covered. Fast. Simple. Reliable.",
     chips: ["Quick Matches", "Verified Users", "Secure & Trusted"],
     ctaWork: "I’m Looking for Work",
     ctaHire: "Workers Request",
@@ -181,7 +181,7 @@ const en: LandingContent = {
   },
   heroPhone: {
     greeting: "Hello, Ahmed",
-    prompt: "What are you looking for today?",
+    prompt: "Who do you need today?",
     findWork: "Find Work",
     findWorkSub: "Find jobs near you",
     findPeople: "Find People",
@@ -211,7 +211,7 @@ const en: LandingContent = {
 
 const fr: LandingContent = {
   header: {
-    navLinks: ["Comment ça marche", "Employeurs", "Travailleurs", "Tarifs", "À propos"],
+    navLinks: ["Comment ça marche", "Employeurs", "Tarifs", "À propos"],
     ctaGetStarted: "Commencer",
     ctaRequestAccess: "Demander l’accès",
     openMenu: "Ouvrir le menu",
@@ -220,10 +220,10 @@ const fr: LandingContent = {
   },
   staging: { label: "PRÉPRODUCTION", synthetic: "DONNÉES SYNTHÉTIQUES", noPayment: "AUCUN PAIEMENT RÉEL", noProdData: "AUCUNE DONNÉE CLIENT DE PRODUCTION" },
   hero: {
-    line1: "Trouvez du travail.",
-    line2: "Trouvez des gens.",
+    line1: "Trouvez des gens fiables.",
+    line2: "Comblez chaque quart.",
     line3: "Avancez.",
-    lede: "Joblop met en relation les travailleurs locaux avec les personnes et les entreprises qui ont besoin d’aide. Rapide. Simple. Fiable.",
+    lede: "Joblop fournit à votre entreprise des travailleurs locaux vérifiés, jumelés, confirmés et présents. Rapide. Simple. Fiable.",
     chips: ["Jumelages rapides", "Utilisateurs vérifiés", "Sécurisé et fiable"],
     ctaWork: "Je cherche du travail",
     ctaHire: "Demande de travailleurs",
@@ -316,7 +316,7 @@ const fr: LandingContent = {
   },
   heroPhone: {
     greeting: "Bonjour, Ahmed",
-    prompt: "Que cherchez-vous aujourd’hui?",
+    prompt: "De qui avez-vous besoin aujourd’hui?",
     findWork: "Trouver du travail",
     findWorkSub: "Des emplois près de chez vous",
     findPeople: "Trouver des gens",
@@ -348,7 +348,7 @@ const fr: LandingContent = {
 // Google Play, Interac) and sample data (places, numbers) stay as-is by convention.
 const ar: LandingContent = {
   header: {
-    navLinks: ["كيف تعمل", "أصحاب العمل", "العمّال", "الأسعار", "من نحن"],
+    navLinks: ["كيف تعمل", "أصحاب العمل", "الأسعار", "من نحن"],
     ctaGetStarted: "ابدأ الآن",
     ctaRequestAccess: "طلب الوصول",
     openMenu: "فتح القائمة",
@@ -357,10 +357,10 @@ const ar: LandingContent = {
   },
   staging: { label: "بيئة اختبار", synthetic: "بيانات اصطناعية", noPayment: "لا دفع حقيقي", noProdData: "لا بيانات عملاء إنتاجية" },
   hero: {
-    line1: "اعثر على عمل.",
-    line2: "اعثر على موظفين.",
+    line1: "اعثر على موظفين موثوقين.",
+    line2: "غطِّ كل مناوبة.",
     line3: "امضِ قُدُمًا.",
-    lede: "تربط Joblop العمّال المحليّين بالأشخاص والشركات التي تحتاج إلى مساعدة. سريع. بسيط. موثوق.",
+    lede: "تمنح Joblop عملك عمّالًا محليّين موثّقين، مطابَقين ومؤكَّدين وحاضرين. سريع. بسيط. موثوق.",
     chips: ["مطابقات سريعة", "مستخدمون موثَّقون", "آمن وموثوق"],
     ctaWork: "أبحث عن عمل",
     ctaHire: "طلب عمّال",
@@ -453,7 +453,7 @@ const ar: LandingContent = {
   },
   heroPhone: {
     greeting: "مرحبًا، أحمد",
-    prompt: "عمّا تبحث اليوم؟",
+    prompt: "من تحتاج اليوم؟",
     findWork: "ابحث عن عمل",
     findWorkSub: "وظائف قريبة منك",
     findPeople: "ابحث عن موظفين",

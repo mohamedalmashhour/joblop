@@ -24,9 +24,6 @@ export default async function HowItWorksPage() {
           <a href={requestHref} style={styles.primaryButtonLarge}>
             {c.needStaff}
           </a>
-          <a href="/#workers" style={styles.secondaryButtonLarge}>
-            {c.wantShifts}
-          </a>
         </div>
       </section>
 
