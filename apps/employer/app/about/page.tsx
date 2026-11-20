@@ -20,9 +20,6 @@ export default async function AboutPage() {
             <a href={requestHref} style={styles.primaryButtonLarge}>
               {c.requestStaff}
             </a>
-            <a href="/#workers" style={styles.secondaryButtonLarge}>
-              {c.becomeWorker}
-            </a>
           </div>
         </div>
         <aside aria-label={c.panelAria} style={styles.heroPanel}>
@@ -139,9 +136,6 @@ export default async function AboutPage() {
         <div style={styles.ctaActions}>
           <a href={requestHref} style={styles.primaryButton}>
             {c.requestStaff}
-          </a>
-          <a href="/#workers" style={styles.secondaryButton}>
-            {c.becomeWorker}
           </a>
           <a href="/contact" style={styles.secondaryButton}>
             {c.contactUs}

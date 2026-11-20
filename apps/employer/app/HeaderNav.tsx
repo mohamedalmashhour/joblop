@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 // Absolute anchors ("/#employers") so the same menu works from every page, not just the home page.
-const HREFS = ["/how-it-works", "/#employers", "/#workers", "/pricing", "/about"] as const;
+const HREFS = ["/how-it-works", "/#employers", "/pricing", "/about"] as const;
 
 // Responsive primary navigation: inline on desktop, hamburger + dropdown on mobile.
 // Labels (and the CTA / Sign In / menu text) are localized by the parent via props.

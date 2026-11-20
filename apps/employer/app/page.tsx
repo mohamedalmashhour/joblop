@@ -6,7 +6,6 @@ import { LogoIntro } from "./LogoIntro";
 import { VideoCard } from "./VideoCard";
 import { SiteHeader } from "./shared/SiteHeader";
 import { EmployerFlowMovie } from "./EmployerFlowMovie";
-import { JobScannerBand } from "./JobScannerBand";
 import { PlatformLoopMovie } from "./PlatformLoopMovie";
 import { homeFaqAnchors } from "./faq/faqContent";
 import { PublicSiteFooter } from "./pricing/publicPageStyles";
@@ -84,10 +83,6 @@ function PhoneMockup({ p }: { p: LandingContent["heroPhone"] }) {
       </div>
       <div style={{ display: "grid", gap: 12 }}>
         <div style={{ background: "#f8b808", color: "#000000", borderRadius: 14, padding: 16 }}>
-          <strong>{p.findWork}</strong>
-          <div style={{ fontSize: 12, opacity: 0.85 }}>{p.findWorkSub}</div>
-        </div>
-        <div style={{ background: "#15110b", color: "#fff", borderRadius: 14, padding: 16 }}>
           <strong>{p.findPeople}</strong>
           <div style={{ fontSize: 12, opacity: 0.85 }}>{p.findPeopleSub}</div>
         </div>
@@ -259,19 +254,14 @@ const hx: Record<string, CSSProperties> = {
   }
 };
 
-export default async function LandingPage({ searchParams }: { searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
+export default async function LandingPage() {
   const locale = await resolveLocale();
-  const sp = (await searchParams) ?? {};
-  const scanRaw = Array.isArray(sp.scan) ? sp.scan[0] : sp.scan;
-  const scanQuery = (scanRaw ?? "").trim().slice(0, 80);
   const lang = locale === "ar" ? "ar" : locale.startsWith("fr") ? "fr" : "en";
   const c = getLandingContent(locale);
   const isProduction = process.env.RWOS_ENV === "production";
   const isStaging =
     process.env.RWOS_ENV === "staging" ||
     process.env.NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER === "staging";
-  // The worker side is a separate app; "Find work" leaves the employer app for the worker front door.
-  const workerAppUrl = process.env.NEXT_PUBLIC_WORKER_APP_URL || "http://localhost:8090";
   const hireHref = isProduction ? "/contact" : "/signup/employer";
   return (
     <main style={styles.page}>
@@ -315,10 +305,7 @@ export default async function LandingPage({ searchParams }: { searchParams?: Pro
             ))}
           </ul>
           <div style={hx.ctaRow}>
-            <a href={workerAppUrl} style={hx.ctaPrimary}>
-              {c.hero.ctaWork} <span aria-hidden="true">{locale === "ar" ? "←" : "→"}</span>
-            </a>
-            <a href={hireHref} style={hx.ctaOutline}>
+            <a href={hireHref} style={hx.ctaPrimary}>
               {c.hero.ctaHire} <span aria-hidden="true">{locale === "ar" ? "←" : "→"}</span>
             </a>
           </div>
@@ -351,8 +338,6 @@ export default async function LandingPage({ searchParams }: { searchParams?: Pro
       </section>
 
       <PlatformLoopMovie lang={lang} />
-
-      <JobScannerBand lang={lang} q={scanQuery} workerAppUrl={workerAppUrl} />
 
       <EmployerFlowMovie lang={lang} />
 
@@ -465,26 +450,9 @@ export default async function LandingPage({ searchParams }: { searchParams?: Pro
           </div>
           <div style={styles.previewGrid}>
             <DashboardPreview d={c.dashboard} />
-            <WorkerPhonePreview rows={c.workerPhone} />
           </div>
         </section>
       ) : null}
-
-      <section id="workers" aria-labelledby="workers-title" style={styles.section}>
-        <div style={styles.centerHeader}>
-          <p style={styles.eyebrowDark}>{c.workers.eyebrow}</p>
-          <h2 id="workers-title" style={styles.sectionTitle}>
-            {c.workers.title}
-          </h2>
-        </div>
-        <div style={styles.benefitGrid}>
-          {c.workers.benefits.map((benefit) => (
-            <span key={benefit} style={styles.benefit}>
-              {benefit}
-            </span>
-          ))}
-        </div>
-      </section>
 
       <section aria-labelledby="ai-title" style={styles.aiSection}>
         <div style={styles.centerHeader}>
@@ -519,8 +487,9 @@ export default async function LandingPage({ searchParams }: { searchParams?: Pro
 
       <section aria-labelledby="journeys-title" style={styles.section}>
         <div style={styles.twoColumn}>
-          <JourneyCard title={c.journeys.workerTitle} steps={c.journeys.worker} />
-          <JourneyCard title={c.journeys.employerTitle} steps={c.journeys.employer} />
+          <div style={{ gridColumn: "1 / -1", maxWidth: 640, width: "100%", justifySelf: "center" }}>
+            <JourneyCard title={c.journeys.employerTitle} steps={c.journeys.employer} />
+          </div>
         </div>
       </section>
 
@@ -552,9 +521,6 @@ export default async function LandingPage({ searchParams }: { searchParams?: Pro
         <div style={styles.ctaActions}>
           <a href={hireHref} style={styles.lightButton}>
             {isProduction ? c.cta.requestAccess : c.cta.hire}
-          </a>
-          <a href={workerAppUrl} style={styles.outlineLightButton}>
-            {c.cta.findWork}
           </a>
         </div>
       </section>
@@ -615,26 +581,6 @@ function DashboardPreview({ d }: { d: LandingContent["dashboard"] }) {
           </div>
         </div>
       </div>
-    </article>
-  );
-}
-
-function WorkerPhonePreview({ rows }: { rows: LandingContent["workerPhone"] }) {
-  return (
-    <article className="jl-phones" style={styles.phoneCluster} aria-label="Worker mobile app preview">
-      {rows.map(([heading, detail, meta]) => (
-        <div key={heading} style={styles.phone}>
-          <div style={styles.phoneTop} />
-          <h3 style={styles.phoneTitle}>{heading}</h3>
-          <p style={styles.phoneDetail}>{detail}</p>
-          <strong style={styles.phoneMeta}>{meta}</strong>
-          <div style={styles.phoneNav}>
-            <span />
-            <span />
-            <span />
-          </div>
-        </div>
-      ))}
     </article>
   );
 }
