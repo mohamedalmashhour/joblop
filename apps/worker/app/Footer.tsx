@@ -49,12 +49,10 @@ export function Footer({ locale }: { locale: string }) {
         <a href="/how-it-works" style={footerLinkStyle}>{site("foot.howItWorks")}</a>
         <a href="/about" style={footerLinkStyle}>{site("foot.about")}</a>
         <a href="/cv-builder" style={footerLinkStyle}>{site("foot.cv")}</a>
-        <a href={EMPLOYER_URL} style={footerLinkStyle}>{site("foot.employers")}</a>
         <a href="/about#contact" style={footerLinkStyle}>{site("foot.contact")}</a>
       </nav>
       {/* For teams: installable Employer and Admin workspaces, each with its own app icon. */}
       <nav aria-label={words.teams} style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-        <span>{words.teams}:</span>
         <a href={EMPLOYER_URL} style={teamLinkStyle}>
           <img src="/team-employer.png" alt="" width={28} height={28} style={teamIconStyle} />
           {words.employer}
