@@ -17,7 +17,8 @@ export const metadata: Metadata = {
       { url: "/icon.png", type: "image/png", sizes: "512x512" }
     ],
     apple: "/apple-touch-icon.png"
-  }
+  },
+  appleWebApp: { capable: true, title: "Joblop Admin", statusBarStyle: "black" }
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: ReactNode }>) {

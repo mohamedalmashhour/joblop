@@ -20,6 +20,7 @@ export function isProductionAdminRouteAllowed(pathname: string) {
   if (path.startsWith("/_next/") || isStaticAsset(path)) return true;
   return (
     path === "/health" ||
+    path === "/manifest.webmanifest" ||
     path === "/ready" ||
     path === "/signin" ||
     path === "/signup" ||

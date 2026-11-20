@@ -9,6 +9,7 @@ describe("admin production route policy", () => {
       "/calendar/",
       "/calendar/request",
       "/health",
+      "/manifest.webmanifest",
       "/ready",
       "/signin",
       "/signup",
