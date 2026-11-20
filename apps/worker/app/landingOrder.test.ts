@@ -45,9 +45,10 @@ describe("signed-out home page (simple design)", () => {
 });
 
 describe("short menu", () => {
-  it("signed out: Home · Find work · Sign in, with the language switcher", () => {
-    const signedOut = header.slice(header.indexOf("Signed out: just Home"));
-    expect(signedOut).toContain('link("/", t("nav.home"))');
+  it("signed out: Find work · Sign in (logo = home), with the language switcher", () => {
+    const signedOut = header.slice(header.indexOf("Signed out: just Find work"));
+    expect(signedOut).not.toContain('link("/", t("nav.home"))');
+    expect(signedOut).toContain('className="topbar-signin"');
     expect(signedOut).toContain('link(FIND_WORK_PATH, t("nav.findWork"))');
     expect(signedOut).toContain('t("nav.signIn")');
     expect(header).toContain("<LanguageSwitcher />");

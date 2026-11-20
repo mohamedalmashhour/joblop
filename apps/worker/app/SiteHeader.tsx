@@ -93,10 +93,9 @@ export function SiteHeader() {
               </>
             ) : (
               <>
-                {/* Signed out: just Home · Find work · Sign in. Everything else is in the footer. */}
-                {link("/", t("nav.home"))}
+                {/* Signed out: just Find work · Sign in (the logo is the way home). Everything else is in the footer. */}
                 {link(FIND_WORK_PATH, t("nav.findWork"))}
-                <a className="muted" href={accountHref("signin")} onClick={(e) => openAccount(e, "signin")}>{t("nav.signIn")}</a>
+                <a className="topbar-signin" href={accountHref("signin")} onClick={(e) => openAccount(e, "signin")}>{t("nav.signIn")}</a>
               </>
             )}
             <LanguageSwitcher />

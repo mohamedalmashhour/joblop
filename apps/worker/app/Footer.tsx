@@ -49,7 +49,6 @@ export function Footer({ locale }: { locale: string }) {
         <a href="/how-it-works" style={footerLinkStyle}>{site("foot.howItWorks")}</a>
         <a href="/about" style={footerLinkStyle}>{site("foot.about")}</a>
         <a href="/cv-builder" style={footerLinkStyle}>{site("foot.cv")}</a>
-        <a href={EMPLOYER_URL} style={footerLinkStyle}>{site("foot.employers")}</a>
         <a href="/about#contact" style={footerLinkStyle}>{site("foot.contact")}</a>
       </nav>
       {/* For teams: installable Employer and Admin workspaces, each with its own app icon. */}

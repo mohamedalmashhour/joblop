@@ -735,6 +735,9 @@ a.card.cardlink:hover {
   text-decoration: none;
 }
 .topbar-cta { color: #f8b808; font-weight: 800; }
+/* Signed-out "Sign in" — the one clear action in the short header. */
+.topbar-nav > a.topbar-signin { background: #f8b808; color: #000; font-weight: 800; padding: 0 16px; border-radius: 999px; }
+.topbar-nav > a.topbar-signin:hover { background: #ffcf3f; }
 /* Header row: links and language buttons share one height. */
 .topbar-nav > a { display: inline-flex; align-items: center; min-height: 32px; }
 .topbar-nav .langbtn { min-height: 32px; }
