@@ -85,6 +85,7 @@ const serverOnlyNonSecret = new Set([
   "INVOICE_TEST_MODE_ENABLED",
   "PAYOUT_TEST_MODE_ENABLED",
   "WORKER_PAYOUT_PROGRESSION_INTERVAL_MIN",
+  "PAYMENT_SWEEP_INTERVAL_MIN",
   // Production readiness (docs/runbooks/production-switch.md). All API-only, non-secret switches:
   // the country profile key (e.g. "canada-quebec") and the local/test-only synthetic-country overlay,
   "RWOS_COUNTRY",
