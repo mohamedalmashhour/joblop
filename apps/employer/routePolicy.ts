@@ -4,6 +4,7 @@ const publicRoutes = new Set([
   "/contact",
   "/faq",
   "/health",
+  "/manifest.webmanifest",
   "/how-it-works",
   "/plans",
   "/pricing",

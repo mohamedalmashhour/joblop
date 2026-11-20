@@ -31,7 +31,9 @@ const buildTimePublic = new Set([
   "NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER",
   // NEXT_PUBLIC_ is inlined into the client bundle at build; the active-country selector is a
   // non-secret public value (country code only), consistent with the country-profile seam.
-  "NEXT_PUBLIC_RWOS_COUNTRY"
+  "NEXT_PUBLIC_RWOS_COUNTRY",
+  // Public address of the staff admin workspace, linked from the worker footer's "For teams" row.
+  "NEXT_PUBLIC_ADMIN_URL"
 ]);
 const serverOnlySecret = new Set(["SESSION_SECRET"]);
 // Server-side, non-secret configuration read via process.env in server code (route handlers,
