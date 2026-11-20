@@ -46,7 +46,7 @@ function finitePoint(p: TravelPoint | undefined | null): p is TravelPoint {
 }
 
 // Locale-aware fallback formatter, for when we have seconds but prefer our own label.
-export function formatTravelDuration(seconds: number, locale: string): string {
+export function formatTravelDuration(seconds: number, _locale: string): string {
   if (!Number.isFinite(seconds) || seconds < 0) return "";
   const mins = Math.max(1, Math.round(seconds / 60));
   if (mins < 60) return `${mins} min`;

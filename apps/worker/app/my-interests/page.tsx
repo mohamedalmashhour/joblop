@@ -1,11 +1,13 @@
 import { MyInterests } from "./MyInterests";
-import { SubPageHeader } from "../SubPageHeader";
+import { SiteHeader } from "../SiteHeader";
+import { BackToDashboard } from "../BackToDashboard";
 
 export default function Page() {
   return (
     <>
-      <SubPageHeader />
+      <SiteHeader />
       <main className="wrap">
+        <BackToDashboard />
         <MyInterests />
       </main>
     </>

@@ -14,6 +14,7 @@
     "baseUrl": ".",
     "paths": {
       "@rwos/auth": ["packages/auth/src/index.ts"],
+      "@rwos/brain": ["packages/brain/src/index.ts"],
       "@rwos/config": ["packages/config/src/index.ts"],
       "@rwos/database": ["packages/database/src/index.ts"],
       "@rwos/design-system": ["packages/design-system/src/index.ts"],

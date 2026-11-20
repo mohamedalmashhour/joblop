@@ -5,7 +5,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 // Rules (do not violate):
 //   - Trust states are SERVER-AUTHORITATIVE. A worker/employer can never mark themselves
 //     verified; only a governed provider result or an admin review transitions state.
-//   - Provider-neutral: JobLop core speaks the interfaces below; provider-specific DTOs stay
+//   - Provider-neutral: Joblop core speaks the interfaces below; provider-specific DTOs stay
 //     at the adapter boundary. No vendor (GoodJob/etc.) is hard-coded in core.
 //   - Callbacks are authenticated + idempotent + mapped to normalized states at the boundary.
 //   - Badges/eligibility read these records only — never inferred from account/contract/

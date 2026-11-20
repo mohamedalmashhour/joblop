@@ -1,9 +1,14 @@
 import type { ReactNode } from "react";
+import { JobLopLogo } from "../JobLopLogo";
 import { assignmentWorkflow } from "./assignmentWorkflowContent";
 import { attendanceWorkflow } from "./attendanceWorkflowContent";
 import { clientCalendarWorkflow } from "./calendar/clientCalendarContent";
 import { employerWorkflow } from "./employerJourneyContent";
 import { styles } from "./employerStyles";
+import { ShellText } from "./ShellText";
+import { SidebarBenefits } from "./SidebarBenefits";
+import { LanguageSwitcher } from "../i18n/LanguageSwitcher";
+import type { MessageKey } from "../i18n/messages";
 import { invoiceWorkflow } from "./invoiceWorkflowContent";
 import { ordersWorkflow } from "./orders/ordersContent";
 import { moneyWorkflow } from "./money/moneyContent";
@@ -11,7 +16,17 @@ import { paymentWorkflow } from "./paymentWorkflowContent";
 import { shiftWorkflow } from "./shifts/shiftManagementContent";
 import { timesheetWorkflow } from "./timesheetWorkflowContent";
 
+// The calendar hub is the centre of the employer platform: first in every menu.
+const myCalendarStep = {
+  page: "C00",
+  title: "My calendar",
+  route: "/employer/my-calendar",
+  status: "Calendar hub",
+  boundary: "Jobs and who is coming, bonus offers to answer, invoice due dates and cancellations in one calendar."
+} as const;
+
 const employerNavigation = [
+  myCalendarStep,
   ...employerWorkflow,
   ...clientCalendarWorkflow,
   ...ordersWorkflow,
@@ -24,19 +39,42 @@ const employerNavigation = [
   ...moneyWorkflow
 ] as const;
 const uniqueEmployerNavigation = deduplicateNavigationByRoute(employerNavigation);
-const persistedEmployerNavigation = deduplicateNavigationByRoute([
-  ...clientCalendarWorkflow.filter((step) =>
-    ["/employer/calendar", "/employer/calendar/create"].includes(step.route)
-  ),
-  ...ordersWorkflow,
-  ...moneyWorkflow
-]);
+
+// The deployed test tier (Render soft launch, RWOS_ENV="test"), staging, and production must all
+// behave like a real connected environment: lean authenticated nav + sign-in gate, never the
+// numbered prototype page-map. The full page-map is reserved for genuine LOCAL dev (RWOS_ENV unset
+// or "local") so developers can still navigate every prototype surface. A compiled deployment tier
+// also counts as connected.
+function isConnectedEnvironment(): boolean {
+  const rwosEnv = process.env.RWOS_ENV;
+  const deploymentTier = process.env.NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER;
+  if (rwosEnv === undefined || rwosEnv === "" || rwosEnv === "local") {
+    return Boolean(deploymentTier);
+  }
+  return true;
+}
+// What a real employer sees: every working page, and no prototype pages.
+const persistedEmployerNavigation: readonly { page: string; route: string; title: string; titleKey: MessageKey }[] = [
+  { page: "", route: "/employer/my-calendar", title: "My calendar", titleKey: "shell.nav.myCalendar" },
+  { page: "", route: "/employer/dashboard", title: "Home", titleKey: "shell.nav.home" },
+  { page: "", route: "/employer/calendar/create", title: "Request workers", titleKey: "shell.nav.request" },
+  { page: "", route: "/employer/calendar", title: "Request calendar", titleKey: "shell.nav.calendar" },
+  { page: "", route: "/employer/orders", title: "Orders", titleKey: "shell.nav.orders" },
+  { page: "", route: "/employer/assignments", title: "Assigned workers", titleKey: "shell.nav.assignments" },
+  { page: "", route: "/employer/attendance", title: "Attendance", titleKey: "shell.nav.attendance" },
+  { page: "", route: "/employer/timesheets", title: "Timesheets", titleKey: "shell.nav.timesheets" },
+  { page: "", route: "/employer/money", title: "Money", titleKey: "shell.nav.money" },
+  { page: "", route: "/employer/invoices", title: "Invoices", titleKey: "shell.nav.invoices" },
+  { page: "", route: "/employer/contract", title: "Contract", titleKey: "shell.nav.contract" },
+  { page: "", route: "/employer/contact-joblop", title: "Contact Joblop", titleKey: "shell.nav.contact" }
+];
 
 export function EmployerShell({
   actions,
   children,
   currentRoute,
   eyebrow,
+  hideHero = false,
   lede,
   mode = "fixture",
   title
@@ -45,29 +83,26 @@ export function EmployerShell({
   children: ReactNode;
   currentRoute: string;
   eyebrow: string;
+  hideHero?: boolean;
   lede: string;
   mode?: "fixture" | "authenticated";
   title: string;
 }) {
-  const production = process.env.RWOS_ENV === "production";
   const staging =
     process.env.RWOS_ENV === "staging" ||
     process.env.NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER === "staging";
-  const connectedEnvironment = production || staging;
+  const connectedEnvironment = isConnectedEnvironment();
   const effectiveMode = connectedEnvironment ? "authenticated" : mode;
   const navigation = connectedEnvironment ? persistedEmployerNavigation : uniqueEmployerNavigation;
   return (
     <div style={styles.page}>
       <a className="employer-skip-link" href="#employer-main-content">
-        Skip to employer workspace
+        <ShellText k="shell.skip" />
       </a>
       <div style={styles.appFrame}>
         <aside className="employer-sidebar" style={styles.sidebarShell}>
-          <a href="/" style={styles.brand} aria-label="JobLop home">
-            <span aria-hidden="true" style={styles.brandMark}>
-              JL
-            </span>
-            <span>JobLop</span>
+          <a href="/" style={styles.brand} aria-label="Joblop home">
+            <JobLopLogo height={34} />
           </a>
           <nav aria-label="Employer navigation" className="employer-navigation" style={styles.nav}>
             {navigation.map((step) => (
@@ -77,18 +112,19 @@ export function EmployerShell({
                 style={step.route === currentRoute ? styles.navLinkActive : styles.navLink}
                 aria-current={step.route === currentRoute ? "page" : undefined}
               >
-                <span style={styles.navPage}>Page {step.page}</span>
-                <span>{step.title}</span>
+                {step.page ? <span style={styles.navPage}>Page {step.page}</span> : null}
+                <span>{"titleKey" in step ? <ShellText k={step.titleKey} /> : step.title}</span>
               </a>
             ))}
           </nav>
+          <SidebarBenefits />
           <div style={styles.sidebarNote}>
             <strong>
-              {effectiveMode === "authenticated" ? "Secure boundary" : "Fixture mode"}
+              {effectiveMode === "authenticated" ? <ShellText k="shell.secureTitle" /> : "Fixture mode"}
             </strong>
             <span>
               {effectiveMode === "authenticated"
-                ? "Session and organization authority are verified before persisted data is shown."
+                ? <ShellText k="shell.secureText" />
                 : "Visual workflow preview. Authoritative actions remain governed."}
             </span>
           </div>
@@ -98,34 +134,57 @@ export function EmployerShell({
             {staging ? <StagingSafetyBanner /> : null}
             <header style={styles.header}>
               <div>
-                <p style={styles.topbarEyebrow}>Employer workspace</p>
+                <p style={styles.topbarEyebrow}><ShellText k="shell.eyebrow" /></p>
                 <strong style={styles.topbarTitle}>
                   {effectiveMode === "authenticated"
-                    ? "Secure employer workspace"
+                    ? <ShellText k="shell.title" />
                     : "Sunrise of Oak Hill"}
                 </strong>
               </div>
-              {actions}
+              <div style={styles.headerActions}>
+                <a href="/employer/contact-joblop" style={styles.footerLink}><ShellText k="shell.nav.contact" /></a>
+                <LanguageSwitcher />
+                {actions}
+              </div>
             </header>
-            <section style={styles.hero}>
-              <p style={styles.eyebrow}>{eyebrow}</p>
-              <h1 style={styles.title}>{title}</h1>
-              <p style={styles.lede}>{lede}</p>
-            </section>
-            <EmployerPageNavigator currentRoute={currentRoute} navigation={navigation} />
+            {hideHero ? null : (
+              <>
+                <section style={styles.hero}>
+                  <p style={styles.eyebrow}>{eyebrow}</p>
+                  <h1 style={styles.title}>{title}</h1>
+                  <p style={styles.lede}>{lede}</p>
+                </section>
+                {/* The numbered prototype pager is a local-dev tool; real employers use the sidebar. */}
+                {connectedEnvironment ? null : (
+                  <EmployerPageNavigator currentRoute={currentRoute} navigation={navigation} />
+                )}
+              </>
+            )}
             {children}
           </main>
           <footer style={styles.footer}>
-            <span>JobLop Employer Journey</span>
+            <span><ShellText k="shell.footer" /></span>
             <nav aria-label="Employer footer navigation" style={styles.footerLinks}>
+              <a href="/employer/contact-joblop" style={styles.footerLink}>
+                <ShellText k="shell.nav.contact" />
+              </a>
+              <a href="/employer/inbox" style={styles.footerLink}>
+                <ShellText k="shell.greetings" />
+              </a>
               <a href="/contact" style={styles.footerLink}>
-                Support
+                <ShellText k="shell.support" />
               </a>
               <a href="/faq" style={styles.footerLink}>
-                FAQ
+                <ShellText k="shell.faq" />
               </a>
               <a href="/pricing" style={styles.footerLink}>
-                Pricing
+                <ShellText k="shell.pricing" />
+              </a>
+              <a href="/terms" style={styles.footerLink}>
+                <ShellText k="shell.terms" />
+              </a>
+              <a href="/privacy" style={styles.footerLink}>
+                <ShellText k="shell.privacy" />
               </a>
             </nav>
           </footer>
@@ -154,10 +213,8 @@ function EmployerPageNavigator({
 }: {
   currentRoute: string;
   navigation: readonly {
-    boundary: string;
     page: string;
     route: string;
-    status: string;
     title: string;
   }[];
 }) {
@@ -175,11 +232,11 @@ function EmployerPageNavigator({
           href={previous.route}
           rel="prev"
         >
-          <span aria-hidden="true">←</span> Back
+          <span aria-hidden="true">←</span> <ShellText k="shell.back" />
         </a>
       ) : (
         <span aria-disabled="true" className="employer-page-arrow employer-page-arrow-disabled">
-          <span aria-hidden="true">←</span> Back
+          <span aria-hidden="true">←</span> <ShellText k="shell.back" />
         </span>
       )}
       <div
@@ -211,11 +268,11 @@ function EmployerPageNavigator({
           href={next.route}
           rel="next"
         >
-          Next <span aria-hidden="true">→</span>
+          <ShellText k="shell.next" /> <span aria-hidden="true">→</span>
         </a>
       ) : (
         <span aria-disabled="true" className="employer-page-arrow employer-page-arrow-disabled">
-          Next <span aria-hidden="true">→</span>
+          <ShellText k="shell.next" /> <span aria-hidden="true">→</span>
         </span>
       )}
     </nav>
@@ -223,8 +280,9 @@ function EmployerPageNavigator({
 }
 
 export function WorkflowRoutes({ currentRoute }: { currentRoute: string }) {
-  const navigation =
-    process.env.RWOS_ENV === "production" ? persistedEmployerNavigation : uniqueEmployerNavigation;
+  // The numbered workflow map is a prototype tool. Real employers use the sidebar and home page.
+  if (isConnectedEnvironment()) return null;
+  const navigation = uniqueEmployerNavigation;
   return (
     <section aria-labelledby="workflow-title" style={styles.section}>
       <div style={styles.sectionHeader}>

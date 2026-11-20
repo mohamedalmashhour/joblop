@@ -12,10 +12,15 @@ export function readAdminIntakeMutation(input: unknown, needsReason: boolean) {
     Number.isInteger(record.marginPpm) && (record.marginPpm as number) >= 0 && (record.marginPpm as number) <= 900_000
       ? (record.marginPpm as number)
       : undefined;
+  // Open-claim flag for approve-for-dispatch. Every approved job goes on the shared jobs calendar by
+  // default; staff can pass false to keep a job on the manual dispatch path.
+  const openClaim = typeof record.openClaim === "boolean" ? record.openClaim : undefined;
   if (!needsReason) {
-    return marginPpm === undefined
-      ? { expectedVersion: record.expectedVersion as number }
-      : { expectedVersion: record.expectedVersion as number, marginPpm };
+    return {
+      expectedVersion: record.expectedVersion as number,
+      ...(marginPpm === undefined ? {} : { marginPpm }),
+      ...(openClaim === undefined ? {} : { openClaim })
+    };
   }
   if (
     typeof record.reason !== "string" ||

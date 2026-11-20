@@ -1,5 +1,5 @@
 import { ScrollView, StyleSheet, View } from "react-native";
-import { spacing } from "@rwos/design-system";
+import { spacing } from "../../theme";
 import { Badge, BodyText, Button, Card, Divider, Heading, ScreenContainer, Section, SmallText } from "../../ui/primitives";
 import {
   getTimesheetStageTitle,

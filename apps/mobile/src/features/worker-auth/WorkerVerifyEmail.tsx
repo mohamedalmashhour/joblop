@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollView, View } from "react-native";
-import { spacing } from "@rwos/design-system";
+import { spacing } from "../../theme";
 
 import type { MobileSessionTransport } from "../../auth/secureSession";
 import { BodyText, Button, Card, Heading, Input, SmallText } from "../../ui/primitives";

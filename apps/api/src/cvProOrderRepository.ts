@@ -86,7 +86,7 @@ export type StripeCheckoutResult =
   | { ok: false; reason: "payments_disabled" | "stripe_unconfigured" };
 
 /** Begin a Stripe TEST card checkout for Worker Pro: creates/reuses a pending order, opens a hosted
- *  Checkout Session, stores its id on the order, and returns the redirect URL. No card touches JobLop. */
+ *  Checkout Session, stores its id on the order, and returns the redirect URL. No card touches Joblop. */
 export async function startStripeCheckout(
   prisma: PrismaClient,
   workerRef: string,

@@ -89,3 +89,19 @@ describe("marketplace job search", () => {
     expect(r.areaLabel).toBe("QC");
   });
 });
+
+describe("marketplace job search: long-term listing pay (employer plans flag)", () => {
+  it("passes the employer's pay offer through; a job without one is serialized exactly as before", () => {
+    const offer = { minMinor: 2_200, maxMinor: null, unit: "hour" as const, currency: "CAD", paidBy: "employer" as const };
+    const [withOffer] = searchNearbyJobs({
+      origin: montreal,
+      candidates: [candidate({ workerRateMinor: null, payOffered: offer })],
+      regionNames: canadaRegionNames
+    });
+    expect(withOffer?.workerRateMinor).toBeNull();
+    expect(withOffer?.payOffered).toEqual(offer);
+    const [plain] = searchNearbyJobs({ origin: montreal, candidates: [candidate({})], regionNames: canadaRegionNames });
+    expect(plain).not.toHaveProperty("payOffered");
+    expect(Object.keys(plain!).at(-1)).toBe("currency");
+  });
+});

@@ -9,6 +9,26 @@ import {
 } from "./jobRequestBoundary";
 
 describe("employer job request BFF boundary", () => {
+  it("gives each site a one-line address so the request form can pre-fill it", () => {
+    const context = parseEmployerRequestContext({
+      residences: {
+        residences: [
+          { id: "res-1", name: "Laval", addressSummary: "901 Avenue du Parc", city: "Laval", province: "QC", postalCode: "H7N 0A1" },
+          { id: "res-2", name: "Lines", addressLine1: "12 Rue Principale", addressLine2: "Unit 4", city: "Montréal", region: "Quebec" },
+          { id: "res-3", name: "Repeat", addressSummary: "5 Main St, Laval", city: "Laval" }
+        ]
+      },
+      departments: { departments: [] },
+      workGroups: { workGroups: [] },
+      roleDefinitions: { roleDefinitions: [] }
+    });
+    expect(context.residences.map((residence) => residence.address)).toEqual([
+      "901 Avenue du Parc, Laval, QC H7N 0A1",
+      "12 Rue Principale Unit 4, Montréal, Quebec",
+      "5 Main St, Laval"
+    ]);
+  });
+
   it("allowlists only governed selector fields", () => {
     expect(
       parseEmployerRequestContext({
@@ -55,7 +75,7 @@ describe("employer job request BFF boundary", () => {
         }
       })
     ).toEqual({
-      residences: [{ id: "res-1", name: "Sunrise" }],
+      residences: [{ id: "res-1", name: "Sunrise", address: null }],
       departments: [{ id: "dep-1", residenceId: "res-1", name: "Kitchen" }],
       workGroups: [{ id: "wg-1", slug: "kitchen", displayLabel: "Kitchen" }],
       roleDefinitions: [
@@ -111,6 +131,36 @@ describe("employer job request BFF boundary", () => {
       startAt: "2026-08-10T20:00:00.000Z",
       endAt: "2026-08-11T02:00:00.000Z"
     });
+  });
+
+  it("forwards a valid long-term pay offer only (clean fields, no other economics)", () => {
+    const base = {
+      residenceId: "res-1",
+      departmentId: "dep-1",
+      workGroup: "kitchen",
+      roleDefinition: "chef",
+      title: "Permanent Chef",
+      numberOfWorkers: 1,
+      urgency: "normal",
+      requestType: "single_day",
+      timezone: "America/Toronto",
+      startAt: "2026-08-10T14:00:00.000Z",
+      endAt: "2026-08-10T22:00:00.000Z"
+    };
+    expect(
+      readEmployerJobRequestInput({
+        ...base,
+        jobLength: "long_term",
+        payOffered: { minMinor: 2_200, maxMinor: 2_500, unit: "hour", platformMargin: 900 }
+      })
+    ).toMatchObject({ jobLength: "long_term", payOffered: { minMinor: 2_200, maxMinor: 2_500, unit: "hour" } });
+    expect(
+      readEmployerJobRequestInput({ ...base, jobLength: "long_term", payOffered: { minMinor: 2_200, unit: "hour", platformMargin: 900 } })?.payOffered
+    ).toEqual({ minMinor: 2_200, maxMinor: null, unit: "hour" });
+    // invalid offer, or a short-term job: no pay offer is forwarded
+    expect(readEmployerJobRequestInput({ ...base, jobLength: "long_term", payOffered: { minMinor: 0, unit: "hour" } })).not.toHaveProperty("payOffered");
+    expect(readEmployerJobRequestInput({ ...base, jobLength: "short_term", payOffered: { minMinor: 2_200, unit: "hour" } })).not.toHaveProperty("payOffered");
+    expect(readEmployerJobRequestInput(base)).not.toHaveProperty("payOffered");
   });
 
   it("rejects invalid counts, enums, and time windows", () => {
@@ -224,6 +274,79 @@ describe("employer job request BFF boundary", () => {
         urgency: "urgent"
       })
     ).toBeNull();
+  });
+
+  it("returns the fields the full edit form needs, and nothing else", () => {
+    const parsed = parseEmployerJobRequest({
+      jobRequest: {
+        id: "request-1",
+        jobRequestNumber: "JR-000001",
+        status: "draft",
+        title: "Farm help",
+        description: null,
+        numberOfWorkers: 1,
+        urgency: "normal",
+        requestType: "single_day",
+        timezone: "America/Toronto",
+        startAt: "2026-08-10T12:00:00.000Z",
+        endAt: "2026-08-10T18:00:00.000Z",
+        versionToken: 2,
+        residenceId: "res-1",
+        departmentId: "dep-1",
+        workGroupId: "wg-1",
+        roleDefinitionId: "role-1",
+        requiredCertificates: ["whmis"],
+        requiredCertificateOther: null,
+        allowances: {
+          transport: { provision: "allowance", amountMinor: 2000, note: "Bus" },
+          meal: { provision: "provided", amountMinor: 999, note: null },
+          lodging: { provision: "bogus" }
+        },
+        workerPayMinor: 1600
+      }
+    });
+    expect(parsed.edit).toEqual({
+      residenceId: "res-1",
+      departmentId: "dep-1",
+      workGroupId: "wg-1",
+      roleDefinitionId: "role-1",
+      requiredCertificates: ["whmis"],
+      requiredCertificateOther: null,
+      allowances: {
+        transport: { provision: "allowance", amountMinor: 2000, note: "Bus" },
+        meal: { provision: "provided", amountMinor: null, note: null },
+        lodging: { provision: "none", amountMinor: null, note: null }
+      }
+    });
+    expect(JSON.stringify(parsed)).not.toContain("workerPay");
+  });
+
+  it("forwards full-form draft changes only when well formed", () => {
+    const base = { expectedVersion: 1, title: "Farm help", description: null, numberOfWorkers: 1, urgency: "normal" };
+    expect(
+      readEmployerJobRequestUpdate({
+        ...base,
+        residenceId: "res-2",
+        departmentId: "dep-2",
+        workGroup: "farming",
+        roleDefinition: "farm-worker",
+        requestType: "single_day",
+        timezone: "America/Toronto",
+        startAt: "2026-08-10T12:00:00.000Z",
+        endAt: "2026-08-10T18:00:00.000Z",
+        requiredCertificates: ["whmis"]
+      })
+    ).toMatchObject({
+      residenceId: "res-2",
+      workGroup: "farming",
+      roleDefinition: "farm-worker",
+      startAt: "2026-08-10T12:00:00.000Z",
+      endAt: "2026-08-10T18:00:00.000Z",
+      requiredCertificates: ["whmis"]
+    });
+    expect(readEmployerJobRequestUpdate({ ...base, startAt: "2026-08-10T18:00:00.000Z", endAt: "2026-08-10T12:00:00.000Z" })).toBeNull();
+    expect(readEmployerJobRequestUpdate({ ...base, requestType: "recurring_intent" })).toBeNull();
+    expect(readEmployerJobRequestUpdate({ ...base, residenceId: "" })).toBeNull();
   });
 
   it("projects only employer-safe dispatch state and coverage", () => {

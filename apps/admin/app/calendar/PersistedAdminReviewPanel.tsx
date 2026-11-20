@@ -1,26 +1,64 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   calendarFailureState,
+  certificateLabel,
   formatRwosDateTime,
+  isRequiredCertificateKey,
   parseAdminCalendarDto,
   type AdminCalendarDto,
   type AuthenticatedViewState
 } from "@rwos/shared";
 import { DispatchHandoffPanel } from "./DispatchHandoffPanel";
+import { breakRuleLabel, dressCodeLabel, type ShiftConditionsView } from "@rwos/shared";
 import { JobLocationMap } from "../shared/maps";
+import { SignedOut } from "../shared/SignedOut";
+import { usePageText } from "../i18n/pageText";
+import { useLocale } from "../i18n/LocaleProvider";
+import { adminMoney } from "../i18n/adminFormat";
+import { reviewText, type ReviewActionMessage, type ReviewCopy } from "./reviewText";
+import {
+  formatHours,
+  intlLocale,
+  parseRequestSummary,
+  type RequestSummary
+} from "./requestSummary";
 
+type IntakeAction = "admin-review" | "request-information" | "approve-for-dispatch";
+
+/**
+ * "I'll choose the worker myself" is hidden for now. On the live site that path is a dead end: staff
+ * can send an offer and the worker can accept it, but no assignment is ever created, because the
+ * assignment handoff (ASSIGNMENT_HANDOFF_ENABLED) is off and is not allowed in production. So every
+ * approval opens the job on the board (openClaim = true) and the first qualified worker takes it.
+ * The manual code path stays in place; set this to true once a production-safe handoff exists.
+ */
+export const MANUAL_WORKER_PICK_AVAILABLE = false;
+type Loaded = Readonly<{ request: AdminCalendarDto; summary: RequestSummary | null }>;
+
+// Staff request detail. Shows what the employer asked for (company, role, hours, extras, price with
+// worker pay and margin), then the decision: start review, ask the employer a question, or approve
+// and choose between the job board and picking the worker yourself. The intake actions and their
+// confirmations are unchanged; only the wording and the read-only details are new.
 export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: string | null }>) {
-  const [state, setState] = useState<AuthenticatedViewState<AdminCalendarDto>>({
+  const t = usePageText(reviewText);
+  const appLocale = useLocale();
+  const locale = intlLocale(appLocale);
+  const [state, setState] = useState<AuthenticatedViewState<Loaded>>({
     status: "loading"
   });
   const [actionBusy, setActionBusy] = useState(false);
-  const [actionMessage, setActionMessage] = useState("");
-  const [confirmAction, setConfirmAction] = useState<
-    "admin-review" | "request-information" | "approve-for-dispatch" | null
-  >(null);
+  const [actionMessage, setActionMessage] = useState<ReviewActionMessage | null>(null);
+  const [confirmAction, setConfirmAction] = useState<IntakeAction | null>(null);
   const [reason, setReason] = useState("");
+  // Hybrid auto-offer: when on, approving opens the job for direct worker claim (first eligible
+  // worker to tap Accept is assigned instantly). Off keeps the manual shortlist → offer path.
+  // On by default: every approved job goes on the shared jobs calendar for all workers.
+  const [openClaimChoice, setOpenClaim] = useState(true);
+  // While the manual path is switched off (see MANUAL_WORKER_PICK_AVAILABLE), every approval opens
+  // the job on the board, whatever the stored choice says.
+  const openClaim = MANUAL_WORKER_PICK_AVAILABLE ? openClaimChoice : true;
   const requestGeneration = useRef(0);
   const confirmationDialog = useRef<HTMLDialogElement>(null);
   const confirmationTrigger = useRef<HTMLButtonElement | null>(null);
@@ -35,9 +73,12 @@ export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: s
       });
       if (generation !== requestGeneration.current) return;
       if (!response.ok) return setState(calendarFailureState(response.status));
-      const payload = (await response.json()) as { request?: unknown };
+      const payload = (await response.json()) as { request?: unknown; summary?: unknown };
       if (generation !== requestGeneration.current) return;
-      setState({ status: "ready", data: parseAdminCalendarDto(payload.request) });
+      setState({
+        status: "ready",
+        data: { request: parseAdminCalendarDto(payload.request), summary: parseRequestSummary(payload.summary) }
+      });
     } catch {
       if (generation !== requestGeneration.current) return;
       setState({ status: "error" });
@@ -65,176 +106,314 @@ export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: s
   if (!requestId) {
     return (
       <AdminState
-        title="Request reference required"
-        message="Open a persisted request from the authenticated administrator calendar."
+        backLabel={t.back}
+        message={t.referenceRequiredMessage}
+        retryLabel={t.retry}
+        title={t.referenceRequiredTitle}
       />
     );
   }
 
+  if (state.status === "denied") {
+    return (
+      <main style={styles.page}>
+        <SignedOut />
+      </main>
+    );
+  }
   if (state.status !== "ready") {
     const copy: readonly [string, string] =
       state.status === "loading"
-        ? ["Loading review detail", "Checking the persisted administrator-authorized record."]
-        : state.status === "denied"
-          ? [
-              "Administrator access required",
-              "Return to the calendar and sign in with an authorized platform account."
-            ]
-          : state.status === "unavailable"
-            ? [
-                "Review service unavailable",
-                "The persisted record could not be reached. No fixture record is substituted."
-              ]
-            : state.status === "stale"
-              ? ["Review changed", "Refresh the persisted record before continuing."]
-              : [
-                  "Review detail unavailable",
-                  "No fixture record is substituted for a persisted administrator request."
-                ];
-    return state.status === "denied" ? (
-      <AdminState message={copy[1]} title={copy[0]} />
-    ) : (
-      <AdminState message={copy[1]} onRetry={load} title={copy[0]} />
+        ? [t.loadingTitle, t.loadingMessage]
+        : state.status === "unavailable"
+          ? [t.unavailableTitle, t.unavailableMessage]
+          : state.status === "stale"
+            ? [t.staleTitle, t.staleMessage]
+            : [t.errorTitle, t.errorMessage];
+    return (
+      <AdminState
+        backLabel={t.back}
+        message={copy[1]}
+        onRetry={state.status === "loading" ? undefined : load}
+        retryLabel={t.retry}
+        title={copy[0]}
+      />
     );
   }
-  const request = state.data;
-  async function performAction(
-    action: "admin-review" | "request-information" | "approve-for-dispatch"
-  ) {
+  const { request, summary } = state.data;
+  const pricing = summary?.pricing ?? null;
+  // Money like the domain formatter, in the admin's language (Arabic: en-CA, "$16.60").
+  const money = (minor: number) => adminMoney(minor, pricing?.currency ?? "CAD", appLocale);
+
+  async function performAction(action: IntakeAction) {
     if (action === "request-information" && reason.trim().length < 4) {
-      setActionMessage("Enter a clear reason of at least four characters.");
+      setActionMessage("reasonTooShort");
       return;
     }
     setActionBusy(true);
-    setActionMessage("Applying the governed intake transition.");
-    try {
-      const response = await fetch(`/api/intake/${encodeURIComponent(request.id)}/${action}`, {
+    setActionMessage("applying");
+    const post = (step: IntakeAction, expectedVersion: number) =>
+      fetch(`/api/intake/${encodeURIComponent(request.id)}/${step}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          expectedVersion: request.versionToken,
-          ...(action === "request-information" ? { reason: reason.trim() } : {})
+          expectedVersion,
+          ...(step === "request-information" ? { reason: reason.trim() } : {}),
+          ...(step === "approve-for-dispatch" ? { openClaim } : {})
         })
       });
+    try {
+      let expectedVersion: number = request.versionToken;
+      // One step for staff: a new (submitted) request is first moved to "in review" with the same
+      // begin-review action as before, so the audit trail still records "review started", then
+      // approved or questioned with the version that step returned.
+      if (request.authoritativeStatus === "submitted" && action !== "admin-review") {
+        const started = await post("admin-review", expectedVersion);
+        if (!started.ok) {
+          setConfirmAction(null);
+          setActionMessage(started.status === 409 ? "stale" : started.status === 401 ? "authRequired" : "failed");
+          return;
+        }
+        const body = (await started.json().catch(() => null)) as { jobRequest?: { versionToken?: unknown } } | null;
+        const next = body?.jobRequest?.versionToken;
+        if (typeof next !== "number" || !Number.isInteger(next)) {
+          setConfirmAction(null);
+          setActionMessage("stale");
+          await load();
+          return;
+        }
+        expectedVersion = next;
+      }
+      const response = await post(action, expectedVersion);
       if (response.status === 409) {
         setConfirmAction(null);
-        setActionMessage("This request changed. Load the latest review before acting again.");
+        setActionMessage("stale");
         return;
       }
       if (!response.ok) {
         setConfirmAction(null);
-        setActionMessage(
-          response.status === 401
-            ? "Administrator authorization is required."
-            : "The intake action could not be completed."
-        );
+        setActionMessage(response.status === 401 ? "authRequired" : "failed");
+        // The review was started above: reload so the page shows the request's new version.
+        if (expectedVersion !== request.versionToken) await load();
         return;
       }
       setConfirmAction(null);
       setReason("");
       setActionMessage(
         action === "admin-review"
-          ? "Admin review started."
+          ? "started"
           : action === "request-information"
-            ? "Information request recorded for the employer."
-            : "Request approved for the dispatch boundary."
+            ? "infoRecorded"
+            : "approved"
       );
       await load();
     } catch {
       setConfirmAction(null);
-      setActionMessage("The intake service is unavailable. No success is claimed.");
+      setActionMessage("serviceUnavailable");
     } finally {
       setActionBusy(false);
     }
   }
+
+  const location = summary
+    ? [summary.locationName, summary.locationCity].filter(Boolean).join(", ")
+    : "";
+  const certificates = summary
+    ? [
+        ...summary.requiredCertificates
+          .filter(isRequiredCertificateKey)
+          .map((key) => certificateLabel(key, appLocale, key === "other" ? summary.requiredCertificateOther : null)),
+        ...(summary.requiredCertificateOther && !summary.requiredCertificates.includes("other")
+          ? [summary.requiredCertificateOther]
+          : [])
+      ]
+    : request.qualifications;
+  const offeredAllowances = (summary?.allowances ?? []).filter((a) => a.provision !== "none");
+  const placesOpen = summary ? Math.max(0, summary.numberOfWorkers - summary.confirmedWorkerCount) : 0;
+
+  const askedRows: [string, ReactNode][] = [
+    ...(summary
+      ? ([
+          [t.rows.company, summary.companyName],
+          [t.rows.role, summary.roleLabel],
+          [t.rows.location, location || t.notProvided]
+        ] as [string, ReactNode][])
+      : []),
+    [t.rows.schedule, formatWindow(request, t.unavailable)],
+    [t.rows.workers, String(request.numberOfWorkers)],
+    ...(summary
+      ? ([
+          [
+            t.rows.hours,
+            t.hoursValue(formatHours(summary.hoursPerWorker, locale), formatHours(summary.totalHours, locale))
+          ],
+          [t.rows.urgency, t.urgencyNames[summary.urgency] ?? summary.urgency]
+        ] as [string, ReactNode][])
+      : []),
+    [t.rows.certificates, certificates.length ? certificates.join(", ") : t.none],
+    ...(summary
+      ? ([
+          [
+            t.rows.allowances,
+            offeredAllowances.length ? (
+              <span style={styles.stack}>
+                {offeredAllowances.map((a) => (
+                  <span key={a.kind}>
+                    {t.allowanceNames[a.kind] ?? a.kind}: {t.allowanceValue(a.provision, a.amountMinor ? money(a.amountMinor) : null)}
+                    {a.note ? ` – ${a.note}` : ""}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              t.none
+            )
+          ]
+        ] as [string, ReactNode][])
+      : []),
+    [t.rows.duties, request.dutiesSummary ?? t.notProvided],
+    [t.rows.specialInstructions, request.specialInstructions ?? t.notProvided],
+    [t.rows.address, request.addressSummary ?? t.notProvided],
+    ...conditionRows(summary?.conditions ?? null, t)
+  ];
+
   return (
     <main style={styles.page}>
       <header style={styles.hero}>
         <div>
-          <p style={styles.eyebrow}>Resident Workforce OS / Persisted review</p>
+          <p style={styles.eyebrow}>{t.eyebrow(request.requestNumber)}</p>
           <h1 style={styles.title}>{request.title}</h1>
           <p style={styles.lede}>
-            {request.requestNumber} · {request.authoritativeStatus.replaceAll("_", " ")}
+            {summary ? `${summary.companyName} · ` : ""}
+            {t.statusNames[request.authoritativeStatus] ?? request.authoritativeStatus.replaceAll("_", " ")}
           </p>
         </div>
         <div style={styles.actionStack}>
           <a href="/calendar" style={styles.secondaryButton}>
-            Back to admin calendar
+            {t.back}
           </a>
-          <p style={styles.assignmentBoundary}>
-            Assignment records are not connected in this admin view.
-          </p>
         </div>
       </header>
       <section style={styles.grid}>
         <article style={styles.panel}>
-          <h2 style={styles.h2}>Request readiness</h2>
-          {[
-            ["Request status", request.status.replaceAll("_", " ")],
-            ["Authoritative status", request.authoritativeStatus.replaceAll("_", " ")],
-            ["Contract", request.verification.contract],
-            [
-              "Payment method",
-              `${request.verification.paymentMethodReadiness} — raw details hidden`
-            ],
-            ["Location", request.verification.location],
-            ["Schedule", formatWindow(request)],
-            ["Duties", request.dutiesSummary ?? "Not provided"],
-            [
-              "Qualifications",
-              request.qualifications.length ? request.qualifications.join(", ") : "Not provided"
-            ],
-            ["Workers", String(request.numberOfWorkers)],
-            ["Address summary", request.addressSummary ?? "Restricted or not provided"],
-            ["Special instructions", request.specialInstructions ?? "Not provided"],
-            ["Review reason", request.adminReviewReason ?? "Not provided"]
-          ].map(([label, value]) => (
+          <h2 style={styles.h2}>{t.askedTitle}</h2>
+          {askedRows.map(([label, value]) => (
             <div key={label} style={styles.row}>
               <strong>{label}</strong>
-              <span>{value}</span>
+              <span style={styles.value}>{value}</span>
             </div>
           ))}
           <JobLocationMap address={request.addressSummary} />
         </article>
+        {summary ? (
+          <article style={styles.panel}>
+            <h2 style={styles.h2}>{t.priceTitle}</h2>
+            {pricing ? (
+              <>
+                {(
+                  [
+                    [t.priceRows.employerRate, money(pricing.employerHourlyRateMinor)],
+                    ...(pricing.urgentSurchargePerHourMinor > 0
+                      ? [[t.priceRows.urgentSurcharge, money(pricing.urgentSurchargePerHourMinor)]]
+                      : []),
+                    [t.priceRows.workerPay, money(pricing.workerHourlyRateMinor)],
+                    [
+                      t.priceRows.margin,
+                      t.marginValue(
+                        money(pricing.platformHourlyMarginMinor),
+                        formatHours(pricing.marginPpm / 10_000, locale)
+                      )
+                    ],
+                    ...(pricing.allowancesEmployerPerShiftMinor > 0
+                      ? [[t.priceRows.allowances, money(pricing.allowancesEmployerPerShiftMinor)]]
+                      : [])
+                  ] as [string, string][]
+                ).map(([label, value]) => (
+                  <div key={label} style={styles.row}>
+                    <strong>{label}</strong>
+                    <span style={styles.value}>{value}</span>
+                  </div>
+                ))}
+                <div style={{ ...styles.row, ...styles.totalRow }}>
+                  <strong>{t.priceRows.estimatedTotal}</strong>
+                  <strong style={styles.gold}>{money(pricing.estimatedTotalMinor)}</strong>
+                </div>
+                <p style={styles.note}>{pricing.source === "approved" ? t.approvedNote : t.estimateNote}</p>
+              </>
+            ) : (
+              <>
+                <p role="alert" style={styles.warning}>
+                  {t.pricingProblem[summary.pricingProblem ?? "unavailable"] ?? t.pricingProblem.unavailable}
+                </p>
+                {summary.pricingProblem === "no_contract" || summary.pricingProblem === "no_role_rate" ? (
+                  <a href="/contracts" style={styles.secondaryButton}>
+                    {t.contractsLink}
+                  </a>
+                ) : null}
+              </>
+            )}
+          </article>
+        ) : null}
+        {/* Right column: the decision, then the Workers card under it once approved. */}
+        <div style={styles.column}>
         <article style={styles.panel}>
-          <h2 style={styles.h2}>Economics separation</h2>
-          <p>
-            Client economics and worker-offer economics are not included in this calendar
-            persistence DTO.
+          <h2 style={styles.h2}>{t.intakeTitle}</h2>
+          <p aria-live="polite" role={actionMessage === "stale" ? "alert" : "status"}>
+            {actionMessage
+              ? t.messages[actionMessage]
+              : intakeStateCopy(t, request.authoritativeStatus, request.adminReviewReason)}
           </p>
-          <p>
-            Review them only through their separate contract-authoritative sources. No raw payment
-            secrets are available here.
-          </p>
-        </article>
-        <article style={styles.panel}>
-          <h2 style={styles.h2}>Governed intake action</h2>
-          <p aria-live="polite" role={actionMessage.includes("changed") ? "alert" : "status"}>
-            {actionMessage ||
-              intakeStateCopy(request.authoritativeStatus, request.adminReviewReason)}
-          </p>
-          {request.authoritativeStatus === "submitted" ? (
-            <button
-              disabled={actionBusy}
-              onClick={(event) => {
-                confirmationTrigger.current = event.currentTarget;
-                setConfirmAction("admin-review");
-              }}
-              style={styles.primaryButton}
-              type="button"
-            >
-              Begin admin review
-            </button>
-          ) : null}
-          {request.authoritativeStatus === "admin_review" ? (
+          {request.authoritativeStatus === "submitted" || request.authoritativeStatus === "admin_review" ? (
             <>
+              {pricing ? (
+                <p style={styles.payPreview}>
+                  {t.payPreview(money(pricing.workerHourlyRateMinor), money(pricing.platformHourlyMarginMinor))}
+                </p>
+              ) : null}
+              {MANUAL_WORKER_PICK_AVAILABLE ? (
+              <fieldset style={styles.fieldset}>
+                <legend style={styles.legend}>{t.choiceLegend}</legend>
+                <label style={styles.choice}>
+                  <input
+                    checked={openClaim}
+                    disabled={actionBusy}
+                    name="after-approval"
+                    onChange={() => setOpenClaim(true)}
+                    type="radio"
+                  />
+                  <span>{t.choiceBoard}</span>
+                </label>
+                <label style={styles.choice}>
+                  <input
+                    checked={!openClaim}
+                    disabled={actionBusy}
+                    name="after-approval"
+                    onChange={() => setOpenClaim(false)}
+                    type="radio"
+                  />
+                  <span>{t.choiceManual}</span>
+                </label>
+              </fieldset>
+              ) : (
+                <p style={styles.legend}>{t.choiceBoard}</p>
+              )}
+              <button
+                disabled={actionBusy}
+                onClick={(event) => {
+                  confirmationTrigger.current = event.currentTarget;
+                  setConfirmAction("approve-for-dispatch");
+                }}
+                style={styles.primaryButton}
+                type="button"
+              >
+                {openClaim ? t.approveOpenClaim : t.approveForDispatch}
+              </button>
               <label style={styles.label}>
-                Information request reason
+                {t.reasonLabel}
                 <textarea
                   disabled={actionBusy}
                   maxLength={1000}
                   onChange={(event) => setReason(event.target.value)}
-                  rows={5}
+                  rows={4}
                   style={styles.textarea}
                   value={reason}
                 />
@@ -249,18 +428,7 @@ export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: s
                   style={styles.secondaryAction}
                   type="button"
                 >
-                  Request information
-                </button>
-                <button
-                  disabled={actionBusy}
-                  onClick={(event) => {
-                    confirmationTrigger.current = event.currentTarget;
-                    setConfirmAction("approve-for-dispatch");
-                  }}
-                  style={styles.primaryButton}
-                  type="button"
-                >
-                  Approve for dispatch
+                  {t.requestInformation}
                 </button>
               </div>
             </>
@@ -274,12 +442,9 @@ export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: s
               style={styles.confirmation}
             >
               <h3 id="confirm-intake-action" style={styles.h2}>
-                Confirm intake transition
+                {t.confirmTitle}
               </h3>
-              <p id="confirm-intake-copy">
-                {confirmationCopy(confirmAction)} This does not publish, assign, notify, run
-                payroll, or execute money.
-              </p>
+              <p id="confirm-intake-copy">{confirmationCopy(t, confirmAction, openClaim)}</p>
               <div style={styles.actionStack}>
                 <button
                   autoFocus
@@ -288,7 +453,7 @@ export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: s
                   style={styles.secondaryAction}
                   type="button"
                 >
-                  Cancel
+                  {t.cancel}
                 </button>
                 <button
                   disabled={actionBusy}
@@ -296,55 +461,77 @@ export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: s
                   style={styles.primaryButton}
                   type="button"
                 >
-                  {actionBusy ? "Applying…" : "Confirm action"}
+                  {actionBusy ? t.applyingButton : t.confirmAction}
                 </button>
               </div>
             </dialog>
           ) : null}
-          {actionMessage.includes("changed") ? (
+          {actionMessage === "stale" ? (
             <button onClick={() => void load()} style={styles.secondaryAction} type="button">
-              Load latest review
+              {t.loadLatest}
             </button>
           ) : null}
         </article>
         {request.authoritativeStatus === "approved_for_dispatch" ? (
           <article style={styles.panel}>
-            <h2 style={styles.h2}>Dispatch handoff</h2>
+            <h2 style={styles.h2}>{t.dispatchTitle}</h2>
+            {summary ? (
+              <>
+                <p style={styles.posted}>
+                  {summary.openClaim
+                    ? t.postedBoard(placesOpen, summary.confirmedWorkerCount)
+                    : t.postedManual(placesOpen, summary.confirmedWorkerCount)}
+                </p>
+                {summary.openClaim && summary.publicJobUrl ? (
+                  <p>
+                    <a href={summary.publicJobUrl} rel="noreferrer" style={styles.goldLink} target="_blank">
+                      {t.seeJobBoard}
+                    </a>
+                  </p>
+                ) : null}
+              </>
+            ) : null}
             <DispatchHandoffPanel jobRequestId={request.id} />
           </article>
         ) : null}
-      </section>
-      <section style={styles.notice}>
-        <h2 style={styles.h2}>Review authority remains bounded</h2>
-        <p>
-          Intake actions change only the governed Job Request state. Publish, worker assignment,
-          repricing, notification delivery, payroll, and payment execution remain separate.
-        </p>
+        </div>
       </section>
     </main>
   );
 }
 
-function intakeStateCopy(status: AdminCalendarDto["authoritativeStatus"], reason: string | null) {
-  if (status === "submitted") return "This submitted request is ready to begin admin review.";
-  if (status === "admin_review")
-    return "Review the request, then request information or approve it for the dispatch boundary.";
-  if (status === "information_required") {
-    return `Waiting for employer information.${reason ? ` Reason: ${reason}` : ""}`;
-  }
-  if (status === "approved_for_dispatch")
-    return "Approved for the dispatch boundary. No intake action remains.";
-  return "No intake action is available for this request state.";
+function intakeStateCopy(
+  t: ReviewCopy,
+  status: AdminCalendarDto["authoritativeStatus"],
+  reason: string | null
+) {
+  if (status === "submitted") return t.stateSubmitted;
+  if (status === "admin_review") return t.stateAdminReview;
+  if (status === "information_required") return t.stateInformationRequired(reason);
+  if (status === "approved_for_dispatch") return t.stateApproved;
+  return t.stateNone;
 }
 
-function confirmationCopy(action: "admin-review" | "request-information" | "approve-for-dispatch") {
-  if (action === "admin-review") return "Begin human admin review for this request.";
-  if (action === "request-information")
-    return "Return this request to the employer for clarification.";
-  return "Approve this reviewed request for the future dispatch boundary.";
+function confirmationCopy(t: ReviewCopy, action: IntakeAction, openClaim: boolean) {
+  if (action === "admin-review") return t.confirmAdminReview;
+  if (action === "request-information") return t.confirmRequestInformation;
+  return openClaim ? t.confirmApproveBoard : t.confirmApproveManual;
 }
 
-function formatWindow(request: AdminCalendarDto) {
+// The employer's shift conditions, only the ones stated (break, dress code, equipment, arrival, notes).
+function conditionRows(c: ShiftConditionsView | null, t: ReviewCopy): [string, ReactNode][] {
+  if (!c) return [];
+  const rows: [string, ReactNode][] = [];
+  const breakText = breakRuleLabel(c.breakMinutes, t.conditionsLang);
+  if (breakText) rows.push([t.rows.breakRule, breakText]);
+  if (c.dressCode) rows.push([t.rows.dressCode, dressCodeLabel(c.dressCode, t.conditionsLang)]);
+  if (c.equipmentToBring) rows.push([t.rows.equipment, c.equipmentToBring]);
+  if (c.arrivalInstructions) rows.push([t.rows.arrival, c.arrivalInstructions]);
+  if (c.workerNotes) rows.push([t.rows.workerNotes, c.workerNotes]);
+  return rows;
+}
+
+function formatWindow(request: AdminCalendarDto, unavailableLabel: string) {
   const start = formatRwosDateTime(request.startAt, {
     dateStyle: "medium",
     timeStyle: "short",
@@ -354,16 +541,23 @@ function formatWindow(request: AdminCalendarDto) {
     timeStyle: "short",
     timeZone: request.timezone
   });
-  return start === "Unavailable" || end === "Unavailable"
-    ? "Unavailable"
-    : `${start}–${end} (${request.timezone})`;
+  // formatRwosDateTime returns the literal "Unavailable" for an unreadable date.
+  return start === "Unavailable" || end === "Unavailable" ? unavailableLabel : `${start}–${end}`;
 }
 
 function AdminState({
   title,
   message,
-  onRetry
-}: Readonly<{ title: string; message: string; onRetry?: () => Promise<void> }>) {
+  onRetry,
+  backLabel,
+  retryLabel
+}: Readonly<{
+  title: string;
+  message: string;
+  onRetry?: (() => Promise<void>) | undefined;
+  backLabel: string;
+  retryLabel: string;
+}>) {
   return (
     <main style={styles.page}>
       <header aria-live="polite" style={styles.hero}>
@@ -371,11 +565,11 @@ function AdminState({
         <p style={styles.lede}>{message}</p>
         <div style={styles.actionStack}>
           <a href="/calendar" style={styles.secondaryButton}>
-            Back to admin calendar
+            {backLabel}
           </a>
           {onRetry ? (
             <button onClick={() => void onRetry()} style={styles.retryButton} type="button">
-              Retry
+              {retryLabel}
             </button>
           ) : null}
         </div>
@@ -386,14 +580,14 @@ function AdminState({
 
 const styles = {
   page: {
-    background: "#f4f7fb",
-    color: "#10233f",
+    background: "#000000",
+    color: "#f4efe4",
     fontFamily: "Inter, system-ui, sans-serif",
     minHeight: "100vh"
   },
   hero: {
     alignItems: "center",
-    background: "#061b41",
+    background: "#000000",
     color: "#fff",
     display: "flex",
     flexWrap: "wrap" as const,
@@ -403,92 +597,104 @@ const styles = {
   },
   eyebrow: { color: "#fff1a8", fontSize: 12, fontWeight: 900, textTransform: "uppercase" as const },
   title: { fontSize: "clamp(34px, 5vw, 56px)", margin: "8px 0" },
-  lede: { color: "#d6e5f8", fontSize: 18, lineHeight: 1.6, maxWidth: 760 },
+  lede: { color: "#faf6ec", fontSize: 18, lineHeight: 1.6, maxWidth: 760 },
   secondaryButton: {
     alignItems: "center",
-    background: "#fff",
+    background: "#0c0c0c",
+    border: "1px solid rgba(248, 184, 8, 0.3)",
     borderRadius: 8,
-    color: "#061b41",
+    color: "#f4efe4",
     display: "inline-flex",
     fontWeight: 800,
     minHeight: 44,
     padding: "0 18px",
     textDecoration: "none"
   },
-  actionStack: { display: "flex", flexWrap: "wrap" as const, gap: 10 },
-  assignmentBoundary: {
-    color: "#d6e5f8",
-    fontSize: 13,
-    margin: 0,
-    maxWidth: 240
-  },
+  actionStack: { display: "flex", flexWrap: "wrap" as const, gap: 10, marginTop: 12 },
   retryButton: {
-    background: "#fff",
-    border: "1px solid #91a5bf",
+    background: "#0c0c0c",
+    border: "1px solid rgba(248, 184, 8, 0.3)",
     borderRadius: 8,
-    color: "#061b41",
+    color: "#f4efe4",
     cursor: "pointer",
     fontWeight: 800,
     minHeight: 44,
     padding: "0 18px"
   },
   primaryButton: {
-    background: "#0f7f78",
+    background: "#F8B808",
     border: 0,
     borderRadius: 8,
-    color: "#fff",
+    color: "#000000",
     cursor: "pointer",
     fontWeight: 800,
     minHeight: 44,
     padding: "0 18px"
   },
   secondaryAction: {
-    background: "#fff",
-    border: "1px solid #91a5bf",
+    background: "#0c0c0c",
+    border: "1px solid rgba(248, 184, 8, 0.3)",
     borderRadius: 8,
-    color: "#061b41",
+    color: "#f4efe4",
     cursor: "pointer",
     fontWeight: 800,
     minHeight: 44,
     padding: "0 18px"
   },
-  label: { display: "grid", fontWeight: 800, gap: 8, marginTop: 16 },
+  label: { display: "grid", fontWeight: 800, gap: 8, marginTop: 20 },
   textarea: {
-    border: "1px solid #91a5bf",
+    background: "#0c0c0c",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
+    color: "#f4efe4",
     font: "inherit",
     padding: 12,
     resize: "vertical" as const
   },
+  fieldset: {
+    border: "1px solid rgba(248, 184, 8, 0.28)",
+    borderRadius: 10,
+    display: "grid",
+    gap: 10,
+    margin: "12px 0 16px",
+    padding: "12px 14px"
+  },
+  legend: { color: "#F8B808", fontWeight: 800, padding: "0 6px" },
+  choice: { alignItems: "flex-start", display: "flex", gap: 10, lineHeight: 1.45 },
+  payPreview: { color: "#F8B808", fontWeight: 800, margin: "8px 0" },
   confirmation: {
-    background: "#fff8d8",
+    background: "#0c0c0c",
     border: "1px solid #e8d782",
     borderRadius: 12,
+    color: "#f4efe4",
     marginTop: 18,
     padding: 18
   },
   grid: {
+    alignItems: "start",
     display: "grid",
     gap: 18,
-    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-    padding: "24px clamp(18px, 5vw, 64px)"
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))",
+    padding: "24px clamp(18px, 5vw, 64px) 48px"
   },
-  panel: { background: "#fff", border: "1px solid #dbe4f0", borderRadius: 14, padding: 24 },
-  h2: { color: "#061b41", fontSize: 25, margin: "6px 0 14px" },
+  column: { display: "grid", gap: 18, minWidth: 0 },
+  panel: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 14, padding: 24 },
+  h2: { color: "#f4efe4", fontSize: 24, margin: "6px 0 14px" },
   row: {
-    alignItems: "center",
-    borderBottom: "1px solid #e7edf5",
+    alignItems: "baseline",
+    borderBottom: "1px solid rgba(248, 184, 8, 0.16)",
     display: "flex",
     flexWrap: "wrap" as const,
     gap: 12,
     justifyContent: "space-between",
     padding: "12px 0"
   },
-  notice: {
-    background: "#fff8d8",
-    border: "1px solid #e8d782",
-    borderRadius: 14,
-    margin: "0 clamp(18px, 5vw, 64px) 48px",
-    padding: 24
-  }
+  value: { overflowWrap: "anywhere" as const, textAlign: "end" as const },
+  stack: { display: "grid", gap: 4 },
+  totalRow: { borderBottom: 0, fontSize: 18 },
+  gold: { color: "#F8B808" },
+  goldLink: { color: "#F8B808", fontWeight: 800 },
+  note: { color: "#b3a894", fontSize: 14, lineHeight: 1.5, margin: "6px 0 0" },
+  warning: { color: "#fff1a8", lineHeight: 1.5 },
+  posted: { color: "#F8B808", fontSize: 18, fontWeight: 800, margin: "0 0 8px" }
 } as const;

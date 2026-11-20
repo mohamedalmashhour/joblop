@@ -257,7 +257,9 @@ describe("authenticated calendar DTO and state boundaries", () => {
           verificationMethod: "geofence",
           checkInAt: "2026-08-10T22:03:00.000Z",
           checkOutAt: null,
-          exceptionCategory: null,
+          cancelledBy: null,
+          // An older API could still send the staff's reason; the parser must drop it.
+          exceptionCategory: "replaced by JR-2026-000006 at the legal rate. Owner approved.",
           completedAt: null,
           cancelledAt: null,
           version: 4,
@@ -280,6 +282,13 @@ describe("authenticated calendar DTO and state boundaries", () => {
     const keys = Object.keys(first);
     expect(keys).not.toContain("workerIdentityId");
     expect(keys).not.toContain("supervisorNote");
+    expect(keys).not.toContain("exceptionCategory");
+    expect(JSON.stringify(first)).not.toContain("Owner approved");
+    expect(first.cancelledBy).toBeNull();
+    const [cancelled] = parseEmployerAttendanceList({
+      attendanceRecords: [{ id: "attendance-2", assignmentId: "assignment-2", status: "cancelled", scheduledStartAt: "2026-08-10T22:00:00.000Z", scheduledEndAt: "2026-08-11T06:00:00.000Z", timezone: "America/Toronto", verificationMethod: "geofence", checkInAt: null, checkOutAt: null, completedAt: null, cancelledAt: "2026-08-09T12:00:00.000Z", version: 2, updatedAt: "2026-08-09T12:00:00.000Z", cancelledBy: "company" }]
+    });
+    expect(cancelled?.cancelledBy).toBe("company");
   });
 
   it("rejects a non-array attendance envelope and malformed attendance records", () => {

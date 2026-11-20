@@ -5,7 +5,12 @@ import { validateEnvironmentInventory } from "./environment-classification";
 import { discoverFiles } from "./filesystem-discovery";
 
 const root = resolve(import.meta.dirname, "..");
-const buildRoots = ["apps/mobile/dist", "apps/employer/.next/static", "apps/admin/.next/static"];
+const buildRoots = [
+  "apps/mobile/dist",
+  "apps/employer/.next/static",
+  "apps/admin/.next/static",
+  "apps/crm/.next/static"
+];
 const ignoredSourceDirectories = new Set([
   ".expo",
   ".next",
@@ -18,7 +23,7 @@ const ignoredSourceDirectories = new Set([
   "tmp"
 ]);
 const publicManifestFiles = filesFromFilesystem(
-  ["apps/employer/.next", "apps/admin/.next"],
+  ["apps/employer/.next", "apps/admin/.next", "apps/crm/.next"],
   "public-manifest-roots",
   true
 ).filter(
@@ -28,7 +33,7 @@ const publicManifestFiles = filesFromFilesystem(
 );
 const sourceFiles = [
   ...filesFromFilesystem(
-    ["apps/mobile", "apps/employer", "apps/admin"],
+    ["apps/mobile", "apps/employer", "apps/admin", "apps/crm"],
     "public-source-roots",
     true,
     ignoredSourceDirectories

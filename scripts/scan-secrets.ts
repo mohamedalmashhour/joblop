@@ -13,7 +13,8 @@ const patterns = [
     allowSyntheticFixture: true
   },
   { pattern: /mongodb(\+srv)?:\/\/[^:\s]+:[^@\s]+@/ },
-  { pattern: /RESEND_API_KEY\s*=\s*[^<\s][^\s]+/ }
+  { pattern: /BREVO_API_KEY\s*=\s*[^<\s][^\s]+/ },
+  { pattern: /xkeysib-[A-Za-z0-9-]{20,}/ }
 ];
 
 const releaseFiles = execFileSync(

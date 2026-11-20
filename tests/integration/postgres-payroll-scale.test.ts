@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { buildApi } from "../../apps/api/src/app";
 import { createPrismaClient } from "@rwos/database";
 import type { FastifyInstance } from "fastify";
+import { priceJob } from "./payrollPricingFixture";
 
 // HR-5.1 Chunk 5 — meaningful-scale bulk calculation + EXPLAIN ANALYZE evidence + bulk concurrency
 // and failure isolation, over a synthetic dataset. TEST/SYNTHETIC — no money execution. The worker
@@ -45,6 +46,7 @@ suite(`HR-5.1 payroll scale (${N} synthetic workers)`, () => {
     const cid = randomUUID();
     await prisma.$executeRawUnsafe(`INSERT INTO employer_contracts (id, organization_id, version, status, currency, activated_at, effective_from, created_by_user_id, created_at, updated_at) VALUES ($1,$2,$3,'active','CAD',now(),'2026-07-01T00:00:00Z',$4,now(),now())`, cid, org.id, `sc-${tag}`, payrollAdminId);
     await prisma.$executeRawUnsafe(`INSERT INTO contract_role_rates (id, contract_id, work_group_id, role_definition_id, hourly_rate_minor, created_at) VALUES (gen_random_uuid(),$1,$2,$3,3000,now())`, cid, wg.id, role.id);
+    await priceJob(prisma, { jobRequestId: job.id, organizationId: org.id, contract: { id: cid, version: `sc-${tag}`, effectiveFrom: new Date("2026-07-01T00:00:00Z"), rateMinor: 3000 }, capturedByUserId: payrollAdminId });
 
     // ── bulk-generate N synthetic worker chains via generate_series with deterministic UUIDs ──
     const u = (p: string) => `(md5('${p}-${tag}-'||g::text))::uuid`;
@@ -87,11 +89,13 @@ suite(`HR-5.1 payroll scale (${N} synthetic workers)`, () => {
     let cursor: string | undefined;
     let total = 0, calculated = 0, failed = 0;
     let pages = 0;
+    const notCalculated: Array<{ workerIdentityId: string; outcome: string; reason?: string }> = [];
     do {
       const r = await bulk(250, cursor);
       expect(r.statusCode).toBe(200);
       const b = r.json();
       total += b.attempted; calculated += b.calculated; failed += b.failed;
+      notCalculated.push(...b.results.filter((x: { outcome: string }) => x.outcome !== "calculated"));
       cursor = b.nextCursor ?? undefined;
       pages += 1;
       expect(b.results.length).toBeLessThanOrEqual(250); // bounded page — never the whole population
@@ -100,6 +104,7 @@ suite(`HR-5.1 payroll scale (${N} synthetic workers)`, () => {
     const rssAfter = process.memoryUsage().rss;
 
     expect(total).toBe(N);
+    expect(notCalculated.slice(0, 10)).toEqual([]); // names the outcome + reason if any worker is skipped
     expect(calculated).toBe(N);
     expect(failed).toBe(0);
     const rows = await prisma.$queryRawUnsafe<Array<{ c: bigint }>>(`SELECT count(*) c FROM payroll_calculations WHERE payroll_period_id=$1`, periodId);

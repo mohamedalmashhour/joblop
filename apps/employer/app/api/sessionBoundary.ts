@@ -104,7 +104,8 @@ export async function resolveClientOrganizationId(
   const membershipResult = await gateway.request("/memberships", "GET", token);
   if (membershipResult.status !== "ok") return membershipResult;
   const organizations = parseOrganizationChoices(membershipResult.payload);
-  if (!organizations.length) return { status: "denied" } as const;
+  // Signed in with no company yet: they need company setup, not to be told to sign in again.
+  if (!organizations.length) return { status: "context_required", organizations } as const;
 
   const organizationId = selectedOrganizationId
     ? organizations.find((organization) => organization.id === selectedOrganizationId)?.id

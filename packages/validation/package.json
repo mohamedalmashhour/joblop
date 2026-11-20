@@ -13,6 +13,6 @@
   },
   "dependencies": {
     "@rwos/shared": "workspace:*",
-    "zod": "^4.0.5"
+    "zod": "^4.6.7"
   }
 }

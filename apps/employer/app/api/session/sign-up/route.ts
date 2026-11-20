@@ -1,3 +1,7 @@
+import { randomBytes } from "node:crypto";
+
+import { LEGAL_DOCUMENTS_VERSION } from "@rwos/shared";
+
 import {
   isSameOriginMutation,
   organizationContextCookieName,
@@ -18,19 +22,27 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   if (!validRegistration(body)) return sessionFailure("denied");
   const { cookieStore, gateway, token } = await sessionBoundary();
-  if (token) {
+  // Only a live session blocks this. An expired one is cleared, or the person would be told they
+  // are signed in while every page refuses them.
+  if (token && (await gateway.validate(token)).status !== "denied") {
     return Response.json(
       { status: "sign_out_required", message: "Sign out before creating another account." },
       { status: 409, headers: { "cache-control": "private, no-store" } }
     );
   }
+  if (token) cookieStore.set(sessionCookieName, "", { ...sessionCookieOptions, maxAge: 0 });
   cookieStore.set(organizationContextCookieName, "", { ...sessionCookieOptions, maxAge: 0 });
 
   const result = await gateway.register(
     {
       email: body.email,
-      password: body.password,
-      displayName: body.displayName ?? null
+      // Employers sign in by texted code. The account still stores a password nobody ever sees.
+      password: `${randomBytes(32).toString("base64url")}a1`,
+      displayName: body.displayName ?? null,
+      phone: body.phone,
+      referralCode: body.referralCode ?? null,
+      // The box the person ticked accepts the Terms and Privacy Policy published at this version.
+      acceptedLegalVersion: LEGAL_DOCUMENTS_VERSION
     },
     (issuedToken) => {
       cookieStore.set(sessionCookieName, issuedToken, sessionCookieOptions);
@@ -66,7 +78,7 @@ export async function POST(request: Request) {
   }
   if (result.status === "invalid") {
     return Response.json(
-      { status: "invalid", message: "Password does not meet the required strength." },
+      { status: "invalid", message: "Check your details and try again." },
       { status: 400, headers: { "cache-control": "private, no-store" } }
     );
   }
@@ -79,10 +91,10 @@ function validRegistration(
 ): input is {
   email: string;
   confirmEmail: string;
-  password: string;
-  confirmPassword: string;
   acceptedNotices: true;
   displayName?: string | null;
+  phone: string;
+  referralCode?: string | null;
 } {
   if (typeof input !== "object" || input === null) return false;
   const record = input as Record<string, unknown>;
@@ -90,12 +102,11 @@ function validRegistration(
     typeof record.email === "string" &&
     typeof record.confirmEmail === "string" &&
     record.email.trim().toLowerCase() === record.confirmEmail.trim().toLowerCase() &&
-    typeof record.password === "string" &&
-    typeof record.confirmPassword === "string" &&
-    record.password === record.confirmPassword &&
     record.acceptedNotices === true &&
     (record.displayName === undefined ||
       record.displayName === null ||
-      typeof record.displayName === "string")
+      typeof record.displayName === "string") &&
+    typeof record.phone === "string" &&
+    record.phone.replace(/\D/g, "").length >= 10
   );
 }

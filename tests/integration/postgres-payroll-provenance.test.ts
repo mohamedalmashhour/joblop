@@ -4,6 +4,7 @@ import type { FastifyInstance } from "fastify";
 import { buildApi } from "../../apps/api/src/app";
 import { createPrismaClient } from "@rwos/database";
 import { createPrismaAssignmentRepository } from "@rwos/auth";
+import { contractInForce, priceJob, repriceOrganizationJobs, type FixtureContract } from "./payrollPricingFixture";
 
 /**
  * HR-6.1 Chunk 2 — live PostgreSQL/API proof for the read-only provenance endpoint using real
@@ -39,10 +40,12 @@ suite("HR-6.1 provenance endpoint (read-only, descriptive)", () => {
     const dept = await prisma.department.create({ data: { publicId: `DEP-${tag}`, organizationId: orgId, residenceId: res.id, name: `D-${tag}`, status: "active", createdByUserId: ownerId } });
     return { residenceId: res.id, departmentId: dept.id };
   }
+  const contracts: FixtureContract[] = [];
   async function seedContract(version: string, status: string, effFromIso: string, rateMinor: number) {
     const cid = randomUUID(); const n = NOW.toISOString();
     await prisma.$executeRawUnsafe(`INSERT INTO employer_contracts (id, organization_id, version, status, currency, activated_at, effective_from, created_by_user_id, created_at, updated_at) VALUES ($1,$2,$3,$4,'CAD',$5,$5,$6,$7,$7)`, cid, orgId, version, status, effFromIso, ownerId, n);
     await prisma.$executeRawUnsafe(`INSERT INTO contract_role_rates (id, contract_id, work_group_id, role_definition_id, hourly_rate_minor, created_at) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5)`, cid, wgId, roleId, rateMinor, n);
+    contracts.push({ id: cid, version, effectiveFrom: new Date(effFromIso), rateMinor });
   }
   async function makeAssignment(scope: Record<string, string>, s: Date, e: Date) {
     const job = await prisma.jobRequest.create({ data: { jobRequestNumber: `JR-${randomUUID().slice(0, 10)}`, ...scope, creatorUserId: ownerId, title: "Shift", numberOfWorkers: 1, requestType: "single_day", timezone: "America/Toronto", startAt: s, endAt: e, status: "approved_for_dispatch", createdByUserId: ownerId } });
@@ -63,6 +66,8 @@ suite("HR-6.1 provenance endpoint (read-only, descriptive)", () => {
   async function addShift(r: { residenceId: string; departmentId: string }, s: Date, e: Date) {
     const base = { organizationId: orgId, residenceId: r.residenceId, departmentId: r.departmentId, workGroupId: wgId, roleDefinitionId: roleId };
     const a = await makeAssignment(base, s, e);
+    const contract = contractInForce(contracts, s);
+    if (contract) await priceJob(prisma, { jobRequestId: a.jobId, organizationId: orgId, contract, capturedByUserId: ownerId });
     await seedApprovedTimesheet({ ...base, assignmentId: a.assignmentId }, a.jobId, s, e, 480);
   }
 
@@ -130,8 +135,9 @@ suite("HR-6.1 provenance endpoint (read-only, descriptive)", () => {
   });
 
   it("exact-revision provenance + correction lineage after a governed correction", async () => {
-    // Add a higher-priority contract version so a recompute differs → governed correction → rev2.
+    // Move the jobs onto a new contract rate so a recompute differs → governed correction → rev2.
     await seedContract("v3", "active", "2026-07-15T00:00:00Z", 4000);
+    await repriceOrganizationJobs(prisma, orgId, contracts.at(-1)!);
     const calc = await app.inject({ method: "GET", url: `/platform/payroll/calculations/${calcRev1}`, headers: auth(payrollToken) });
     const version = calc.json().calculation.version;
     const corr = await app.inject({ method: "POST", url: `/platform/payroll/calculations/${calcRev1}/correct`, headers: auth(payrollToken), payload: { expectedVersion: version, reason: "rate correction" } });

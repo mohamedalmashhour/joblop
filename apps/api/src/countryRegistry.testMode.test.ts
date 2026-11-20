@@ -31,7 +31,7 @@ describe("test-mode country injection", () => {
     ).toThrow(COUNTRY_CONFIG_ERRORS.UNSUPPORTED);
   });
 
-  it("does not disturb the base registry (Syria still the only real entry, no canada-test)", () => {
+  it("does not disturb the base registry (no canada-test in it)", () => {
     expect(apiCountryRegistry["canada-test"]).toBeUndefined();
     expect(apiCountryRegistry.syria).toBeDefined();
   });

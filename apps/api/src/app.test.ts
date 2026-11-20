@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   AssignmentError,
+  WorkerOfferError,
   AssignmentTransactionUnavailableError,
   authorizationDeniedCode,
   authorizationDeniedMessage,
@@ -57,7 +58,14 @@ import type {
   WorkerOfferService,
   WorkGroupRepository
 } from "@rwos/auth";
-import { buildApi, createRemoteAuthenticationRateLimiter, isPublicWorkerIngressPath } from "./app";
+import {
+  buildApi,
+  createMemoryAuthenticationRateLimiter,
+  createRemoteAuthenticationRateLimiter,
+  isPublicWorkerIngressPath
+} from "./app";
+import { canadaQuebecCountryProfile } from "@rwos/country-canada";
+import { JOB_FLOW_ROUTES, JOB_FLOW_ROUTES_KEPT_BLOCKED } from "./productionRoutePolicy";
 
 describe("public worker ingress boundary", () => {
   it("allows only health, worker authentication and worker workflow routes", () => {
@@ -69,6 +77,8 @@ describe("public worker ingress boundary", () => {
       "/auth/sign-out",
       "/auth/email/send-code",
       "/auth/email/verify-code",
+      "/auth/email/add",
+      "/auth/email/confirm",
       "/auth/password-reset/request",
       "/auth/password-reset/complete",
       "/worker/offers",
@@ -338,6 +348,169 @@ describe("api authentication foundation", () => {
     await app.close();
   });
 
+  it("opens the reviewed job flow and sign-up in production with the Canada/Québec defaults", async () => {
+    const workerOfferService = createApiUnavailableWorkerOfferService();
+    const app = buildApi({
+      authService: createAuthenticationService(
+        new ApiMemoryAuthenticationRepository(),
+        testAuthOptions()
+      ),
+      authRateLimiter: createMemoryAuthenticationRateLimiter(),
+      dispatchService: createApiUnavailableDispatchService(),
+      workerOfferService,
+      assignmentService: createApiUnavailableAssignmentService(),
+      attendanceService: createApiUnavailableAttendanceService(),
+      timesheetService: createApiUnavailableTimesheetService(),
+      productionFeatureDefaults: canadaQuebecCountryProfile.productionDefaults,
+      env: productionEnv()
+    });
+    await app.ready();
+    const sample = (template: string) =>
+      template.replace(/:[A-Za-z]+/g, "00000000-0000-4000-8000-000000000001");
+    for (const entry of JOB_FLOW_ROUTES) {
+      const [method, template] = entry.split(" ") as ["GET" | "POST", string];
+      expect(app.hasRoute({ method, url: template }), `${entry} is a registered route`).toBe(true);
+      const response = await app.inject({
+        method,
+        url: sample(template),
+        ...(method === "POST" ? { payload: {} } : {})
+      });
+      expect(response.json().error, entry).not.toBe("RWOS_RESOURCE_UNAVAILABLE");
+    }
+    for (const entry of Object.keys(JOB_FLOW_ROUTES_KEPT_BLOCKED)) {
+      const [method, template] = entry.split(" ") as ["POST", string];
+      expect(app.hasRoute({ method, url: template }), `${entry} is a registered route`).toBe(true);
+      const response = await app.inject({ method, url: sample(template), payload: {} });
+      expect(response.statusCode, entry).toBe(404);
+      expect(response.json().error, entry).toBe("RWOS_RESOURCE_UNAVAILABLE");
+    }
+    const testPayout = await app.inject({
+      method: "POST",
+      url: "/platform/worker-payouts/payout-1/execute-test-payout",
+      payload: {}
+    });
+    expect(testPayout.statusCode).toBe(404);
+    expect(testPayout.json().error).toBe("RWOS_RESOURCE_UNAVAILABLE");
+    const registration = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: { email: "person@example.com", password: "ValidPassword123" }
+    });
+    expect(registration.statusCode).toBe(201);
+    await app.close();
+  });
+
+  it("lets an explicit disabled flag override the Canada/Québec production default", async () => {
+    const workerOfferService = createApiUnavailableWorkerOfferService();
+    const acceptOffer = vi.spyOn(workerOfferService, "accept");
+    const app = buildApi({
+      authService: createAuthenticationService(
+        new ApiMemoryAuthenticationRepository(),
+        testAuthOptions()
+      ),
+      authRateLimiter: createMemoryAuthenticationRateLimiter(),
+      workerOfferService,
+      productionFeatureDefaults: canadaQuebecCountryProfile.productionDefaults,
+      env: {
+        ...productionEnv(),
+        RWOS_JOB_FLOW_ENABLED: "disabled",
+        RWOS_PUBLIC_SIGNUP_ENABLED: "disabled"
+      }
+    });
+    for (const url of ["/worker/offers/offer-1/accept", "/auth/register"]) {
+      const response = await app.inject({
+        method: "POST",
+        url,
+        payload: { email: "person@example.com", password: "ValidPassword123" }
+      });
+      expect(response.statusCode, url).toBe(404);
+      expect(response.json()).toEqual({
+        error: "RWOS_RESOURCE_UNAVAILABLE",
+        message: "Resource unavailable."
+      });
+    }
+    expect(acceptOffer).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("leaves test mode unchanged: the production flags and defaults are never read outside production", async () => {
+    for (const extra of [
+      {},
+      { RWOS_JOB_FLOW_ENABLED: "disabled", RWOS_PUBLIC_SIGNUP_ENABLED: "disabled" },
+      { RWOS_JOB_FLOW_ENABLED: "enabled", RWOS_PUBLIC_SIGNUP_ENABLED: "enabled" }
+    ]) {
+      for (const defaults of [undefined, { jobFlow: false, publicSignup: false }]) {
+        const app = buildApi({
+          authService: createAuthenticationService(
+            new ApiMemoryAuthenticationRepository(),
+            testAuthOptions()
+          ),
+          dispatchService: createApiUnavailableDispatchService(),
+          workerOfferService: createApiUnavailableWorkerOfferService(),
+          assignmentService: createApiUnavailableAssignmentService(),
+          attendanceService: createApiUnavailableAttendanceService(),
+          timesheetService: createApiUnavailableTimesheetService(),
+          productionFeatureDefaults: defaults,
+          env: { RWOS_ENV: "test", NODE_ENV: "production", ...extra }
+        });
+        for (const entry of [...JOB_FLOW_ROUTES, ...Object.keys(JOB_FLOW_ROUTES_KEPT_BLOCKED)]) {
+          const [method, template] = entry.split(" ") as ["GET" | "POST", string];
+          const response = await app.inject({
+            method,
+            url: template.replace(/:[A-Za-z]+/g, "00000000-0000-4000-8000-000000000001"),
+            ...(method === "POST" ? { payload: {} } : {})
+          });
+          expect(response.json().error, entry).not.toBe("RWOS_RESOURCE_UNAVAILABLE");
+        }
+        const registration = await app.inject({
+          method: "POST",
+          url: "/auth/register",
+          payload: { email: "person@example.com", password: "ValidPassword123" }
+        });
+        expect(registration.statusCode).toBe(201);
+        await app.close();
+      }
+    }
+  });
+
+  it("runs production on the Postgres limiter with no remote limiter settings, failing closed", async () => {
+    const env = {
+      RWOS_ENV: "production",
+      NODE_ENV: "production",
+      // Unreachable on purpose: the limiter must refuse sign-ins and fail /ready, never allow.
+      DATABASE_URL: "postgresql://rwos:rwos@127.0.0.1:1/rwos",
+      INTERNAL_API_ORIGIN: "https://api.example.test",
+      AUTH_RATE_LIMITER_BACKEND: "postgres",
+      AUTH_RATE_LIMITER_KEY_SECRET: "test-key-secret-that-is-at-least-32-characters",
+      AUTH_RATE_LIMITER_NAMESPACE: "rwos:authrl:production:v1"
+    };
+    const app = buildApi({
+      authService: createAuthenticationService(
+        new ApiMemoryAuthenticationRepository(),
+        testAuthOptions()
+      ),
+      readinessProbe: async () => true,
+      productionFeatureDefaults: canadaQuebecCountryProfile.productionDefaults,
+      env
+    });
+    const ready = await app.inject({ method: "GET", url: "/ready" });
+    expect(ready.statusCode).toBe(503);
+    const signIn = await app.inject({
+      method: "POST",
+      url: "/auth/sign-in",
+      payload: { email: "person@example.com", password: "ValidPassword123" }
+    });
+    expect(signIn.statusCode).toBe(503);
+    expect(signIn.json().error).toBe("RWOS_AUTH_UNAVAILABLE");
+    const registration = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: { email: "person@example.com", password: "ValidPassword123" }
+    });
+    expect(registration.statusCode).toBe(503);
+    await app.close();
+  });
+
   it("adds HSTS for staging traffic terminated by the external load balancer", async () => {
     const app = buildApi({
       authService: createAuthenticationService(
@@ -470,10 +643,12 @@ describe("api authentication foundation", () => {
     });
     expect(issued.statusCode).toBe(202);
     expect(issued.json()).toEqual({ status: "accepted", code: "123456" });
-    expect(issue).toHaveBeenCalledWith({
-      userId: repository.firstUserId(),
-      emailNormalized: "verify@example.test"
-    });
+    expect(issue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: repository.firstUserId(),
+        emailNormalized: "verify@example.test"
+      })
+    );
     expect(consume).toHaveBeenLastCalledWith(
       expect.objectContaining({
         action: "email_verify_send",
@@ -511,6 +686,108 @@ describe("api authentication foundation", () => {
     });
     expect(accepted.statusCode).toBe(200);
     expect(accepted.json()).toEqual({ status: "verified" });
+    await app.close();
+  });
+
+  it("adds an email for a signed-in account, rejects one in use, and confirms by link", async () => {
+    const repository = new ApiMemoryAuthenticationRepository();
+    const add = vi
+      .fn()
+      .mockResolvedValueOnce({ status: "sent" as const, email: "new@example.test" })
+      .mockResolvedValueOnce({ status: "in_use" as const })
+      .mockResolvedValueOnce({ status: "invalid_email" as const });
+    const confirm = vi
+      .fn()
+      .mockResolvedValueOnce({ status: "confirmed" as const })
+      .mockResolvedValueOnce({
+        status: "confirm_failed" as const,
+        message: "This link has expired or was already used. Send a new one from your Joblop account."
+      });
+    const consume = vi.fn(async () => ({ allowed: true, retryAfterSeconds: 60 }));
+    const app = buildApi({
+      authService: createAuthenticationService(repository, testAuthOptions()),
+      addEmailService: { add, confirm },
+      authRateLimiter: { consume },
+      publicWorkerWebOrigin: "https://joblop.example.test"
+    });
+    const registration = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: { email: "phone-user@example.test", password: "ValidPassword123", displayName: "Synthetic User" }
+    });
+    const token = registration.json().token as string;
+    const authorization = `Bearer ${token}`;
+
+    const anonymous = await app.inject({ method: "POST", url: "/auth/email/add", payload: { email: "a@b.test" } });
+    expect(anonymous.statusCode).toBe(401);
+    expect(add).not.toHaveBeenCalled();
+
+    const sent = await app.inject({
+      method: "POST",
+      url: "/auth/email/add",
+      headers: { authorization },
+      payload: { email: "new@example.test" }
+    });
+    expect(sent.statusCode).toBe(202);
+    expect(sent.json()).toEqual({ status: "sent", email: "new@example.test" });
+    expect(add).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: repository.firstUserId(),
+        email: "new@example.test",
+        alreadyConfirmed: false,
+        confirmBaseUrl: "https://joblop.example.test"
+      })
+    );
+    expect(consume).toHaveBeenLastCalledWith(
+      expect.objectContaining({ action: "email_verify_send", email: `add-email:${repository.firstUserId()}` })
+    );
+
+    const inUse = await app.inject({
+      method: "POST",
+      url: "/auth/email/add",
+      headers: { authorization },
+      payload: { email: "taken@example.test" }
+    });
+    expect(inUse.statusCode).toBe(409);
+    expect(inUse.json()).toEqual({
+      error: "RWOS_EMAIL_IN_USE",
+      message: "This email is already used by another account"
+    });
+
+    const invalid = await app.inject({
+      method: "POST",
+      url: "/auth/email/add",
+      headers: { authorization },
+      payload: { email: "nope" }
+    });
+    expect(invalid.statusCode).toBe(400);
+
+    consume.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 60 });
+    const limited = await app.inject({
+      method: "POST",
+      url: "/auth/email/add",
+      headers: { authorization },
+      payload: { email: "new@example.test" }
+    });
+    expect(limited.statusCode).toBe(429);
+    expect(add).toHaveBeenCalledTimes(3);
+
+    const confirmed = await app.inject({
+      method: "POST",
+      url: "/auth/email/confirm",
+      payload: { token: "a".repeat(43) }
+    });
+    expect(confirmed.statusCode).toBe(200);
+    expect(confirmed.json()).toEqual({ status: "confirmed" });
+    const reused = await app.inject({
+      method: "POST",
+      url: "/auth/email/confirm",
+      payload: { token: "a".repeat(43) }
+    });
+    expect(reused.statusCode).toBe(400);
+    const missing = await app.inject({ method: "POST", url: "/auth/email/confirm", payload: {} });
+    expect(missing.statusCode).toBe(400);
+    expect(confirm).toHaveBeenCalledTimes(2);
     await app.close();
   });
 
@@ -577,6 +854,25 @@ describe("api authentication foundation", () => {
       status: "reset_failed",
       message: "Password reset could not be completed. Request a new link and try again."
     });
+    await app.close();
+  });
+
+  it("creates an account with a mobile number and no password, and refuses one with neither", async () => {
+    const app = buildApi({
+      authService: createAuthenticationService(new ApiMemoryAuthenticationRepository(), testAuthOptions())
+    });
+    const withPhone = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: { email: "phone-only@example.test", phone: "514 555 0101", displayName: "Phone Only" }
+    });
+    expect(withPhone.statusCode).toBe(201);
+    const neither = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: { email: "nothing@example.test" }
+    });
+    expect(neither.statusCode).toBe(400);
     await app.close();
   });
 
@@ -2260,6 +2556,102 @@ describe("api assignment foundation", () => {
     await app.close();
   });
 
+  it("refuses a staff assignment that would give the worker two shifts at the same time (RWOS_SHIFT_OVERLAP)", async () => {
+    const authRepository = new ApiMemoryAuthenticationRepository();
+    const heldShift = {
+      startAt: new Date("2026-11-10T14:00:00.000Z"),
+      endAt: new Date("2026-11-10T22:00:00.000Z"),
+      timezone: "America/Toronto"
+    };
+    const app = buildApi({
+      authService: createAuthenticationService(authRepository, testAuthOptions()),
+      assignmentService: {
+        ...createApiUnavailableAssignmentService(),
+        async createFromAcceptedOffer() {
+          throw new AssignmentError({
+            status: "conflict_detected",
+            allow: false,
+            assignment: null,
+            roles: ["DISPATCHER"],
+            internalReason: "worker_schedule_conflict",
+            externalCode: authorizationDeniedCode,
+            externalMessage: authorizationDeniedMessage,
+            heldShift
+          });
+        }
+      },
+      resolveAuthorizationRoles: async () => ["DISPATCHER"]
+    });
+    const user = await registerApiUser(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/platform/assignments",
+      headers: { authorization: `Bearer ${user.token}`, "accept-language": "fr-CA,fr;q=0.9" },
+      payload: {
+        workerOfferId: "00000000-0000-4000-8000-000000000101",
+        dispatchReviewId: "00000000-0000-4000-8000-000000000102",
+        expectedOfferVersion: 1
+      }
+    });
+
+    expect(response.statusCode).toBe(409);
+    const body = response.json();
+    expect(body.error).toBe("RWOS_SHIFT_OVERLAP");
+    expect(body.message).toMatch(/^Vous avez déjà un quart de travail à cette heure-là \(.*9:00–17:00\)\.$/);
+    expect(body.messages.en).toMatch(/^You already have a shift at that time \(Tue.*9:00–17:00\)\.$/);
+    expect(body.messages.ar).toContain("9:00–17:00");
+    expect(body.heldShift).toEqual({
+      startAt: "2026-11-10T14:00:00.000Z",
+      endAt: "2026-11-10T22:00:00.000Z",
+      timezone: "America/Toronto"
+    });
+    await app.close();
+  });
+
+  it("refuses a worker offer acceptance that would overlap a held shift, with the same message", async () => {
+    const authRepository = new ApiMemoryAuthenticationRepository();
+    const app = buildApi({
+      authService: createAuthenticationService(authRepository, testAuthOptions()),
+      workerOfferService: {
+        ...createApiUnavailableWorkerOfferService(),
+        async accept() {
+          throw new WorkerOfferError({
+            status: "shift_overlap",
+            allow: false,
+            workerOffer: null,
+            roles: ["WORKER_ACCESS"],
+            internalReason: "worker_schedule_conflict",
+            externalCode: authorizationDeniedCode,
+            externalMessage: authorizationDeniedMessage,
+            heldShift: {
+              startAt: new Date("2026-11-10T14:00:00.000Z"),
+              endAt: new Date("2026-11-10T22:00:00.000Z"),
+              timezone: "America/Toronto"
+            }
+          });
+        }
+      },
+      resolveAuthorizationRoles: async () => ["WORKER_ACCESS"]
+    });
+    const user = await registerApiUser(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/worker/offers/00000000-0000-4000-8000-000000000101/accept",
+      headers: { authorization: `Bearer ${user.token}` },
+      payload: { expectedVersion: 2, expectedTermsVersionId: "00000000-0000-4000-8000-000000000103" }
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      error: "RWOS_SHIFT_OVERLAP",
+      status: "shift_overlap",
+      message: expect.stringMatching(/^You already have a shift at that time \(Tue.*9:00–17:00\)\.$/)
+    });
+    await app.close();
+  });
+
   it("maps missing or mismatched Assignment sources to one privacy-safe response", async () => {
     const authRepository = new ApiMemoryAuthenticationRepository();
     const app = buildApi({
@@ -2334,6 +2726,70 @@ describe("api assignment foundation", () => {
       message: "Assignment processing is temporarily unavailable."
     });
     await app.close();
+  });
+});
+
+describe("long-term job requests (employer plans flag)", () => {
+  async function setup() {
+    const { app } = buildJobRequestApi();
+    const employer = await registerApiUser(app);
+    const organization = await createApiOrganization(app, employer.token, "Long Term Tenant");
+    const residence = await createApiResidence(app, employer.token, organization.id, "Long Term Residence");
+    const department = await createApiDepartment(app, employer.token, organization.id, residence.id, "Care");
+    const body = {
+      residenceId: residence.id,
+      departmentId: department.id,
+      workGroup: "kitchen",
+      roleDefinition: "chef",
+      title: "Permanent Chef",
+      numberOfWorkers: 1,
+      urgency: "normal",
+      requestType: "single_day",
+      timezone: "America/Toronto",
+      startAt: "2026-08-10T14:00:00.000Z",
+      endAt: "2026-08-10T22:00:00.000Z",
+      jobLength: "long_term"
+    };
+    const post = (payload: Record<string, unknown>) =>
+      app.inject({
+        method: "POST",
+        url: `/organizations/${organization.id}/job-requests`,
+        headers: { authorization: `Bearer ${employer.token}` },
+        payload
+      });
+    return { app, body, post };
+  }
+
+  it("flag ON: a long-term request without a pay offer is refused before any draft is made", async () => {
+    const previous = process.env.EMPLOYER_PLANS_ENABLED;
+    process.env.EMPLOYER_PLANS_ENABLED = "enabled";
+    try {
+      const { app, body, post } = await setup();
+      const missing = await post(body);
+      expect(missing.statusCode).toBe(400);
+      expect(missing.json().error).toBe("RWOS_INVALID_PAY_OFFERED");
+      const zero = await post({ ...body, payOffered: { minMinor: 0, unit: "hour" } });
+      expect(zero.statusCode).toBe(400);
+      await app.close();
+    } finally {
+      if (previous === undefined) delete process.env.EMPLOYER_PLANS_ENABLED;
+      else process.env.EMPLOYER_PLANS_ENABLED = previous;
+    }
+  });
+
+  it("flag OFF: job length and pay offer are ignored, the draft is created as today", async () => {
+    const previous = process.env.EMPLOYER_PLANS_ENABLED;
+    delete process.env.EMPLOYER_PLANS_ENABLED;
+    try {
+      const { app, body, post } = await setup();
+      const created = await post(body);
+      expect(created.statusCode).toBe(201);
+      expect(created.json().jobRequest).not.toHaveProperty("payOffered");
+      expect(created.json().jobRequest).not.toHaveProperty("jobLength");
+      await app.close();
+    } finally {
+      if (previous !== undefined) process.env.EMPLOYER_PLANS_ENABLED = previous;
+    }
   });
 });
 
@@ -2922,6 +3378,7 @@ function createApiUnavailableAttendanceService(): AttendanceService {
     workerCheckIn: unavailable,
     workerCheckOut: unavailable,
     markCompleted: unavailable,
+    recordReportedHours: unavailable,
     markMissed: unavailable,
     markException: unavailable,
     cancel: unavailable,

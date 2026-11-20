@@ -131,6 +131,17 @@ describe("worker job interest", () => {
     expect((await svc.listForWorker({ userId: "u-1" })).length).toBe(1);
   });
 
+  it("refuses interest (or an application) while a required certificate is missing, and says which one", async () => {
+    const svc = createWorkerJobInterestService({
+      ...ctx.deps,
+      certificates: { async missingReasons() { return ["missing_certificate:pab"] as const; } }
+    });
+    const eligibility = await svc.checkEligibility({ userId: "u-1", jobRequestId: "job-a" });
+    expect(eligibility).toMatchObject({ eligible: false, reasons: ["missing_certificate:pab"] });
+    await expect(svc.expressInterest({ userId: "u-1", jobRequestId: "job-a" })).rejects.toMatchObject({ code: "ineligible", reasons: ["missing_certificate:pab"] });
+    expect(ctx.rows).toHaveLength(0);
+  });
+
   it("does NOT create an offer or assignment (only an intent record)", async () => {
     const svc = createWorkerJobInterestService(ctx.deps);
     await svc.expressInterest({ userId: "u-1", jobRequestId: "job-a" });

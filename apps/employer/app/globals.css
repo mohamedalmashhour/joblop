@@ -1,3 +1,6 @@
+/* Brand tokens — the SINGLE source of truth (packages/design-system). */
+@import "@rwos/design-system/tokens.css";
+
 * {
   box-sizing: border-box;
 }
@@ -5,6 +8,23 @@
 html,
 body {
   margin: 0;
+}
+
+/* Dark-first canvas, one brand voice: black background, cream body, Playfair serif headings. */
+:root {
+  color-scheme: dark;
+}
+body {
+  background: #000000;
+  color: #f4efe4;
+  font-family: var(--font-sans, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-serif, "Playfair Display", Georgia, "Times New Roman", serif);
+  letter-spacing: -0.01em;
 }
 
 header > a,
@@ -17,8 +37,8 @@ footer nav a {
 }
 
 .employer-skip-link {
-  background: #ffd44a;
-  color: #0b1f3a;
+  background: #f8b808;
+  color: #000000;
   font-weight: 800;
   left: 1rem;
   padding: 0.75rem 1rem;
@@ -35,15 +55,28 @@ footer nav a {
 
 .employer-workspace :is(a, button, input, select, textarea):focus-visible,
 .employer-sidebar a:focus-visible,
+.employer-sidebar button:focus-visible,
 #employer-main-content:focus-visible {
   outline: 3px solid #ffd44a;
   outline-offset: 3px;
 }
 
+/* Sidebar benefits card: desktop only. Hidden where the sidebar collapses (phones/narrow) and on
+   very short screens so it never pushes the menu out of view. */
+.employer-sidebar-benefits-cta:hover {
+  filter: brightness(1.06);
+}
+
+@media (max-width: 720px), (max-height: 640px) {
+  .employer-sidebar-benefits {
+    display: none !important;
+  }
+}
+
 .employer-page-navigator {
   align-items: center;
-  background: #f7f9fc;
-  border-bottom: 1px solid #d8dee8;
+  background: #000000;
+  border-bottom: 1px solid rgba(248, 184, 8, 0.16);
   display: grid;
   font-family: Inter, system-ui, sans-serif;
   gap: 12px;
@@ -63,10 +96,10 @@ footer nav a {
 .employer-page-arrow,
 .employer-page-number {
   align-items: center;
-  background: #ffffff;
-  border: 1px solid #b9c7d9;
+  background: #000000;
+  border: 1px solid rgba(248, 184, 8, 0.16);
   border-radius: 999px;
-  color: #0b2a59;
+  color: #f4efe4;
   display: inline-flex;
   flex: 0 0 auto;
   font-weight: 800;
@@ -83,19 +116,19 @@ footer nav a {
 
 .employer-page-arrow:hover,
 .employer-page-number:hover {
-  background: #e8f5f3;
-  border-color: #0f7f78;
+  background: #000000;
+  border-color: #f8b808;
 }
 
 .employer-page-number-active {
-  background: #0f7f78;
-  border-color: #0f7f78;
-  color: #ffffff;
+  background: #f8b808;
+  border-color: #f8b808;
+  color: #000000;
 }
 
 .employer-page-arrow-disabled {
-  background: #edf0f4;
-  color: #758195;
+  background: #000000;
+  color: #b3a894;
   cursor: not-allowed;
 }
 
@@ -130,14 +163,49 @@ footer nav a {
   }
 }
 
+/* Plain links in the employer workspace use the brand link style (gold, underlined), never browser blue/purple. */
+.employer-workspace a:not([class]):not([style]) {
+  color: #f8b808;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Home "Everything you can do": 4 cards in one row on wide screens, 2 x 2 on tablets, 1 per row on phones. */
+.employer-group-grid { display: grid; gap: 16px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1199px) { .employer-group-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .employer-group-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* Request form "Required certificates": an even grid of 3 / 2 / 1 columns. */
+.employer-cert-grid { display: grid; gap: 10px 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1023px) { .employer-cert-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .employer-cert-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* Request detail actions: one compact row that wraps; an opened action panel takes the full width. */
+.employer-action-row { align-items: flex-start; display: flex; flex-wrap: wrap; gap: 10px; }
+.employer-action-row > * { flex: 0 0 auto; max-width: 100%; }
+
+/* Request calendar chips: title and status each wrap to at most 2 lines (never cut mid-word with "…"
+   after one line), and every chip has the same height so a week row lines up. */
+.employer-cal-chip { align-content: start; border-radius: 6px; box-sizing: border-box; display: grid; gap: 1px; min-height: 60px; min-width: 0; padding: 4px 6px; text-decoration: none; }
+.employer-cal-chip-title,
+.employer-cal-chip-status { -webkit-box-orient: vertical; -webkit-line-clamp: 2; display: -webkit-box; hyphens: auto; line-height: 1.2; overflow: hidden; overflow-wrap: anywhere; white-space: normal; }
+.employer-cal-chip-title { font-size: 11px; font-weight: 800; }
+.employer-cal-chip-status { font-size: 10px; font-weight: 600; }
+@media (max-width: 560px) {
+  .employer-cal-chip { min-height: 50px; padding: 3px 4px; }
+  .employer-cal-chip-title { font-size: 10px; }
+  .employer-cal-chip-status { font-size: 9px; }
+}
+
 /* --- Bill 96 language switcher --- */
-.langswitch { display: inline-flex; border: 1px solid #d7dbe0; border-radius: 999px; overflow: hidden; }
-.langbtn { appearance: none; border: 0; background: transparent; color: #5b6471; font: inherit; font-size: 13px; font-weight: 700; padding: 5px 12px; cursor: pointer; line-height: 1.4; }
-.langbtn + .langbtn { border-left: 1px solid #d7dbe0; }
-.langbtn.active { background: #1a56db; color: #fff; }
+.langswitch { display: inline-flex; border: 1px solid rgba(248, 184, 8, 0.16); border-radius: 999px; overflow: hidden; }
+.langbtn { appearance: none; border: 0; background: transparent; color: #b3a894; font: inherit; font-size: 13px; font-weight: 700; padding: 5px 12px; cursor: pointer; line-height: 1.4; }
+.langbtn + .langbtn { border-left: 1px solid rgba(248, 184, 8, 0.16); }
+.langbtn.active { background: #f8b808; color: #000; }
 .langbtn:disabled { cursor: default; }
-.langbtn:not(.active):hover { background: #e8f0fe; color: #1a56db; }
-@media (prefers-color-scheme: dark) { .langswitch { border-color: #262c36; } .langbtn { color: #9aa4b2; } .langbtn + .langbtn { border-left-color: #262c36; } .langbtn.active { background: #4f83f0; } }
+.langbtn:not(.active):hover { background: #0c0c0c; color: #f8b808; }
+@media (prefers-color-scheme: dark) { .langswitch { border-color: rgba(248, 184, 8, 0.16); } .langbtn { color: #b3a894; } .langbtn + .langbtn { border-left-color: rgba(248, 184, 8, 0.16); } .langbtn.active { background: #f8b808; } }
 
 /* Print: clean request-details printout — hide nav/chrome and interactive controls, keep content. */
 @media print {
@@ -150,3 +218,79 @@ footer nav a {
   body { background: #fff !important; color: #000 !important; }
   a[href] { text-decoration: none; color: #000; }
 }
+
+/* Phone-shaped video card used on the landing pages. */
+.video-card { position: relative; margin: 0; aspect-ratio: 9 / 16; border-radius: 28px; overflow: hidden; background: #000; border: 6px solid #1a1a1a; box-shadow: 0 0 0 1px rgba(248, 184, 8, 0.35), 0 24px 48px rgba(0, 0, 0, 0.45); }
+.video-card video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.video-card-play { position: absolute; inset: 0; margin: auto; width: 64px; height: 64px; border-radius: 50%; border: 0; background: rgba(248, 184, 8, 0.92); color: #000; font-size: 22px; cursor: pointer; }
+.video-card-sound { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); border: 0; border-radius: 999px; padding: 8px 14px; background: rgba(0, 0, 0, 0.72); color: #fff; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.media-band { padding: 72px 24px; background: radial-gradient(circle at 50% 0%, rgba(248, 184, 8, 0.12), transparent 60%), #050505; }
+.media-band-inner { max-width: 1120px; margin: 0 auto; }
+.media-band-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 260px)); justify-content: center; gap: 36px; margin-top: 36px; }
+.media-band-grid figcaption { margin-top: 14px; text-align: center; color: #e8dfcc; font-weight: 600; font-size: 15px; }
+@media (max-width: 900px) { .media-band-grid { grid-template-columns: minmax(0, 280px); } }
+
+/* Live job scanner band (main landing) */
+.scan-band { padding: 64px 24px; background: linear-gradient(180deg, #0b0b0b 0%, #141106 100%); color: #f4efe4; }
+.scan-inner { max-width: 1080px; margin: 0 auto; text-align: center; }
+.scan-tag { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; background: rgba(248, 184, 8, 0.14); color: #f8b808; font-weight: 700; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; }
+.scan-dot { width: 9px; height: 9px; border-radius: 50%; background: #3ddc84; box-shadow: 0 0 0 0 rgba(61, 220, 132, 0.7); animation: scan-pulse 1.6s infinite; }
+@keyframes scan-pulse { 0% { box-shadow: 0 0 0 0 rgba(61, 220, 132, 0.6); } 70% { box-shadow: 0 0 0 10px rgba(61, 220, 132, 0); } 100% { box-shadow: 0 0 0 0 rgba(61, 220, 132, 0); } }
+.scan-title { margin: 16px 0 10px; font-size: clamp(26px, 4vw, 40px); line-height: 1.15; color: #fff; }
+.scan-copy { margin: 0 auto 24px; max-width: 680px; color: #c9bfae; font-size: 17px; line-height: 1.55; }
+.scan-form { display: flex; gap: 10px; max-width: 620px; margin: 0 auto; }
+.scan-form input { flex: 1; min-width: 0; padding: 15px 18px; border-radius: 14px; border: 2px solid rgba(248, 184, 8, 0.35); background: #000; color: #f4efe4; font-size: 16px; }
+.scan-form input:focus { outline: none; border-color: #f8b808; box-shadow: 0 0 0 4px rgba(248, 184, 8, 0.25); }
+.scan-form button { padding: 0 24px; border: 0; border-radius: 14px; background: #f8b808; color: #111; font-weight: 800; font-size: 16px; cursor: pointer; }
+.scan-form button:hover { background: #ffc933; color: #000; }
+.scan-count { margin: 16px 0 22px; color: #c9bfae; }
+.scan-count strong { color: #f8b808; font-size: 22px; }
+.scan-count a { color: #f8b808; }
+.scan-empty { color: #c9bfae; padding: 20px 0; }
+.scan-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; text-align: start; }
+.scan-cell { position: relative; display: flex; }
+.scan-cell .scan-card { flex: 1; padding-bottom: 46px; }
+.scan-card { display: flex; flex-direction: column; gap: 8px; padding: 18px; border-radius: 16px; background: #0c0c0c; color: #f4efe4; text-decoration: none; border: 1px solid rgba(248, 184, 8, 0.16); transition: transform 0.15s ease, border-color 0.15s ease; animation: scan-in 0.5s ease both; }
+.scan-card:nth-child(2) { animation-delay: 0.08s; } .scan-card:nth-child(3) { animation-delay: 0.16s; } .scan-card:nth-child(4) { animation-delay: 0.24s; } .scan-card:nth-child(5) { animation-delay: 0.32s; } .scan-card:nth-child(6) { animation-delay: 0.4s; }
+@keyframes scan-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.scan-card:hover { transform: translateY(-3px); border-color: #f8b808; }
+.scan-card strong { font-size: 16px; line-height: 1.3; overflow-wrap: anywhere; }
+.scan-meta { color: #b3a894; font-size: 14px; }
+.scan-foot { display: flex; justify-content: space-between; align-items: center; margin-top: auto; }
+.scan-foot em { font-style: normal; font-weight: 700; color: #f8b808; }
+.scan-open { font-weight: 700; color: #f8b808; }
+.scan-gate { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 14px; margin-top: 26px; padding: 16px 20px; border-radius: 16px; background: rgba(248, 184, 8, 0.1); border: 1px solid rgba(248, 184, 8, 0.3); }
+.scan-gate p { margin: 0; color: #f4efe4; }
+.scan-gate a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 20px; border-radius: 12px; background: #f8b808; color: #000; font-weight: 800; text-decoration: none; }
+.scan-source { margin-top: 14px; font-size: 13px; color: #8f8574; }
+@media (max-width: 860px) { .scan-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .scan-grid { grid-template-columns: 1fr; } .scan-form { flex-direction: column; } .scan-form button { padding: 14px; } .scan-band { padding: 48px 16px; } }
+@media (prefers-reduced-motion: reduce) { .scan-dot, .scan-card { animation: none; } }
+
+/* Adzuna's API terms: each displayed Adzuna advert is labelled "Adzuna" (min 116x23 px), linked to adzuna.ca */
+.adzuna-badge { position: absolute; left: 18px; bottom: 14px; display: inline-flex; align-items: center; justify-content: center; min-width: 116px; min-height: 24px; padding: 0 10px; border-radius: 6px; background: #f3f0ea; color: #2b2b2b; font-size: 14px; font-weight: 700; text-decoration: none; }
+[dir="rtl"] .adzuna-badge { left: auto; right: 18px; }
+.adzuna-badge:hover { background: #e9e3d6; }
+
+/* Home "Inside your account" mock on phones: no squeezed sidebar, button never wraps word by word. */
+@media (max-width: 600px) {
+  .jl-dash { grid-template-columns: minmax(0, 1fr) !important; min-height: 0 !important; }
+  .jl-dash-side { display: none !important; }
+  .jl-dash-top { flex-wrap: wrap; }
+  .jl-phones { grid-template-columns: minmax(0, 1fr) !important; }
+  .jl-phones > div { min-height: 0 !important; }
+}
+
+/* Phones: language buttons and header buttons are easy to tap (44px). */
+@media (max-width: 720px) {
+  .langbtn { min-height: 44px; min-width: 44px; padding: 0 12px; }
+}
+
+/* Arabic: system Arabic fonts that match Inter's size and weight better than the default fallback. */
+html[dir="rtl"] body, html[dir="rtl"] main { font-family: var(--font-sans, Inter), "Segoe UI", "Geeza Pro", "Noto Sans Arabic", Tahoma, system-ui, sans-serif !important; }
+
+/* Animated job-role strip never pushes the page sideways on phones. */
+.plm { overflow-x: clip; max-width: min(1080px, 100%); }
+
+/* Text links on the page with no style of their own: brand gold and underlined, never browser blue/purple. */
+main a:not([class]):not([style]) { color: #f8b808; text-decoration: underline; text-underline-offset: 3px; }

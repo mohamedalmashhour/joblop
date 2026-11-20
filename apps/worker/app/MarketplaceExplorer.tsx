@@ -2,9 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MarketplaceMap, type MapPin } from "./MarketplaceMap";
-import { useLocale, useT } from "./i18n/LocaleProvider";
+import { useLocale, useT, fmtLocale } from "./i18n/LocaleProvider";
 import { LandingPanel } from "./LandingPanel";
+import { AddEmailCard } from "./AddEmailCard";
+import { HowItWorksMovie } from "./HowItWorksMovie";
+import { syncAccountLanguageOnce } from "./i18n/saveLanguage";
+import { NEXT_AFTER_SIGN_UP_KEY } from "./authScroll";
+import { safeReturnPath } from "./safeReturnPath";
+import { groupByTorontoDay, torontoStartOfDayIso } from "./torontoTime";
 import type { RwosLocale } from "./i18n/config";
+import { workerPayLabel, formatHourlyRate } from "./workerPayLabel";
+import { CertificateChip, type RequiredCertificatesData } from "./RequiredCertificates";
+import { DEFAULT_ALL_JOBS_PLACE, savedSearchPlace, type SearchBody } from "./defaultJobSearch";
+import { JoblopJobBadge } from "./JobSourceBadge";
 
 export type JobResult = Readonly<{
   jobRequestId: string;
@@ -20,15 +30,20 @@ export type JobResult = Readonly<{
   openings: number;
   workerRateMinor: number | null;
   currency: string;
+  /** Long-term listing only: the pay the employer offers and pays directly. */
+  payOffered?: unknown;
   saved: boolean;
+  /** Certificates the employer requires (absent when none). */
+  requiredCertificates?: RequiredCertificatesData;
 }>;
 
 type SearchResponse = Readonly<{
-  origin: { province: string; city: string | null; postalCode: string };
+  origin: { province: string; city: string | null; postalCode: string | null; place?: string };
   count: number;
   total: number;
   nextCursor: number | null;
   jobs: readonly JobResult[];
+  profile?: { score: number; tier: string; hiddenJobs: number };
 }>;
 
 const RADII = [5, 10, 25, 50, 100] as const;
@@ -41,7 +56,16 @@ export function MarketplaceExplorer() {
   useEffect(() => {
     let active = true;
     fetch("/api/session", { cache: "no-store" })
-      .then((r) => (active ? setAuthState(r.ok ? "signed_in" : "signed_out") : undefined))
+      .then((r) => {
+        if (!active) return;
+        // Already signed in and sent here with ?next= (e.g. "Sign in" on a public job): go there.
+        const next = r.ok ? safeReturnPath(new URLSearchParams(window.location.search).get("next")) : null;
+        if (next && next !== "/") {
+          window.location.replace(next);
+          return;
+        }
+        setAuthState(r.ok ? "signed_in" : "signed_out");
+      })
       .catch(() => (active ? setAuthState("signed_out") : undefined));
     return () => {
       active = false;
@@ -49,14 +73,45 @@ export function MarketplaceExplorer() {
   }, []);
 
   if (authState === "loading") return <div className="state">{t("common.loading")}</div>;
-  if (authState === "signed_out") return <LandingPanel onSignedIn={() => setAuthState("signed_in")} />;
-  return <SearchPanel onSignedOut={() => setAuthState("signed_out")} />;
+  if (authState === "signed_out") {
+    const afterSignIn = () => {
+      // Only a path on this site, never an outside address (safeReturnPath).
+      const next = safeReturnPath(readAndClearNext());
+      if (next && next !== "/") {
+        window.location.assign(next);
+        return;
+      }
+      setAuthState("signed_in");
+    };
+    return <LandingPanel onSignedIn={afterSignIn} />;
+  }
+  return (
+    <>
+      {/* Shown only while the worker has no confirmed email (item 45). */}
+      <AddEmailCard />
+      <SearchPanel onSignedOut={() => setAuthState("signed_out")} />
+      <HowItWorksMovie />
+    </>
+  );
 }
 
 function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
   const t = useT();
-  const locale = useLocale();
-  const [postalCode, setPostalCode] = useState("H7V 1A1");
+  const rawLocale = useLocale();
+  const locale = fmtLocale(rawLocale);
+  // Signed in: make sure offers and notices use the language this worker reads the site in.
+  useEffect(() => {
+    syncAccountLanguageOnce(rawLocale);
+  }, [rawLocale]);
+  // Selectable role suggestions for the search box (worker picks a role instead of guessing free-text).
+  const roleSuggestions =
+    rawLocale === "ar"
+      ? ["ممرضة", "الدعم الشخصي", "طاهٍ", "طباخ", "التدبير المنزلي", "خدمة الطعام", "الصيانة", "عامل نظافة"]
+      : rawLocale.startsWith("fr")
+        ? ["Infirmière", "Préposé aux bénéficiaires", "Chef", "Cuisinier", "Entretien ménager", "Service en salle", "Maintenance", "Nettoyage"]
+        : ["Nurse", "Personal Support", "Chef", "Cook", "Housekeeping", "Dining Support", "Maintenance", "Cleaning"];
+  // "Where?": a city or a postal code. Starts empty; the default list may fill it with the place the worker saved in their profile.
+  const [place, setPlace] = useState("");
   const [radiusKm, setRadiusKm] = useState<number>(25);
   const [role, setRole] = useState("");
   const [sort, setSort] = useState<string>("nearest");
@@ -68,68 +123,127 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
   const [jobs, setJobs] = useState<JobResult[]>([]);
   const [total, setTotal] = useState(0);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
+  const [hiddenJobs, setHiddenJobs] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "agenda" | "map">("list");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // "all": the default list shown before any search (open jobs, soonest first, no place typed).
+  const [defaultMode, setDefaultMode] = useState<"none" | "all">("none");
+  // The query behind the jobs on screen, so "Load more" asks for the next page of the same list.
+  const lastQuery = useRef<SearchBody | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
 
   const sortLabel = (value: string) =>
     value === "soonest" ? t("mk.sortSoonest") : value === "highest_rate" ? t("mk.sortHighestRate") : t("mk.sortNearest");
 
-  const fetchPage = useCallback(
-    async (cursor: number | null) => {
-      const response = await fetch("/api/marketplace/search", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          postalCode,
-          radiusKm,
-          sort,
-          ...(role.trim() ? { role: role.trim() } : {}),
-          ...(dateFrom ? { dateFrom: new Date(dateFrom).toISOString() } : {}),
-          ...(minOpenings && Number(minOpenings) > 0 ? { minOpenings: Number(minOpenings) } : {}),
-          ...(verifiedOnly ? { verifiedOnly: true } : {}),
-          ...(cursor !== null ? { cursor } : {})
-        })
-      });
-      return response;
-    },
-    [postalCode, radiusKm, role, sort, dateFrom, minOpenings, verifiedOnly]
+  const fetchPage = useCallback(async (query: SearchBody, cursor: number | null) => {
+    lastQuery.current = query;
+    return fetch("/api/marketplace/search", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...query, ...(cursor !== null ? { cursor } : {}) })
+    });
+  }, []);
+
+  const formQuery = useCallback(
+    (): SearchBody => ({
+      place: place.trim(),
+      radiusKm,
+      sort,
+      ...(role.trim() ? { role: role.trim() } : {}),
+      ...(dateFrom && torontoStartOfDayIso(dateFrom) ? { dateFrom: torontoStartOfDayIso(dateFrom) as string } : {}),
+      ...(minOpenings && Number(minOpenings) > 0 ? { minOpenings: Number(minOpenings) } : {}),
+      ...(verifiedOnly ? { verifiedOnly: true } : {})
+    }),
+    [place, radiusKm, role, sort, dateFrom, minOpenings, verifiedOnly]
   );
+
+  const showPage = useCallback((payload: SearchResponse) => {
+    setOrigin(payload.origin);
+    setJobs([...payload.jobs]);
+    setTotal(payload.total);
+    setNextCursor(payload.nextCursor);
+    setHiddenJobs(payload.profile?.hiddenJobs ?? 0);
+    setStatus(payload.total === 0 ? "empty" : "done");
+  }, []);
+
+  // Before any search, show open jobs straight away (soonest first): near the worker's saved city or
+  // postal code when their profile has one, otherwise every open job. Same search API as the form.
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      setStatus("searching");
+      const saved = await fetch("/api/hr", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((p: { intake?: { city?: string | null; postalCode?: string | null } | null } | null) => savedSearchPlace(p?.intake))
+        .catch(() => null);
+      const tries: { query: SearchBody; mode: "none" | "all" }[] = [];
+      if (saved) tries.push({ query: { place: saved, radiusKm: 100, sort: "soonest" }, mode: "none" });
+      tries.push({ query: { place: DEFAULT_ALL_JOBS_PLACE, sort: "soonest" }, mode: "all" });
+      for (const attempt of tries) {
+        try {
+          const response = await fetchPage(attempt.query, null);
+          if (!active) return;
+          if (response.status === 401) return onSignedOut();
+          if (!response.ok) continue;
+          const payload = (await response.json()) as SearchResponse;
+          if (!active) return;
+          // Nothing near the saved place: fall through to every open job.
+          if (payload.total === 0 && attempt.mode === "none") continue;
+          if (attempt.mode === "none" && saved) {
+            setPlace(saved);
+            setRadiusKm(100);
+          }
+          setSort("soonest");
+          setDefaultMode(attempt.mode);
+          showPage(payload);
+          return;
+        } catch {
+          /* try the next one */
+        }
+      }
+      if (active) setStatus("idle");
+    })();
+    return () => {
+      active = false;
+    };
+    // Runs once when the signed-in home opens.
+  }, []);
 
   const runSearch = useCallback(
     async (event?: React.FormEvent) => {
       event?.preventDefault();
+      setSelectedId(null);
+      if (!place.trim()) {
+        setErrorMessage(t("mk.placeRequired"));
+        setStatus("error");
+        return;
+      }
       setStatus("searching");
       setErrorMessage(null);
-      setSelectedId(null);
+      setDefaultMode("none");
       try {
-        const response = await fetchPage(null);
+        const response = await fetchPage(formQuery(), null);
         if (response.status === 401) return onSignedOut();
         if (!response.ok) {
-          const payload = await response.json().catch(() => null);
-          setErrorMessage(payload?.message ?? t("mk.searchError"));
+          const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+          setErrorMessage(searchErrorText(payload?.error, t));
           setStatus("error");
           return;
         }
-        const payload = (await response.json()) as SearchResponse;
-        setOrigin(payload.origin);
-        setJobs([...payload.jobs]);
-        setTotal(payload.total);
-        setNextCursor(payload.nextCursor);
-        setStatus(payload.total === 0 ? "empty" : "done");
+        showPage((await response.json()) as SearchResponse);
       } catch {
         setErrorMessage(t("common.somethingWrong"));
         setStatus("error");
       }
     },
-    [fetchPage, onSignedOut, t]
+    [fetchPage, formQuery, onSignedOut, place, showPage, t]
   );
 
   const loadMore = useCallback(async () => {
-    if (nextCursor === null) return;
+    if (nextCursor === null || !lastQuery.current) return;
     try {
-      const response = await fetchPage(nextCursor);
+      const response = await fetchPage(lastQuery.current, nextCursor);
       if (response.status === 401) return onSignedOut();
       if (!response.ok) return;
       const payload = (await response.json()) as SearchResponse;
@@ -164,10 +278,6 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
     });
   }, []);
 
-  async function signOut() {
-    await fetch("/api/session/sign-out", { method: "POST" }).catch(() => undefined);
-    onSignedOut();
-  }
 
   const pins: MapPin[] = jobs.map((j) => ({
     jobRequestId: j.jobRequestId,
@@ -179,11 +289,12 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
   const mapOrigin = jobs[0]
     ? { latitude: jobs[0].mapPoint.latitude, longitude: jobs[0].mapPoint.longitude }
     : null;
+  const originPlace = origin && defaultMode !== "all" ? (origin.postalCode ?? origin.place ?? origin.city ?? "") : "";
   const detailHref = (id: string) =>
-    `/jobs/${encodeURIComponent(id)}${origin ? `?postalCode=${encodeURIComponent(origin.postalCode)}` : ""}`;
+    `/jobs/${encodeURIComponent(id)}${originPlace ? `?place=${encodeURIComponent(originPlace)}` : ""}`;
 
   const hasFilters = Boolean(role.trim() || dateFrom || minOpenings || verifiedOnly);
-  const place = origin ? `${origin.city ?? origin.postalCode}${origin.province ? `, ${origin.province}` : ""}` : "";
+  const placeLabel = origin ? `${origin.city ?? origin.postalCode ?? origin.place ?? ""}${origin.province ? `, ${origin.province}` : ""}` : "";
 
   return (
     <>
@@ -192,25 +303,25 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
           <div>
             <h1>{t("mk.heroTitle")}</h1>
             <p>{t("mk.heroIntro")}</p>
-          </div>
-          <div className="hero-actions">
-            <a className="btn ghost" href="/verification">{t("nav.verification")}</a>
-            <a className="btn ghost" href="/hr">{t("nav.hr")}</a>
-            <a className="btn ghost" href="/documents">{t("nav.documents")}</a>
-            <a className="btn ghost" href="/schedule">{t("nav.schedule")}</a>
-            <a className="btn ghost" href="/pay">{t("nav.pay")}</a>
-            <a className="btn ghost" href="/my-interests">{t("nav.interests")}</a>
-            <a className="btn ghost" href="/offers">{t("nav.offers")}</a>
-            <a className="btn ghost" href="/saved-jobs">{t("nav.savedJobs")}</a>
-            <button className="btn ghost" type="button" onClick={signOut}>{t("nav.signOut")}</button>
+            <a className="btn" href="/jobs-calendar" style={{ display: "inline-flex", marginTop: 8, textDecoration: "none" }}>
+              <span aria-hidden="true">📅&nbsp;</span>
+              {rawLocale === "ar" ? "افتح تقويمي" : rawLocale.startsWith("fr") ? "Ouvrir mon calendrier" : "Open my calendar"}
+            </a>
           </div>
         </div>
       </section>
 
       <form className="searchbar" onSubmit={runSearch}>
         <div className="field grow">
-          <label htmlFor="postal">{t("mk.postalCode")}</label>
-          <input id="postal" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} placeholder={t("mk.postalPlaceholder")} />
+          <label htmlFor="place">{t("mk.postalCode")}</label>
+          <input
+            id="place"
+            value={place}
+            onChange={(e) => setPlace(e.target.value)}
+            placeholder={t("mk.postalPlaceholder")}
+            autoComplete="off"
+            maxLength={80}
+          />
         </div>
         <div className="field">
           <label htmlFor="radius">{t("mk.within")}</label>
@@ -222,7 +333,10 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
         </div>
         <div className="field grow">
           <label htmlFor="role">{t("mk.role")}</label>
-          <input id="role" value={role} onChange={(e) => setRole(e.target.value)} placeholder={t("mk.anyRole")} />
+          <input id="role" list="role-options" value={role} onChange={(e) => setRole(e.target.value)} placeholder={t("mk.anyRole")} />
+          <datalist id="role-options">
+            {roleSuggestions.map((r) => <option key={r} value={r} />)}
+          </datalist>
         </div>
         <div className="field">
           <label htmlFor="sort">{t("mk.sortBy")}</label>
@@ -259,7 +373,11 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
 
       {status === "done" || status === "empty" ? (
         <div className="resultbar">
-          <h2>{total === 1 ? t("mk.resultsOne", { count: total, place }) : t("mk.resultsMany", { count: total, place })}</h2>
+          <h2>
+            {defaultMode === "all"
+              ? total === 1 ? t("mk.defaultAllOne", { count: total }) : t("mk.defaultAllMany", { count: total })
+              : total === 1 ? t("mk.resultsOne", { count: total, place: placeLabel }) : t("mk.resultsMany", { count: total, place: placeLabel })}
+          </h2>
           <div className="viewtoggle" role="tablist" aria-label={t("mk.viewToggleLabel")}>
             <button role="tab" aria-selected={view === "list"} className={view === "list" ? "active" : ""} onClick={() => setView("list")} type="button">
               {t("mk.viewList")}
@@ -306,6 +424,12 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
       {status === "done" && view !== "agenda" ? (
         <div className={`explorer view-${view}`}>
           <div className="results" ref={listRef}>
+            {hiddenJobs > 0 ? (
+              <div className="card" style={{ borderColor: "var(--accent)" }}>
+                <p className="notice" style={{ margin: 0 }}>{t("mk.moreJobs", { count: hiddenJobs })}</p>
+                <a className="btn" href="/documents" style={{ alignSelf: "flex-start" }}>{t("mk.completeProfile")}</a>
+              </div>
+            ) : null}
             {jobs.map((job) => (
               <JobCard
                 key={job.jobRequestId}
@@ -330,6 +454,7 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
           <div className="mapcol">
             <div className="mapsticky">
               <MarketplaceMap origin={mapOrigin} pins={pins} selectedId={selectedId} onSelect={selectFromMap} radiusKm={radiusKm} />
+              <p className="map-source-note"><JoblopJobBadge /> <span>{t("src.mapAllJoblop")}</span></p>
               <p className="notice" style={{ textAlign: "center" }}>{t("mk.pinsApproximate")}</p>
             </div>
           </div>
@@ -367,6 +492,7 @@ function JobCard({
       >
         {job.saved ? "★" : "☆"}
       </button>
+      <JoblopJobBadge />
       <a className="role cardlink" href={href}>{job.role}</a>
       <div className="employer">
         {job.employerName}
@@ -378,10 +504,13 @@ function JobCard({
         <span className="chip">
           {job.openings === 1 ? t("mk.openingOne", { count: job.openings }) : t("mk.openingMany", { count: job.openings })}
         </span>
-        {job.workerRateMinor !== null ? <span className="chip">{formatRate(job.workerRateMinor, job.currency, locale)}</span> : null}
+        <span className="chip">
+          <bdi>{workerPayLabel(job, locale, { paidByEmployer: t("pay.paidByEmployer"), employerPaysDirectly: t("pay.employerPaysDirectly"), pending: t("pay.pending") })}</bdi>
+        </span>
+        <CertificateChip required={job.requiredCertificates} />
       </div>
       <div className="when">{formatWhen(job.startAt, job.endAt, locale)}</div>
-      <a className="detaillink" href={href}>{t("mk.viewDetails")}</a>
+      <a className="detaillink src-apply" href={href}>{t("src.applyHere")}</a>
     </article>
   );
 }
@@ -397,18 +526,11 @@ function AgendaView({
   detailHref: (id: string) => string;
   onToggleSaved: (job: JobResult) => void;
 }) {
-  const groups: { key: string; label: string; items: JobResult[] }[] = [];
-  for (const job of jobs) {
-    const d = new Date(job.startAt);
-    const key = d.toLocaleDateString(locale, { year: "numeric", month: "2-digit", day: "2-digit" });
-    const label = d.toLocaleDateString(locale, { weekday: "long", month: "long", day: "numeric" });
-    let group = groups.find((g) => g.key === key);
-    if (!group) {
-      group = { key, label, items: [] };
-      groups.push(group);
-    }
-    group.items.push(job);
-  }
+  // Québec days in date order (whatever the list's sort), labelled in Toronto time.
+  const groups = groupByTorontoDay(jobs, (job) => job.startAt).map((group) => ({
+    ...group,
+    label: new Date(group.items[0]!.startAt).toLocaleDateString(locale, { weekday: "long", month: "long", day: "numeric", timeZone: SHIFT_TIME_ZONE })
+  }));
   return (
     <div className="agenda">
       {groups.map((group) => (
@@ -433,14 +555,39 @@ function AgendaView({
   );
 }
 
-export function formatWhen(startAt: string, endAt: string, locale?: RwosLocale): string {
+// Shifts are in Québec, so the day and times are always shown in Eastern time (America/Toronto),
+// whatever the viewer's device clock says. Arabic gets Arabic day and month names with Western digits,
+// like the rest of the app.
+const SHIFT_TIME_ZONE = "America/Toronto";
+
+export function formatWhen(startAt: string, endAt: string, locale?: RwosLocale | "ar"): string {
   const start = new Date(startAt);
   const end = new Date(endAt);
-  const day = start.toLocaleDateString(locale, { weekday: "short", month: "short", day: "numeric" });
-  const time = (d: Date) => d.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
+  const intlLocale = locale === "ar" ? "ar-u-nu-latn" : locale;
+  const day = start.toLocaleDateString(intlLocale, { weekday: "short", month: "short", day: "numeric", timeZone: SHIFT_TIME_ZONE });
+  const time = (d: Date) => d.toLocaleTimeString(intlLocale, { hour: "numeric", minute: "2-digit", timeZone: SHIFT_TIME_ZONE });
   return `${day} · ${time(start)} – ${time(end)}`;
 }
 
 export function formatRate(minor: number, currency: string, locale?: RwosLocale): string {
-  return `${(minor / 100).toLocaleString(locale, { style: "currency", currency })}/h`;
+  return formatHourlyRate(minor, currency, locale);
+}
+
+/** The friendly message for a search the API could not run (an unknown place is never a 500). */
+function searchErrorText(code: string | undefined, t: ReturnType<typeof useT>): string {
+  if (code === "RWOS_PLACE_NOT_FOUND") return t("mk.placeNotFound");
+  if (code === "RWOS_PLACE_REQUIRED") return t("mk.placeRequired");
+  if (code === "RWOS_PLACE_UNAVAILABLE") return t("mk.placeUnavailable");
+  return t("mk.searchError");
+}
+
+/** Where the visitor wanted to go before signing up (same-site path), read once. */
+function readAndClearNext(): string | null {
+  try {
+    const value = window.sessionStorage.getItem(NEXT_AFTER_SIGN_UP_KEY);
+    window.sessionStorage.removeItem(NEXT_AFTER_SIGN_UP_KEY);
+    return value;
+  } catch {
+    return null;
+  }
 }

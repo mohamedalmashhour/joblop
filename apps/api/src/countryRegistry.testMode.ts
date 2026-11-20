@@ -70,6 +70,7 @@ export const testModeCanadaAddressPort: CountryAddressPort = {
   normalizePostalCode: (input) => normalizeCanadianPostalCode(input),
   isPostalCodeFormat: (input) => isCanadianPostalCodeFormat(input),
   regionNameFromCode: (code) => (isProvinceCode(code) ? PROVINCE_TERRITORY_NAMES[code] : null),
+  isRegionCode: (code) => isProvinceCode(code),
   regionHintFromPostalCode: (postalCode) => provinceHintFromPostalCode(postalCode),
   isWithinCountryBounds: (latitude, longitude) => isWithinCanadaBounds(latitude, longitude),
   geocodeCountryRestriction: "CA"

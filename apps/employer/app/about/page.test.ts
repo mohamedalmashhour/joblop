@@ -43,7 +43,7 @@ describe("Page 002 about content", () => {
     expect(pageCopy).not.toMatch(/Canada|Syria|HIPAA|PIPEDA|province|state law/i);
   });
 
-  it("covers the approved JobLop Phase 1 employer sectors", () => {
+  it("covers the approved Joblop Phase 1 employer sectors", () => {
     expect(servedOrganizations).toEqual([
       "Hospitals",
       "Senior residences",

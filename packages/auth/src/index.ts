@@ -5,7 +5,13 @@ import {
   scrypt as scryptCallback,
   timingSafeEqual
 } from "node:crypto";
-import type { RequestPricingSnapshot } from "@rwos/shared";
+import type { HeldShift, RequestPricingSnapshot } from "@rwos/shared";
+import {
+  assertWorkerPayMeetsMinimumWage,
+  attendanceDeviationFlags,
+  countedAttendanceMinutes,
+  LONG_TERM_LISTING_MARKER
+} from "@rwos/shared";
 import type {
   WorkerOfferDeliveryProvider,
   WorkerOfferDeliveryResult
@@ -45,19 +51,22 @@ export {
 export {
   createFrontendSessionGateway,
   localAdminSessionCookieName,
+  localCrmSessionCookieName,
   localEmployerSessionCookieName,
   localFrontendSessionCookieName,
   secureAdminSessionCookieName,
+  secureCrmSessionCookieName,
   secureEmployerSessionCookieName,
   secureFrontendSessionCookieName,
   type FrontendSessionFetch,
-  type FrontendSessionResult
+  type FrontendSessionResult,
+  type ShiftOverlapConflict
 } from "./frontendSession";
 export {
   ProductionIntegrationError,
   createHttpCandidateSource,
   createHttpWorkerOfferDeliveryProvider,
-  createResendWorkerOfferDeliveryProvider,
+  createBrevoWorkerOfferDeliveryProvider,
   type WorkerOfferDeliveryProvider,
   type WorkerOfferDeliveryResult
 } from "./productionIntegrations";
@@ -1459,7 +1468,9 @@ export type WorkerOfferDecisionStatus =
   | "duplicate_response"
   | "stale_terms"
   | "capacity_exceeded"
-  | "worker_identity_inactive";
+  | "worker_identity_inactive"
+  // The worker already holds an active shift that intersects this one (RWOS_SHIFT_OVERLAP).
+  | "shift_overlap";
 
 export interface StoredWorkerIdentity {
   id: string;
@@ -1555,6 +1566,8 @@ export interface WorkerOfferDecision {
   internalReason: string | null;
   externalCode: typeof authorizationDeniedCode | null;
   externalMessage: typeof authorizationDeniedMessage | null;
+  /** Set with status "shift_overlap": the shift the worker already holds at that time. */
+  heldShift?: HeldShift | null;
 }
 
 export interface WorkerOfferRepository {
@@ -1783,7 +1796,8 @@ export type AtomicAssignmentCreateFailure =
 
 export type AtomicAssignmentCreateResult =
   | Readonly<{ ok: true; assignment: StoredAssignment }>
-  | Readonly<{ ok: false; reason: AtomicAssignmentCreateFailure }>;
+  // `conflict` is set with worker_schedule_conflict: the active shift the worker already holds.
+  | Readonly<{ ok: false; reason: AtomicAssignmentCreateFailure; conflict?: HeldShift }>;
 
 export interface AssignmentDecision {
   status: AssignmentDecisionStatus;
@@ -1793,6 +1807,8 @@ export interface AssignmentDecision {
   internalReason: string | null;
   externalCode: typeof authorizationDeniedCode | null;
   externalMessage: typeof authorizationDeniedMessage | null;
+  /** Set with worker_schedule_conflict: the shift the worker already holds at that time. */
+  heldShift?: HeldShift | null;
 }
 
 export interface AssignmentRepository {
@@ -5189,6 +5205,13 @@ export type ResolvedRequestPricing = Readonly<{
     distanceWorkerMinor: number;
     distancePlatformMinor: number;
   }>;
+  // Employer fixed plans (only when EMPLOYER_PLANS_ENABLED is on; absent otherwise). The job length the
+  // request was priced under and the plan discount applied (ppm of the contract rate; 0 = none).
+  employerPlan?: Readonly<{
+    jobLength: string;
+    planCode: string | null;
+    discountPpm: number;
+  }>;
 }>;
 
 // Port that derives the immutable worker/platform split from the employer rate (E) and the admin
@@ -5204,6 +5227,16 @@ export interface RequestPricingSnapshotCapture {
     capturedByUserId: string;
     occurredAt: Date;
   }): Promise<void>;
+}
+
+/** Refuses a resolved price whose worker pay is below the Québec minimum wage (long-term listings exempt). */
+export function assertWorkerPayMeetsResolved(resolved: ResolvedRequestPricing, at: Date): void {
+  assertWorkerPayMeetsMinimumWage({
+    workerHourlyRateMinor: resolved.snapshot.workerHourlyRateMinor,
+    currency: resolved.currency,
+    isLongTermListing: resolved.employerPlan?.planCode === LONG_TERM_LISTING_MARKER,
+    at
+  });
 }
 
 export function createJobRequestService(
@@ -5643,6 +5676,18 @@ export function createJobRequestService(
       expectedVersion: number;
       correlationId?: string;
     }) {
+      // Québec minimum wage, caught at submit: price the request the way approval will (contract rate,
+      // standard margin) and refuse it when the worker would get less than the minimum. A request with
+      // no priced contract yet is left to the existing approval rules (approval still checks).
+      const capture = options.pricingSnapshotCapture;
+      if (capture) {
+        const estimate = await capture
+          .resolveAtApproval({ jobRequestId: input.jobRequestId, marginPpm: null })
+          .catch(() => null);
+        if (estimate && estimate.organizationId === input.organizationId) {
+          assertWorkerPayMeetsResolved(estimate, currentTimeFrom(now));
+        }
+      }
       return transitionEmployerJobRequest({
         jobRequestRepository,
         organizationRepository,
@@ -5785,6 +5830,41 @@ export function createJobRequestService(
       ).map(toPublicJobRequest);
     },
 
+    // Same admin-review authority as listAdminIntake, but across the whole request lifecycle (every
+    // non-draft status) rather than only the review queue — so the admin can see requests from
+    // submission through to closure on a calendar. Read-only; identical governance.
+    async listAdminLifecycle(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      correlationId?: string;
+    }) {
+      const decision = await authorizeJobRequestPlatformOperation({
+        jobRequestRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "job_request.admin_review",
+        correlationId: input.correlationId,
+        now: now()
+      });
+
+      if (!decision.allow) throw new JobRequestError(decision);
+
+      return (
+        await jobRequestRepository.listJobRequests({
+          statuses: [
+            "submitted",
+            "admin_review",
+            "information_required",
+            "approved_for_dispatch",
+            "cancelled",
+            "expired",
+            "archived"
+          ]
+        })
+      ).map(toPublicJobRequest);
+    },
+
     async getForAdmin(input: {
       session: SessionValidationResult;
       roles?: readonly AuthorizationRoleKey[];
@@ -5891,6 +5971,10 @@ export function createJobRequestService(
             marginPpm: input.marginPpm ?? null
           })
         : null;
+      // Québec minimum wage: a short-term job never goes out paying the worker less (long-term
+      // listings hold no hourly pay and are exempt). Checked before the status flip, so a refused
+      // approval changes nothing. The Brain approves through this same function.
+      if (resolved) assertWorkerPayMeetsResolved(resolved, occurredAt);
       const result = await transitionPlatformJobRequest({
         jobRequestRepository,
         authorizationService,
@@ -6579,6 +6663,32 @@ export function createDispatchService(
 
 export type DispatchService = ReturnType<typeof createDispatchService>;
 
+// Finds an active shift the worker already holds that intersects [startAt, endAt). Returns null when
+// none does, or when the job is a long-term listing (no shifts). See packages/shared shiftOverlap.
+export type HeldShiftOverlapFinder = (input: {
+  workerIdentityId: string;
+  jobRequestId: string;
+  startAt: Date;
+  endAt: Date;
+}) => Promise<HeldShift | null>;
+
+async function assertNoHeldShiftOverlap(
+  finder: HeldShiftOverlapFinder | undefined,
+  input: Parameters<HeldShiftOverlapFinder>[0],
+  workerOffer: PublicWorkerOffer | null,
+  roles: readonly AuthorizationRoleKey[],
+  onOverlap?: () => Promise<void>
+) {
+  if (!finder) return;
+  const heldShift = await finder(input);
+  if (!heldShift) return;
+  if (onOverlap) await onOverlap();
+  throw new WorkerOfferError({
+    ...workerOfferDeny("shift_overlap", "worker_schedule_conflict", workerOffer, roles),
+    heldShift
+  });
+}
+
 export function createWorkerOfferService(
   workerOfferRepository: WorkerOfferRepository,
   dispatchRepository: DispatchRepository,
@@ -6587,10 +6697,14 @@ export function createWorkerOfferService(
   options: {
     now?: () => Date;
     deliveryProvider?: WorkerOfferDeliveryProvider;
+    // A worker can never hold two shifts at the same time: offers for a shift that overlaps one
+    // they already hold are not created, sent or accepted. Absent (tests without a database): off.
+    findHeldShiftOverlap?: HeldShiftOverlapFinder;
   } = {}
 ) {
   const now = options.now ?? (() => new Date());
   const deliveryProvider = options.deliveryProvider ?? unavailableWorkerOfferDeliveryProvider;
+  const findHeldShiftOverlap = options.findHeldShiftOverlap;
 
   return {
     async ensureWorkerIdentity(input: {
@@ -6697,6 +6811,18 @@ export function createWorkerOfferService(
           )
         );
       }
+      // Never offer a worker a shift that overlaps one they already hold.
+      await assertNoHeldShiftOverlap(
+        findHeldShiftOverlap,
+        {
+          workerIdentityId: workerIdentity.id,
+          jobRequestId: jobRequest.id,
+          startAt: jobRequest.startAt,
+          endAt: jobRequest.endAt
+        },
+        null,
+        input.roles ?? []
+      );
       const shortlistedCandidate =
         await dispatchRepository.findShortlistedCandidateByWorkerIdentity(
           dispatchReview.id,
@@ -6880,6 +7006,21 @@ export function createWorkerOfferService(
           )
         );
       }
+      // The worker may have taken another shift since the offer was drafted.
+      const sendTerms = authorized.publicOffer.currentTermsVersion;
+      if (sendTerms) {
+        await assertNoHeldShiftOverlap(
+          findHeldShiftOverlap,
+          {
+            workerIdentityId: authorized.stored.workerIdentityId,
+            jobRequestId: authorized.stored.jobRequestId,
+            startAt: sendTerms.startAt,
+            endAt: sendTerms.endAt
+          },
+          authorized.publicOffer,
+          input.roles ?? []
+        );
+      }
       return deliverWorkerOffer({
         workerOfferRepository,
         deliveryProvider,
@@ -7033,6 +7174,7 @@ export function createWorkerOfferService(
         ...input,
         workerOfferRepository,
         authorizationService,
+        findHeldShiftOverlap,
         responseType: "accepted",
         nextStatus: "accepted",
         action: "worker_offer.accepted",
@@ -7524,6 +7666,7 @@ async function respondToWorkerOffer(
     nextStatus: Extract<WorkerOfferStatus, "accepted" | "declined">;
     action: Parameters<WorkerOfferRepository["recordWorkerOfferAuditEvent"]>[0]["action"];
     now: Date;
+    findHeldShiftOverlap?: HeldShiftOverlapFinder | undefined;
   }
 ) {
   const workerIdentity = await requireWorkerIdentityForSession(
@@ -7585,6 +7728,22 @@ async function respondToWorkerOffer(
     });
     throw new WorkerOfferError(
       workerOfferDeny("expired", "offer_expired", offer.publicOffer, input.roles ?? [])
+    );
+  }
+  // Refuse an acceptance that would give the worker two shifts at the same time. Declining is
+  // always allowed. The assignment arbiter re-checks under the per-worker lock.
+  if (input.responseType === "accepted") {
+    await assertNoHeldShiftOverlap(
+      input.findHeldShiftOverlap,
+      {
+        workerIdentityId: workerIdentity.id,
+        jobRequestId: offer.stored.jobRequestId,
+        startAt: terms.startAt,
+        endAt: terms.endAt
+      },
+      offer.publicOffer,
+      input.roles ?? [],
+      () => recordRejectedWorkerResponse(input, offer.stored, "worker_schedule_conflict")
     );
   }
   if (await input.workerOfferRepository.findResponseByOfferId(offer.stored.id)) {
@@ -7744,14 +7903,15 @@ export function createAssignmentService(
         now: currentTime
       });
       if (!result.ok) {
-        throw new AssignmentError(
-          assignmentDeny(
+        throw new AssignmentError({
+          ...assignmentDeny(
             assignmentDecisionStatusForAtomicFailure(result.reason),
             result.reason,
             null,
             input.roles ?? []
-          )
-        );
+          ),
+          heldShift: result.conflict ?? null
+        });
       }
       return toPublicAssignment(result.assignment);
     },
@@ -7983,11 +8143,15 @@ export function createAssignmentService(
         assignmentRepository,
         authorizationService,
         permission: "assignment.cancel",
+        // "attendance_handoff" = the shift is on the worker's schedule. The API only cancels it while
+        // the attendance record has not started, and cancels that record in the same step
+        // (apps/api/src/cancelBookedShift.ts), so the place frees (owner decision 2026-11-11).
         allowedFrom: [
           "confirmed",
           "worker_acknowledged",
           "ready_for_attendance",
-          "in_attendance_window"
+          "in_attendance_window",
+          "attendance_handoff"
         ],
         nextStatus: status,
         action:
@@ -8063,6 +8227,9 @@ interface AssignmentTransitionInput {
   reason?: string;
   correlationId?: string;
 }
+
+// Long-term listings (employer plans): the employer hires directly, there are no shifts.
+const LONG_TERM_JOB_LENGTH = "long_term";
 
 const activeAssignmentStates: readonly AssignmentStatus[] = [
   "pending_validation",
@@ -8725,6 +8892,90 @@ export function createAttendanceService(
         completedAt: true,
         now: now()
       });
+    },
+
+    // "Report my hours", approved by staff: a shift worked with no check-in. The staff-approved times
+    // become the check-in and check-out, marked as reported by the worker and approved by staff, and
+    // the record moves on exactly like a normal check-out (checked_out). A "missed" mark is cleared
+    // (the worker did come), so it does not send the timesheet to review on its own.
+    async recordReportedHours(
+      input: AttendanceTransitionInput & { checkInAt: Date; checkOutAt: Date; evidenceSummary: string }
+    ) {
+      const currentTime = now();
+      const attendance = await requireAuthorizedAttendance({
+        attendanceRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "attendance.override",
+        attendanceRecordId: input.attendanceRecordId,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+      const record = attendance.stored;
+      const actorUserId = input.session.user?.id ?? null;
+      if (
+        (record.status !== "pending_start" && record.status !== "missed") ||
+        record.checkInAt ||
+        record.checkOutAt
+      ) {
+        throw new AttendanceError(
+          attendanceDeny(
+            "invalid_transition",
+            `cannot_record_reported_hours_from_${record.status}`,
+            toPublicAttendanceRecord(record),
+            input.roles ?? []
+          )
+        );
+      }
+      if (!(input.checkOutAt.getTime() > input.checkInAt.getTime())) {
+        throw new AttendanceError(
+          attendanceDeny(
+            "check_out_before_check_in",
+            "check_out_before_check_in",
+            toPublicAttendanceRecord(record),
+            input.roles ?? []
+          )
+        );
+      }
+      const evidence = normalizeOptionalResidenceText(input.evidenceSummary, 240);
+      const updated = await attendanceRepository.updateAttendance({
+        attendanceRecordId: record.id,
+        expectedVersion: input.expectedVersion,
+        actorUserId,
+        status: "checked_out",
+        checkInAt: input.checkInAt,
+        checkInMethod: REPORTED_HOURS_METHOD,
+        checkInEvidenceSummary: evidence,
+        checkedInByUserId: actorUserId,
+        checkOutAt: input.checkOutAt,
+        checkOutMethod: REPORTED_HOURS_METHOD,
+        checkOutEvidenceSummary: evidence,
+        checkedOutByUserId: actorUserId,
+        exceptionCategory: null,
+        now: currentTime
+      });
+      if (!updated) {
+        await recordAttendanceVersionConflict(attendanceRepository, record, { ...input, now: currentTime });
+        throw new AttendanceError(
+          attendanceDeny("version_conflict", "stale_version", toPublicAttendanceRecord(record), input.roles ?? [])
+        );
+      }
+      for (const action of ["attendance.checked_in", "attendance.checked_out"] as const) {
+        await recordAttendanceAudit(attendanceRepository, {
+          action,
+          organizationId: updated.organizationId,
+          attendanceRecordId: updated.id,
+          assignmentId: updated.assignmentId,
+          actorUserId,
+          priorState: record.status,
+          newState: updated.status,
+          reason: REPORTED_HOURS_METHOD,
+          correlationId: input.correlationId,
+          createdAt: currentTime
+        });
+      }
+      return toPublicAttendanceRecord(updated);
     },
 
     async markMissed(input: AttendanceTransitionInput & { reason: string }) {
@@ -9896,16 +10147,19 @@ function calculateTimesheetMinutes(
       (attendanceRecord.checkOutAt.getTime() - attendanceRecord.checkInAt.getTime()) / 60000
     )
   );
-  const exceptionFlags: string[] = [];
-  if (attendanceRecord.checkInAt < assignment.confirmedStartAt)
-    exceptionFlags.push("early_arrival");
-  if (attendanceRecord.checkInAt > assignment.confirmedStartAt) exceptionFlags.push("late_arrival");
-  if (attendanceRecord.checkOutAt < assignment.confirmedEndAt)
-    exceptionFlags.push("early_departure");
-  if (attendanceRecord.checkOutAt > assignment.confirmedEndAt)
-    exceptionFlags.push("late_departure");
+  const attendanceTimes = {
+    checkInAt: attendanceRecord.checkInAt,
+    checkOutAt: attendanceRecord.checkOutAt,
+    scheduledStartAt: assignment.confirmedStartAt,
+    scheduledEndAt: assignment.confirmedEndAt
+  };
+  // Arrival/departure within ATTENDANCE_TIME_MARGIN_MINUTES of the schedule is normal (no flag).
+  const exceptionFlags: string[] = [...attendanceDeviationFlags(attendanceTimes)];
   if (attendanceRecord.exceptionCategory)
     exceptionFlags.push(`attendance_exception:${attendanceRecord.exceptionCategory}`);
+  // Hours count from the scheduled start to the scheduled end at most: time before the start or after
+  // the end is not billed or paid unless staff adjust it. The raw check-in/out stay on the timesheet.
+  const countedMinutes = countedAttendanceMinutes(attendanceTimes);
 
   // Authoritative 6-hour minimum applied to pay AND billing. The employer accepts, and the worker
   // relies on, "any shift shorter than 6 hours is billed as 6 hours; if the worker is dismissed for
@@ -9913,18 +10167,25 @@ function calculateTimesheetMinutes(
   // this minimum (enforced at request creation), so once attendance has a check-in and check-out the
   // worked time is floored to the minimum for both payable and billable minutes. A true no-show never
   // reaches a completed attendance record, so it is handled by the no-show/missed path, not here.
-  const flooredMinutes = Math.max(rawElapsedMinutes, MINIMUM_STAFFING_SHIFT_MINUTES);
-  if (flooredMinutes > rawElapsedMinutes) exceptionFlags.push("minimum_shift_floor_applied");
+  const flooredMinutes = Math.max(countedMinutes, MINIMUM_STAFFING_SHIFT_MINUTES);
+  // The floor flag goes with a real exception only: a few minutes short inside the margin (e.g. in at
+  // 08:10 for an 08:00–14:00 shift) is normal and must not send the timesheet to review.
+  if (flooredMinutes > countedMinutes && exceptionFlags.length > 0)
+    exceptionFlags.push("minimum_shift_floor_applied");
 
   return {
     rawCheckInAt: attendanceRecord.checkInAt,
     rawCheckOutAt: attendanceRecord.checkOutAt,
-    normalizedCheckInAt: attendanceRecord.checkInAt,
-    normalizedCheckOutAt: attendanceRecord.checkOutAt,
+    normalizedCheckInAt: new Date(
+      Math.max(attendanceRecord.checkInAt.getTime(), assignment.confirmedStartAt.getTime())
+    ),
+    normalizedCheckOutAt: new Date(
+      Math.min(attendanceRecord.checkOutAt.getTime(), assignment.confirmedEndAt.getTime())
+    ),
     rawElapsedMinutes,
     payableMinutes: flooredMinutes,
     billableMinutes: flooredMinutes,
-    excludedMinutes: 0,
+    excludedMinutes: Math.max(0, rawElapsedMinutes - countedMinutes),
     breakMinutes: 0,
     premiumCandidateMinutes: 0,
     overtimeCandidateMinutes: 0,
@@ -10036,6 +10297,9 @@ interface AttendanceEvidenceInput {
   locationPolicyResult?: string | null;
   correlationId?: string;
 }
+
+/** Check-in / check-out method on times a worker reported and staff approved ("Report my hours"). */
+export const REPORTED_HOURS_METHOD = "reported_by_worker_approved_by_staff";
 
 interface AttendanceTransitionInput {
   session: SessionValidationResult;
@@ -11162,6 +11426,7 @@ export interface CreateLocalUserInput {
   publicId: string;
   emailNormalized: string;
   displayName: string | null;
+  phone?: string | null;
   passwordHash: string;
   now: Date;
 }
@@ -11441,6 +11706,9 @@ export function createAuthenticationService(
       email: string;
       password: string;
       displayName?: string | null;
+      phone?: string | null;
+      /** The Terms/Privacy version the person ticked at sign-up, kept on the registration audit. */
+      acceptedLegalVersion?: string | null;
       source?: AuthenticationAuditSource;
       correlationId?: string;
       ipAddress?: string | null;
@@ -11472,6 +11740,7 @@ export function createAuthenticationService(
         publicId: createPublicUserId(),
         emailNormalized,
         displayName: input.displayName ?? null,
+        phone: input.phone ?? null,
         passwordHash,
         now: currentTime
       });
@@ -11483,7 +11752,7 @@ export function createAuthenticationService(
         entityPublicReference: user.publicId,
         priorState: null,
         newState: user.status,
-        reason: null,
+        reason: input.acceptedLegalVersion ? `legal_accepted:${input.acceptedLegalVersion}` : null,
         source: input.source ?? "api",
         correlationId: input.correlationId,
         createdAt: currentTime
@@ -11703,6 +11972,35 @@ export function createAuthenticationService(
       };
     },
 
+    // Phone sign-in: the API has already checked the texted code and who may sign in, so this
+    // only issues the session, exactly as password sign-in does.
+    async signInWithVerifiedStaffPhone(input: {
+      emailNormalized: string;
+      source?: AuthenticationAuditSource;
+      correlationId?: string;
+      ipAddress?: string | null;
+      userAgent?: string | null;
+    }): Promise<SignInResult> {
+      const currentTime = now();
+      const user = await repository.findUserByEmailNormalized(input.emailNormalized);
+      if (!user || user.status !== "active") throw new AuthenticationError();
+      const session = await createSessionForUser(repository, user, randomToken, sessionTtlSeconds, currentTime, input);
+      await recordAuthenticationAudit(repository, {
+        action: "auth.login_success",
+        actorType: "user",
+        userId: user.id,
+        entityId: user.id,
+        entityPublicReference: user.publicId,
+        priorState: null,
+        newState: "session_active",
+        reason: "phone_code",
+        source: input.source ?? "api",
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+      return { user: toPublicUser(user), ...session };
+    },
+
     async validateSession(token: string | null | undefined): Promise<SessionValidationResult> {
       if (!token) {
         return unauthenticatedSession();
@@ -11850,6 +12148,7 @@ type PrismaAuthTransaction = {
         publicId: string;
         emailNormalized: string;
         displayName: string | null;
+        phone?: string | null;
         status: "active";
         identities: {
           create: {
@@ -12006,6 +12305,7 @@ export function createPrismaAuthenticationRepository(
           publicId: input.publicId,
           emailNormalized: input.emailNormalized,
           displayName: input.displayName,
+          phone: input.phone ?? null,
           status: "active",
           identities: {
             create: {
@@ -14081,8 +14381,20 @@ type PrismaAssignmentClient = Pick<
           confirmedStartAt?: { lt: Date } | undefined;
           confirmedEndAt?: { gt: Date } | undefined;
           id?: { not: string } | undefined;
+          jobRequest?: { jobLength: { not: string }; status?: { not: string } | undefined } | undefined;
         };
       }): Promise<number>;
+      findFirst(args: {
+        where: {
+          workerIdentityId: string;
+          status: { in: readonly AssignmentStatus[] };
+          confirmedStartAt: { lt: Date };
+          confirmedEndAt: { gt: Date };
+          jobRequest: { jobLength: { not: string }; status?: { not: string } | undefined };
+        };
+        orderBy: { confirmedStartAt: "asc" };
+        select: { confirmedStartAt: true; confirmedEndAt: true; timezone: true };
+      }): Promise<{ confirmedStartAt: Date; confirmedEndAt: Date; timezone: string } | null>;
       updateMany(args: {
         where: { id: string; version: number };
         data: Partial<UpdateAssignmentPrismaData>;
@@ -14138,6 +14450,44 @@ type UpdateAssignmentPrismaData = {
   updatedAt: Date;
   version: { increment: number };
 };
+
+// The database side of HeldShiftOverlapFinder: the earliest active assignment of this worker whose
+// scheduled time intersects [startAt, endAt). Long-term jobs (no shifts) never count, either as the
+// job being offered or as a shift already held. A pre-check only: the authoritative, race-safe check
+// is the one inside createAssignmentFromAcceptedOfferAtomically, under the per-worker lock.
+export function createPrismaHeldShiftOverlapFinder(prismaClient: unknown): HeldShiftOverlapFinder {
+  const prisma = prismaClient as PrismaAssignmentClient & {
+    jobRequest: {
+      findUnique(args: {
+        where: { id: string };
+        select: { jobLength: true };
+      }): Promise<{ jobLength: string | null } | null>;
+    };
+  };
+  return async (input) => {
+    const job = await prisma.jobRequest.findUnique({
+      where: { id: input.jobRequestId },
+      select: { jobLength: true }
+    });
+    if (job?.jobLength === LONG_TERM_JOB_LENGTH) return null;
+    const held = await prisma.assignment.findFirst({
+      where: {
+        workerIdentityId: input.workerIdentityId,
+        status: { in: activeAssignmentStates },
+        confirmedStartAt: { lt: input.endAt },
+        confirmedEndAt: { gt: input.startAt },
+        // A shift on a cancelled job no longer holds the worker's time, even when its assignment
+        // already reached attendance_handoff (a state the assignment cancel path cannot leave).
+        jobRequest: { jobLength: { not: LONG_TERM_JOB_LENGTH }, status: { not: "cancelled" } }
+      },
+      orderBy: { confirmedStartAt: "asc" },
+      select: { confirmedStartAt: true, confirmedEndAt: true, timezone: true }
+    });
+    return held
+      ? { startAt: held.confirmedStartAt, endAt: held.confirmedEndAt, timezone: held.timezone }
+      : null;
+  };
+}
 
 export function createPrismaAssignmentRepository(prismaClient: unknown): AssignmentRepository {
   const prisma = prismaClient as PrismaAssignmentClient;
@@ -14262,15 +14612,38 @@ export function createPrismaAssignmentRepository(prismaClient: unknown): Assignm
             if (activeAssignments >= jobRequest.numberOfWorkers) {
               return fail("job_capacity_reached");
             }
-            const conflictCount = await transaction.assignment.count({
-              where: {
-                workerIdentityId: workerIdentity.id,
-                status: { in: activeAssignmentStates },
-                confirmedStartAt: { lt: termsVersion.endAt },
-                confirmedEndAt: { gt: termsVersion.startAt }
-              }
-            });
-            if (conflictCount > 0) return fail("worker_schedule_conflict");
+            // A worker can never hold two shifts at the same time. The per-worker advisory lock
+            // above serializes every assignment for this worker, so two concurrent claims for
+            // overlapping shifts cannot both pass this check. Touching shifts (one ends when the
+            // other starts) do not overlap. Long-term listings have no shifts and never count.
+            const isLongTermJob =
+              (jobRequest as StoredJobRequest & { jobLength?: string | null }).jobLength ===
+              LONG_TERM_JOB_LENGTH;
+            const heldShift = isLongTermJob
+              ? null
+              : await transaction.assignment.findFirst({
+                  where: {
+                    workerIdentityId: workerIdentity.id,
+                    status: { in: activeAssignmentStates },
+                    confirmedStartAt: { lt: termsVersion.endAt },
+                    confirmedEndAt: { gt: termsVersion.startAt },
+                    jobRequest: { jobLength: { not: LONG_TERM_JOB_LENGTH }, status: { not: "cancelled" } }
+                  },
+                  orderBy: { confirmedStartAt: "asc" },
+                  select: { confirmedStartAt: true, confirmedEndAt: true, timezone: true }
+                });
+            const conflictCount = heldShift ? 1 : 0;
+            if (heldShift) {
+              const failed = await fail("worker_schedule_conflict");
+              return {
+                ...failed,
+                conflict: {
+                  startAt: heldShift.confirmedStartAt,
+                  endAt: heldShift.confirmedEndAt,
+                  timezone: heldShift.timezone
+                }
+              };
+            }
 
             const assignment = await transaction.assignment.create({
               data: {
@@ -14384,6 +14757,7 @@ export function createPrismaAssignmentRepository(prismaClient: unknown): Assignm
           status: { in: activeAssignmentStates },
           confirmedStartAt: { lt: input.endAt },
           confirmedEndAt: { gt: input.startAt },
+          jobRequest: { jobLength: { not: LONG_TERM_JOB_LENGTH }, status: { not: "cancelled" } },
           ...(input.excludeAssignmentId ? { id: { not: input.excludeAssignmentId } } : {})
         }
       });

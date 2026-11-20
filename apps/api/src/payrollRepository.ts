@@ -1,5 +1,12 @@
 import type { PrismaClient } from "@rwos/database";
-import { createContractMoney } from "@rwos/shared";
+import {
+  createContractMoney,
+  isTransientTransactionConflict,
+  jobBonusWorkerPayMinor,
+  LATE_CANCELLATION_TIMESHEET_MARKER,
+  withTransientConflictRetry
+} from "@rwos/shared";
+import { loadShiftBonuses, pickShiftBonus } from "./jobBonusShift";
 import type {
   CreatePayrollCalculationInput,
   PayrollCalculationStatus,
@@ -14,6 +21,19 @@ import type {
   StoredPayrollCalculation,
   StoredPayrollPeriod
 } from "@rwos/auth";
+
+/** Job ids (of those given) whose pricing snapshot marks a long-term listing: never paid by Joblop. */
+export async function longTermListingJobIds(
+  prisma: Pick<PrismaClient, "requestPricingSnapshot">,
+  jobRequestIds: readonly string[]
+): Promise<Set<string>> {
+  if (jobRequestIds.length === 0) return new Set();
+  const rows = await prisma.requestPricingSnapshot.findMany({
+    where: { jobRequestId: { in: [...new Set(jobRequestIds)] }, jobLength: "long_term" },
+    select: { jobRequestId: true }
+  });
+  return new Set(rows.map((r) => r.jobRequestId));
+}
 
 // AUTHORITATIVE rate resolver (slice 4D) — payroll pays the WORKER rate (W) from the immutable
 // request pricing snapshot captured at admin approval, NOT the employer contract rate (E). The
@@ -115,12 +135,12 @@ export function createPrismaPayrollClassificationResolver(
 // (period, worker, revision) index makes a duplicate calculation request deterministic — exactly
 // one revision N can exist, so a racing duplicate loses rather than silently overwriting.
 
-const RETRYABLE = new Set(["P2034", "40001", "40P01"]);
-function isRetryable(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const code = (error as { code?: unknown }).code;
-  return typeof code === "string" && RETRYABLE.has(code);
-}
+// A SERIALIZABLE revision write can be cancelled by PostgreSQL (40001) even when no other writer
+// touched this worker: bulk calculation runs several workers at once, and their inserts land on the
+// same index pages of payroll_calculations, which SSI tracks per page. Nothing was committed, so the
+// whole transaction is re-run. A version-guard miss or a duplicate revision is a REAL lost race and
+// is never retried here.
+export const CALCULATION_WRITE_ATTEMPTS = 6;
 function isUniqueViolation(error: unknown): boolean {
   return !!error && typeof error === "object" && (error as { code?: unknown }).code === "P2002";
 }
@@ -179,17 +199,34 @@ export function createPrismaPayrollRepository(prisma: PrismaClient): PayrollRepo
           organizationId: input.organizationId,
           workerIdentityId: input.workerIdentityId,
           status: { in: ["approved", "locked"] },
-          scheduledStartAt: { gte: input.from, lt: input.to }
+          scheduledStartAt: { gte: input.from, lt: input.to },
+          // A late employer cancellation is billed through a locked timesheet but never paid to the
+          // worker automatically (owner decision 2026-11-09), so it never enters payroll.
+          // (OR with null: a plain "not equal" would also drop every timesheet with no exception.)
+          OR: [{ exceptionSummary: null }, { exceptionSummary: { not: LATE_CANCELLATION_TIMESHEET_MARKER } }]
         },
         orderBy: [{ scheduledStartAt: "asc" }, { id: "asc" }],
-        select: { id: true, version: true, status: true, payableMinutes: true, billableMinutes: true, scheduledStartAt: true, scheduledEndAt: true, assignmentId: true, workGroupId: true, roleDefinitionId: true, residenceId: true }
+        select: { id: true, version: true, status: true, payableMinutes: true, billableMinutes: true, scheduledStartAt: true, scheduledEndAt: true, assignmentId: true, workGroupId: true, roleDefinitionId: true, residenceId: true, jobRequestId: true }
       });
-      return rows.map((r) => ({
-        timesheetId: r.id, timesheetVersion: r.version, timesheetStatus: r.status,
-        payableMinutes: r.payableMinutes ?? 0, billableMinutes: r.billableMinutes ?? 0,
-        scheduledStartAt: r.scheduledStartAt, scheduledEndAt: r.scheduledEndAt,
-        assignmentId: r.assignmentId, workGroupId: r.workGroupId, roleDefinitionId: r.roleDefinitionId, residenceId: r.residenceId
-      }));
+      // Job bonus for each shift: the bonus active for that shift on the timesheet's own job (employer-
+      // or platform-funded). Hourly → amount x ACTUAL payable hours (not the 6-hour billing minimum);
+      // transport/one-time → the amount once per timesheet.
+      // Long-term LISTING jobs (employer plans flag): the employer pays the worker directly, so their
+      // timesheets never enter Joblop payroll. Only flag-on approvals write a "long_term" snapshot.
+      const longTermJobIds = await longTermListingJobIds(prisma, rows.map((r) => r.jobRequestId));
+      const payable = longTermJobIds.size > 0 ? rows.filter((r) => !longTermJobIds.has(r.jobRequestId)) : rows;
+      const bonuses = await loadShiftBonuses(prisma, payable.map((r) => r.jobRequestId));
+      return payable.map((r) => {
+        const payableMinutes = r.payableMinutes ?? 0;
+        const bonus = pickShiftBonus(bonuses, r.jobRequestId, r.scheduledStartAt);
+        return {
+          timesheetId: r.id, timesheetVersion: r.version, timesheetStatus: r.status,
+          payableMinutes, billableMinutes: r.billableMinutes ?? 0,
+          scheduledStartAt: r.scheduledStartAt, scheduledEndAt: r.scheduledEndAt,
+          assignmentId: r.assignmentId, workGroupId: r.workGroupId, roleDefinitionId: r.roleDefinitionId, residenceId: r.residenceId,
+          bonusMinor: bonus ? jobBonusWorkerPayMinor(bonus, payableMinutes) : 0
+        };
+      });
     },
 
     async getCalculationForReplay(calculationId): Promise<PayrollReplaySnapshot | null> {
@@ -203,7 +240,7 @@ export function createPrismaPayrollRepository(prisma: PrismaClient): PayrollRepo
         jurisdiction: { country: c.jurisdictionCountry, region: c.jurisdictionRegion },
         ruleProviderKey: c.ruleProviderKey, ruleProviderVersion: c.ruleProviderVersion, calculationPolicyVersion: c.calculationPolicyVersion,
         workerClassification: c.workerClassification as PayrollReplaySnapshot["workerClassification"], currency: c.currency, calculationFingerprint: c.calculationFingerprint,
-        workedTime: c.workedTimeRefs.map((w) => ({ timesheetId: w.timesheetId, timesheetVersion: w.timesheetVersion, payableMinutes: w.payableMinutes, contractId: w.contractId, contractVersion: w.contractVersion, appliedHourlyRateMinor: w.appliedHourlyRateMinor, contractEffectiveFrom: w.contractEffectiveFrom, sourceEffectiveInstant: w.sourceEffectiveInstant })),
+        workedTime: c.workedTimeRefs.map((w) => ({ timesheetId: w.timesheetId, timesheetVersion: w.timesheetVersion, payableMinutes: w.payableMinutes, contractId: w.contractId, contractVersion: w.contractVersion, appliedHourlyRateMinor: w.appliedHourlyRateMinor, contractEffectiveFrom: w.contractEffectiveFrom, sourceEffectiveInstant: w.sourceEffectiveInstant, bonusMinor: w.bonusMinor })),
         earnings: c.earningLines.map((e) => ({ classification: e.classification, amountMinor: e.amountMinor, sourceContractVersion: e.sourceContractVersion })),
         deductions: c.deductionLines.map((d) => ({ category: d.category, code: d.code, amountMinor: d.amountMinor })),
         employerCosts: c.employerCostLines.map((x) => ({ category: x.category, code: x.code, amountMinor: x.amountMinor })),
@@ -224,6 +261,7 @@ export function createPrismaPayrollRepository(prisma: PrismaClient): PayrollRepo
       const rows = await prisma.$queryRawUnsafe<Array<{ worker_identity_id: string }>>(
         `SELECT DISTINCT worker_identity_id FROM timesheets
          WHERE organization_id = $1::uuid AND status IN ('approved','locked')
+           AND exception_summary IS DISTINCT FROM '${LATE_CANCELLATION_TIMESHEET_MARKER}'
            AND scheduled_start_at >= $2 AND scheduled_start_at < $3
            AND ($4::uuid IS NULL OR worker_identity_id > $4::uuid)
          ORDER BY worker_identity_id ASC LIMIT $5`,
@@ -244,7 +282,7 @@ export function createPrismaPayrollRepository(prisma: PrismaClient): PayrollRepo
 
     async createCalculationAtomically(input: CreatePayrollCalculationInput) {
       try {
-        return await prisma.$transaction(async (tx) => {
+        return await withTransientConflictRetry(() => prisma.$transaction(async (tx) => {
           if (input.supersedePriorId && input.expectedPriorVersion !== null) {
             // Version-guarded supersede of the prior active revision. A miss (0 rows) means a
             // concurrent writer already changed it — abort so the caller reports a conflict.
@@ -280,7 +318,8 @@ export function createPrismaPayrollRepository(prisma: PrismaClient): PayrollRepo
                   assignmentId: w.assignmentId, workGroupId: w.workGroupId, roleDefinitionId: w.roleDefinitionId, residenceId: w.residenceId,
                   compensationType: w.compensationType, contractId: w.contractId, contractVersion: w.contractVersion,
                   contractEffectiveFrom: w.contractEffectiveFrom, appliedHourlyRateMinor: w.appliedHourlyRateMinor,
-                  currency: w.currency, sourceEffectiveInstant: w.sourceEffectiveInstant
+                  currency: w.currency, sourceEffectiveInstant: w.sourceEffectiveInstant,
+                  bonusMinor: w.bonusMinor ?? 0
                 }))
               },
               earningLines: {
@@ -309,11 +348,17 @@ export function createPrismaPayrollRepository(prisma: PrismaClient): PayrollRepo
             await tx.payrollCalculation.update({ where: { id: input.supersedePriorId }, data: { supersededById: created.id } });
           }
           return mapCalc(created);
-        }, { isolationLevel: "Serializable" });
+        }, { isolationLevel: "Serializable" }), { maxAttempts: CALCULATION_WRITE_ATTEMPTS });
       } catch (error) {
-        // A duplicate revision (unique index) or a serialization/write conflict both mean this
-        // racer lost — deterministic single-winner, never a silent overwrite.
-        if (isUniqueViolation(error) || isRetryable(error)) return null;
+        if (isUniqueViolation(error)) {
+          // The new row's id is unique to this call. If it is already there, an earlier attempt of
+          // THIS call committed (its outcome was lost in transit) — that is our row, not a rival's.
+          const own = await prisma.payrollCalculation.findUnique({ where: { id: input.id } });
+          return own ? mapCalc(own) : null;
+        }
+        // A duplicate revision from a rival, or a conflict that persisted through every retry:
+        // this racer lost — deterministic single-winner, never a silent overwrite.
+        if (isTransientTransactionConflict(error)) return null;
         throw error;
       }
     },

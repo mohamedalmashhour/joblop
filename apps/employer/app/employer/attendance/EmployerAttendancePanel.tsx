@@ -6,11 +6,13 @@ import {
   calendarListState,
   calendarPartialState,
   formatRwosDateTime,
-  parseEmployerAttendanceList,
   type AuthenticatedViewState,
   type EmployerAttendanceDto
 } from "@rwos/shared";
 import { styles } from "../employerStyles";
+import { useLocale } from "../../i18n/LocaleProvider";
+import { fill, langOf, statusLabel } from "../../i18n/localText";
+import { attendanceStatusLabels, attendanceText } from "../recordListText";
 
 type OrganizationChoice = Readonly<{ id: string; publicId: string; displayName: string }>;
 type AttendanceState =
@@ -20,6 +22,8 @@ type AttendanceState =
 // Persisted, org-scoped employer attendance read (GET /api/attendance → /organizations/:id/attendance).
 // No fixture records are ever shown as persisted data — the state machine mirrors the assignments panel.
 export function EmployerAttendancePanel() {
+  const lang = langOf(useLocale());
+  const tx = attendanceText[lang];
   const [state, setState] = useState<AttendanceState>({ status: "loading" });
   const generationRef = useRef(0);
 
@@ -37,9 +41,10 @@ export function EmployerAttendancePanel() {
         }
       }
       if (!response.ok) return setState(calendarFailureState(response.status));
-      const payload = await response.json();
+      // The route has already parsed the API record into this shape, and parsing it again would fail.
+      const payload = (await response.json()) as { attendanceRecords: readonly EmployerAttendanceDto[] };
       if (generation !== generationRef.current) return;
-      const records = parseEmployerAttendanceList(payload);
+      const records = payload.attendanceRecords;
       setState(records.length > 0 ? calendarListState(records) : calendarPartialState(records));
     } catch {
       if (generation === generationRef.current) setState({ status: "error" });
@@ -56,35 +61,35 @@ export function EmployerAttendancePanel() {
   if (state.status === "loading") {
     return (
       <AttendanceMessage
-        title="Loading attendance"
-        message="Checking your authenticated organization context."
+        title={tx.loading}
+        message={tx.loadingBody}
       />
     );
   }
   if (state.status === "denied") {
     return (
       <AttendanceMessage
-        title="Sign in to view attendance"
-        message="Attendance is shown only for your authenticated organization."
-        action={{ href: "/signin", label: "Go to sign in" }}
+        title={tx.signInTitle}
+        message={tx.signInBody}
+        action={{ href: "/signin", label: tx.goToSignIn }}
       />
     );
   }
   if (state.status === "organization_required") {
     return (
       <AttendanceMessage
-        title="Select your organization"
-        message="Choose your organization on the request calendar, then return to view its attendance."
-        action={{ href: "/employer/calendar", label: "Open request calendar" }}
+        title={tx.chooseCompanyTitle}
+        message={tx.chooseCompanyBody}
+        action={{ href: "/employer/calendar", label: tx.openCalendar }}
       />
     );
   }
   if (state.status === "empty") {
     return (
       <AttendanceMessage
-        title="No attendance yet"
-        message="Attendance records for this organization will appear here — no fixture records are shown."
-        action={{ href: "/employer/assignments", label: "View assignments" }}
+        title={tx.emptyTitle}
+        message={tx.emptyBody}
+        action={{ href: "/employer/assignments", label: tx.emptyAction }}
       />
     );
   }
@@ -93,12 +98,12 @@ export function EmployerAttendancePanel() {
       <AttendanceMessage
         title={
           state.status === "unavailable"
-            ? "Attendance unavailable"
+            ? tx.unavailableTitle
             : state.status === "stale"
-              ? "Attendance changed"
-              : "Attendance could not be loaded"
+              ? tx.changedTitle
+              : tx.errorTitle
         }
-        message="No fixture records are shown as persisted data. Retry when the service is available."
+        message={tx.errorBody}
         onRetry={load}
       />
     );
@@ -108,18 +113,12 @@ export function EmployerAttendancePanel() {
     <div style={styles.cardGrid}>
       {state.data.map((record) => (
         <article key={record.attendanceRecordId} style={styles.card}>
-          <span style={styles.statusBadge}>{record.status.replaceAll("_", " ")}</span>
+          <span style={styles.statusBadge}>{statusLabel(attendanceStatusLabels[lang], record.status)}</span>
           <h3 style={styles.cardTitle}>{formatAttendanceWindow(record)}</h3>
-          <p style={styles.cardText}>{formatPresence(record)}</p>
-          {record.exceptionCategory ? (
-            <p style={styles.cardText}>Exception: {record.exceptionCategory.replaceAll("_", " ")}</p>
-          ) : null}
-          <a
-            href={`/employer/assignments/detail?assignment=${encodeURIComponent(record.assignmentId)}`}
-            style={styles.secondaryButton}
-          >
-            Open assignment detail
-          </a>
+          <p style={styles.cardText}>{formatPresence(record, tx.checkedIn)}</p>
+          {record.cancelledBy ? <p style={styles.cardText}>{tx.cancelledBy[record.cancelledBy]}</p> : null}
+          {/* No link here: the records carry no request number, and the old assignment-detail
+              page is not available on the live site. */}
         </article>
       ))}
     </div>
@@ -139,14 +138,14 @@ function formatAttendanceWindow(record: EmployerAttendanceDto) {
   return `${start} — ${end}`;
 }
 
-function formatPresence(record: EmployerAttendanceDto) {
+function formatPresence(record: EmployerAttendanceDto, template: string) {
   const checkIn = record.checkInAt
     ? formatRwosDateTime(record.checkInAt, { timeStyle: "short", timeZone: record.timezone })
     : "—";
   const checkOut = record.checkOutAt
     ? formatRwosDateTime(record.checkOutAt, { timeStyle: "short", timeZone: record.timezone })
     : "—";
-  return `Checked in ${checkIn} · checked out ${checkOut}`;
+  return fill(template, { in: checkIn, out: checkOut });
 }
 
 function AttendanceMessage({
@@ -160,6 +159,7 @@ function AttendanceMessage({
   action?: Readonly<{ href: string; label: string }>;
   onRetry?: () => void;
 }>) {
+  const retryLabel = attendanceText[langOf(useLocale())].retry;
   return (
     <div aria-live="polite" style={styles.panel}>
       <h3 style={styles.sectionTitle}>{title}</h3>
@@ -175,7 +175,7 @@ function AttendanceMessage({
           style={{ ...styles.secondaryButton, cursor: "pointer" }}
           type="button"
         >
-          Retry
+          {retryLabel}
         </button>
       ) : null}
     </div>

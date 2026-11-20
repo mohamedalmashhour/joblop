@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
-import { colors, spacing } from "@rwos/design-system";
+import { colors, spacing } from "../../theme";
 import { Badge, BodyText, Button, Card, Divider, Heading, Section, SmallText } from "../../ui/primitives";
 import {
   workerArrivalInstructions,

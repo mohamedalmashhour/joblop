@@ -3,6 +3,7 @@ import { isCountryProfileActivatable } from "@rwos/config";
 import {
   PROVINCE_TERRITORY_NAMES,
   isCanadianPostalCodeFormat,
+  isProvinceCode,
   isWithinCanadaBounds,
   normalizeCanadianPostalCode,
   provinceHintFromPostalCode
@@ -72,6 +73,15 @@ describe("Canada address adapter — byte-identical delegation to existing funct
       );
     }
     expect(canadaAddressAdapter.regionNameFromCode("ZZ")).toBeNull();
+  });
+
+  it("isRegionCode matches isProvinceCode (valid codes, unknowns, and null/empty)", () => {
+    for (const code of Object.keys(PROVINCE_TERRITORY_NAMES)) {
+      expect(canadaAddressAdapter.isRegionCode(code)).toBe(isProvinceCode(code));
+    }
+    for (const bad of ["ZZ", "zz", "Quebec", "", "  ", null, undefined]) {
+      expect(canadaAddressAdapter.isRegionCode(bad)).toBe(isProvinceCode(bad));
+    }
   });
 
   it("regionHintFromPostalCode + isWithinCountryBounds delegate identically", () => {

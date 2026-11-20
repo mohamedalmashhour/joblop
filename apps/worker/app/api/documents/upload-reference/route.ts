@@ -1,6 +1,6 @@
 import { sessionBoundary, isSameOriginMutation, sessionFailure } from "../../sessionBoundary";
 
-// Get a provider upload reference (the worker uploads to the storage provider, not JobLop).
+// Get a provider upload reference (the worker uploads to the storage provider, not Joblop).
 export async function POST(request: Request) {
   if (!isSameOriginMutation(request)) return sessionFailure("denied");
   const { gateway, token } = await sessionBoundary();

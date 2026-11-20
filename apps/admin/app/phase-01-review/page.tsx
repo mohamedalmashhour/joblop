@@ -6,7 +6,7 @@ export default function Phase01ReviewPage() {
     <main style={styles.page}>
       <header style={styles.header}>
         <div>
-          <p style={styles.eyebrow}>Resident Workforce OS / Owner Review</p>
+          <p style={styles.eyebrow}>Joblop / Owner Review</p>
           <h1 style={styles.title}>Implementation Phase 01 Owner Review</h1>
           <p style={styles.lede}>
             Open every implemented administration page from one safe review index. These pages use
@@ -108,15 +108,15 @@ export default function Phase01ReviewPage() {
 
 const styles: Record<string, CSSProperties> = {
   page: {
-    background: "#eef3f8",
-    color: "#0b1f3a",
+    background: "#000000",
+    color: "#ece3d1",
     fontFamily: "Inter, system-ui, sans-serif",
     minHeight: "100vh",
     padding: 24
   },
   header: {
     alignItems: "stretch",
-    background: "#071f4d",
+    background: "#171511",
     borderRadius: 8,
     color: "white",
     display: "grid",
@@ -133,7 +133,7 @@ const styles: Record<string, CSSProperties> = {
     textTransform: "uppercase"
   },
   eyebrowDark: {
-    color: "#123b78",
+    color: "#f4efe4",
     fontSize: 12,
     fontWeight: 900,
     letterSpacing: 0,
@@ -146,7 +146,7 @@ const styles: Record<string, CSSProperties> = {
     margin: "8px 0"
   },
   lede: {
-    color: "#dce8e8",
+    color: "#faf6ec",
     fontSize: 16,
     lineHeight: 1.6,
     margin: 0,
@@ -161,8 +161,8 @@ const styles: Record<string, CSSProperties> = {
     padding: 16
   },
   noticePanel: {
-    background: "#ffffff",
-    border: "1px solid #dce8e8",
+    background: "#000000",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     display: "grid",
     gap: 16,
@@ -170,7 +170,7 @@ const styles: Record<string, CSSProperties> = {
     padding: 18
   },
   sectionTitle: {
-    color: "#071f4d",
+    color: "#f4efe4",
     fontSize: 24,
     lineHeight: 1.18,
     margin: "6px 0 0"
@@ -183,8 +183,8 @@ const styles: Record<string, CSSProperties> = {
     paddingLeft: 20
   },
   panel: {
-    background: "#ffffff",
-    border: "1px solid #dce8e8",
+    background: "#000000",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     marginTop: 18,
     padding: 18
@@ -198,21 +198,21 @@ const styles: Record<string, CSSProperties> = {
     marginBottom: 14
   },
   h2: {
-    color: "#071f4d",
+    color: "#f4efe4",
     fontSize: 21,
     margin: 0
   },
   statusBadge: {
-    background: "#eef4ff",
-    border: "1px solid #bfd0f5",
+    background: "#000000",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
-    color: "#071f4d",
+    color: "#f4efe4",
     fontSize: 12,
     fontWeight: 900,
     padding: "7px 10px"
   },
   warningBadge: {
-    background: "#fff8d8",
+    background: "#0c0c0c",
     border: "1px solid #e8d782",
     borderRadius: 8,
     color: "#8a5600",
@@ -227,9 +227,9 @@ const styles: Record<string, CSSProperties> = {
   },
   routeCard: {
     background: "#f7faf9",
-    border: "1px solid #dce8e8",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
-    color: "#0b1f3a",
+    color: "#000000",
     display: "grid",
     gap: 8,
     minHeight: 130,
@@ -237,13 +237,13 @@ const styles: Record<string, CSSProperties> = {
     textDecoration: "none"
   },
   pageNumber: {
-    color: "#123b78",
+    color: "#f4efe4",
     fontSize: 12,
     fontWeight: 900,
     textTransform: "uppercase"
   },
   muted: {
-    color: "#607276",
+    color: "#f4efe4",
     fontSize: 13
   },
   tableWrap: {
@@ -256,13 +256,13 @@ const styles: Record<string, CSSProperties> = {
   },
   th: {
     background: "#f7faf9",
-    border: "1px solid #dce8e8",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     fontSize: 13,
     padding: 10,
     textAlign: "left"
   },
   td: {
-    border: "1px solid #dce8e8",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     fontSize: 13,
     padding: 10,
     verticalAlign: "top"

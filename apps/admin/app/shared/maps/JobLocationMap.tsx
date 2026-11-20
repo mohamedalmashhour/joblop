@@ -59,6 +59,7 @@ export function JobLocationMap({
             href={`https://www.openstreetmap.org/search?query=${encodeURIComponent(trimmed)}`}
             target="_blank"
             rel="noreferrer"
+            style={authStyles.inlineLink}
           >
             search it on OpenStreetMap
           </a>
@@ -78,7 +79,7 @@ export function JobLocationMap({
             >
               Get directions
             </a>
-            <a href={osmViewUrl(geo.lat, geo.lon)} target="_blank" rel="noreferrer">
+            <a href={osmViewUrl(geo.lat, geo.lon)} target="_blank" rel="noreferrer" style={authStyles.inlineLink}>
               Open larger map
             </a>
           </div>

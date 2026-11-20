@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateInvoiceSnapshot } from "@rwos/shared";
+import { calculateInvoiceSnapshot, jobBonusInvoiceMinor } from "@rwos/shared";
 import { buildInvoiceCalculationInput } from "./invoiceFromTimesheet";
 
 describe("buildInvoiceCalculationInput (Gap B — variable extras billed with GST/QST)", () => {
@@ -35,6 +35,23 @@ describe("buildInvoiceCalculationInput (Gap B — variable extras billed with GS
     expect(snapshot.total.amountMinor).toBe(43748); // $437.48
   });
 
+  it("bills at least 6 hours when the shift was shorter, and the real hours when longer", () => {
+    const base = {
+      timesheetId: "00000000-0000-4000-8000-000000000003",
+      timesheetVersion: 1,
+      organizationId: "00000000-0000-4000-8000-0000000000aa",
+      assignmentId: "00000000-0000-4000-8000-0000000000bb",
+      attendanceRecordId: "00000000-0000-4000-8000-0000000000cc",
+      employerHourlyRateMinor: 3000,
+      emergencySurchargePerHourMinor: 0,
+      distanceSurchargeMinor: 0,
+      urgency: "standard",
+      occurredAt: "2026-10-24T12:00:00.000Z"
+    };
+    expect(buildInvoiceCalculationInput({ ...base, billableMinutes: 120 }).regularLabour.amountMinor).toBe(18000); // 2 h worked → 6 h × $30
+    expect(buildInvoiceCalculationInput({ ...base, billableMinutes: 480 }).regularLabour.amountMinor).toBe(24000); // 8 h × $30
+  });
+
   it("a normal (non-urgent) job has no urgent/emergency and bills just labour + tax", () => {
     const normal = buildInvoiceCalculationInput({
       timesheetId: "00000000-0000-4000-8000-000000000002",
@@ -54,5 +71,52 @@ describe("buildInvoiceCalculationInput (Gap B — variable extras billed with GS
     const s = calculateInvoiceSnapshot(normal);
     expect(s.subtotal.amountMinor).toBe(18000); // $30 × 6
     expect(s.total.amountMinor).toBe(Math.round(18000 * 1.14975)); // $206.96
+  });
+
+  it("adds an employer-accepted hourly bonus at billed hours (6-hour minimum), taxed", () => {
+    const base = {
+      timesheetId: "00000000-0000-4000-8000-000000000004",
+      timesheetVersion: 1,
+      organizationId: "00000000-0000-4000-8000-0000000000aa",
+      assignmentId: "00000000-0000-4000-8000-0000000000bb",
+      attendanceRecordId: "00000000-0000-4000-8000-0000000000cc",
+      billableMinutes: 240, // 4 h worked → 6 h billed
+      employerHourlyRateMinor: 3000,
+      emergencySurchargePerHourMinor: 0,
+      distanceSurchargeMinor: 0,
+      urgency: "normal",
+      occurredAt: "2026-10-24T12:00:00.000Z"
+    };
+    const bonusMinor = jobBonusInvoiceMinor({ kind: "hourly", amountMinor: 200 }, base.billableMinutes);
+    expect(bonusMinor).toBe(1200); // $2 × 6 h
+    const s = calculateInvoiceSnapshot(buildInvoiceCalculationInput({ ...base, bonusMinor }));
+    expect(s.lines.find((l) => l.kind === "bonus")?.amount.amountMinor).toBe(1200);
+    expect(s.subtotal.amountMinor).toBe(18000 + 1200);
+    expect(s.total.amountMinor).toBe(Math.round(19200 * 1.14975));
+    // No bonus (or a platform-funded one, which is never passed) → no line.
+    expect(calculateInvoiceSnapshot(buildInvoiceCalculationInput(base)).lines.some((l) => l.kind === "bonus")).toBe(false);
+  });
+});
+
+describe("first job: 07:30 check-in for an 08:00–14:00 shift (hours count from the scheduled start)", () => {
+  it("bills the 6.0 h the timesheet counts (360 min), not the 6.5 h on site", () => {
+    const input = buildInvoiceCalculationInput({
+      timesheetId: "00000000-0000-4000-8000-000000000004",
+      timesheetVersion: 3,
+      organizationId: "00000000-0000-4000-8000-0000000000aa",
+      assignmentId: "00000000-0000-4000-8000-0000000000bb",
+      attendanceRecordId: "00000000-0000-4000-8000-0000000000cc",
+      billableMinutes: 360, // timesheet engine: 07:30–14:00 on site, counted 08:00–14:00
+      employerHourlyRateMinor: 2250,
+      emergencySurchargePerHourMinor: 0,
+      distanceSurchargeMinor: 0,
+      urgency: "standard",
+      occurredAt: "2026-11-12T20:00:00.000Z"
+    });
+    const s = calculateInvoiceSnapshot(input);
+    expect(s.subtotal.amountMinor).toBe(13500); // $22.50 × 6
+    expect(s.lines.find((l) => l.kind === "gst")?.amount.amountMinor).toBe(675); // 5%
+    expect(s.lines.find((l) => l.kind === "qst")?.amount.amountMinor).toBe(1347); // 9.975%
+    expect(s.total.amountMinor).toBe(15522);
   });
 });

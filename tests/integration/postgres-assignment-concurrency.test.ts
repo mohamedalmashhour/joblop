@@ -262,6 +262,10 @@ async function seedAcceptedOffers(input: {
         departmentId: input.foundation.departmentId,
         workerIdentityId,
         status: "accepted",
+        // createdAt is pinned to the test clock so it precedes expiresAt (the DB enforces
+        // expires_after_created); the default now() would be the real wall clock, far after the
+        // fixed 2026 shift dates this seed uses.
+        createdAt: now,
         expiresAt: new Date(input.startAt.getTime() - 60 * 60 * 1000),
         approvedAt: now,
         sentAt: now,

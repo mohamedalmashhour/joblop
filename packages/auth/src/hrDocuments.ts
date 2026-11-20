@@ -1,7 +1,7 @@
 // HR-3 Documents — governed HR document domain.
 //
 // Rules:
-//   - File CONTENTS never touch JobLop core. The DB stores metadata + a provider
+//   - File CONTENTS never touch Joblop core. The DB stores metadata + a provider
 //     storageReference only. Storage is provider-neutral (fixture in dev; a real
 //     encrypted-at-rest, signed-URL, malware-scanned provider swaps in behind the seam).
 //   - A previously ACCEPTED document is NEVER overwritten — a replacement is a NEW record;
@@ -10,6 +10,7 @@
 //   - Every governed transition is audited (append-only).
 
 import { randomUUID } from "node:crypto";
+import { isRequiredCertificateKey } from "@rwos/shared";
 
 export type HrDocumentStatus =
   | "required" | "submitted" | "under_review" | "accepted" | "rejected"
@@ -52,6 +53,8 @@ export type DocumentStorageProvider = Readonly<{
   resolveDownloadUrl(input: { storageReference: string }): Promise<{ url: string; expiresInSeconds: number } | null>;
   // Reject fabricated / cross-worker references before trusting them.
   verifyReference(input: { storageReference: string; workerIdentityId: string }): Promise<boolean>;
+  // Original file name / type recorded at upload, when the provider keeps them.
+  describe?(input: { storageReference: string }): Promise<{ fileName: string | null; contentType: string | null } | null>;
 }>;
 
 // Fixture provider: deterministic namespace per worker, no network. NOTE: encryption-at-rest,
@@ -92,6 +95,8 @@ export type HrDocumentRecord = Readonly<{
   source: string;
   supersededById: string | null;
   reviewReason: string | null; // HR-internal; stripped from worker views
+  // The required-certificate key staff verified this document as (generic uploads), else null.
+  verifiedCertificateKey?: string | null;
   updatedAt: string;
 }>;
 
@@ -99,6 +104,8 @@ export type HrDocumentRecord = Readonly<{
 export type WorkerDocumentView = Readonly<{
   id: string;
   documentType: string;
+  fileName?: string | null;
+  contentType?: string | null;
   jurisdiction: string | null;
   expiresAt: string | null;
   effectiveStatus: HrDocumentStatus;
@@ -127,7 +134,7 @@ export type HrDocumentStore = Readonly<{
   create(input: { workerIdentityId: string; documentType: string; storageReference: string; checksum: string | null; issuingAuthority: string | null; jurisdiction: string | null; issuedAt: Date | null; expiresAt: Date | null; source: string }): Promise<HrDocumentRecord>;
   getById(id: string): Promise<HrDocumentRecord | null>;
   listForWorker(workerIdentityId: string): Promise<readonly HrDocumentRecord[]>;
-  setStatus(input: { id: string; status: HrDocumentStatus; reviewReason?: string | null; reviewedByUserId?: string | null; supersededById?: string | null }): Promise<HrDocumentRecord>;
+  setStatus(input: { id: string; status: HrDocumentStatus; reviewReason?: string | null; reviewedByUserId?: string | null; supersededById?: string | null; expiresAt?: Date | null; verifiedCertificateKey?: string | null }): Promise<HrDocumentRecord>;
   latestAcceptedOfType(input: { workerIdentityId: string; documentType: string }): Promise<HrDocumentRecord | null>;
   pageReview(input: { statuses: readonly HrDocumentStatus[]; cursor: string | null; limit: number }): Promise<HrDocPage<HrDocumentRecord>>;
   pageExpiring(input: { before: Date; cursor: string | null; limit: number }): Promise<HrDocPage<HrDocumentRecord>>;
@@ -164,7 +171,7 @@ export function createHrDocumentService(deps: HrDocumentDeps) {
   }
 
   return {
-    // Worker: get a provider upload reference (they upload to the provider, not to JobLop).
+    // Worker: get a provider upload reference (they upload to the provider, not to Joblop).
     async requestUploadReference(input: { userId: string; documentType: string }): Promise<{ storageReference: string; uploadUrl: string }> {
       const workerIdentityId = await requireWorker(input.userId);
       if (!input.documentType.trim()) throw new HrDocumentError("invalid", "A documentType is required.");
@@ -205,7 +212,51 @@ export function createHrDocumentService(deps: HrDocumentDeps) {
 
     async listMyDocuments(input: { userId: string }): Promise<readonly WorkerDocumentView[]> {
       const workerIdentityId = await requireWorker(input.userId);
-      return (await deps.store.listForWorker(workerIdentityId)).map(toWorkerView);
+      const records = await deps.store.listForWorker(workerIdentityId);
+      return Promise.all(records.map(async (r) => {
+        const info = r.storageReference ? await deps.storage.describe?.({ storageReference: r.storageReference }) : null;
+        return { ...toWorkerView(r), fileName: info?.fileName ?? null, contentType: info?.contentType ?? null };
+      }));
+    },
+
+    async myDocumentStatuses(input: { userId: string }): Promise<ReadonlyArray<{ documentType: string; effectiveStatus: string }>> {
+      const workerIdentityId = await requireWorker(input.userId);
+      return (await deps.store.listForWorker(workerIdentityId)).map((r) => ({ documentType: r.documentType, effectiveStatus: withEffective(r).effectiveStatus }));
+    },
+
+    // Worker: locate ONE of their OWN current documents so they can view or save it. A deleted or
+    // replaced document is not served, and another worker's document is never found.
+    async getMyDocumentFile(input: { userId: string; documentId: string }): Promise<{ documentType: string; storageReference: string } | null> {
+      const workerIdentityId = await requireWorker(input.userId);
+      const rec = (await deps.store.listForWorker(workerIdentityId)).find((r) => r.id === input.documentId);
+      if (!rec || !rec.storageReference) return null;
+      if (rec.status === "revoked" || rec.status === "superseded") return null;
+      return { documentType: rec.documentType, storageReference: rec.storageReference };
+    },
+
+    // Worker: resolve ONE of their OWN documents for an advisory AI review. Ownership is enforced
+    // (only documents belonging to the requesting worker are returned). Returns the type, expiry and a
+    // short-lived provider download URL so the API can fetch the bytes for the vision pre-check. Never
+    // exposes the raw storageReference to the client.
+    async resolveMyDocumentForReview(input: { userId: string; documentId: string }): Promise<{ documentType: string; expired: boolean; storageReference: string | null; downloadUrl: string | null } | null> {
+      const workerIdentityId = await requireWorker(input.userId);
+      const rec = (await deps.store.listForWorker(workerIdentityId)).find((r) => r.id === input.documentId);
+      if (!rec) return null;
+      const effective = withEffective(rec).effectiveStatus;
+      const dl = rec.storageReference ? await deps.storage.resolveDownloadUrl({ storageReference: rec.storageReference }) : null;
+      return { documentType: rec.documentType, expired: effective === "expired", storageReference: rec.storageReference ?? null, downloadUrl: dl?.url ?? null };
+    },
+
+    // Worker: remove ONE of their OWN documents. Ownership enforced. Governed/append-only model — this
+    // marks the record "revoked" (worker-initiated) and keeps the audit event rather than hard-deleting.
+    // The worker then re-uploads a fresh one if needed. Cannot touch another worker's document.
+    async removeMyDocument(input: { userId: string; documentId: string }): Promise<WorkerDocumentView> {
+      const workerIdentityId = await requireWorker(input.userId);
+      const rec = (await deps.store.listForWorker(workerIdentityId)).find((r) => r.id === input.documentId);
+      if (!rec) throw new HrDocumentError("not_found", "That document was not found.");
+      const updated = await deps.store.setStatus({ id: rec.id, status: "revoked", reviewReason: "removed_by_worker", reviewedByUserId: null });
+      await deps.store.appendEvent({ documentId: rec.id, workerIdentityId, eventType: "document_revoked", priorState: rec.status, newState: "revoked", reason: "removed_by_worker", source: "worker", actorUserId: null });
+      return toWorkerView(updated);
     },
 
     // ── HR authority ──
@@ -223,12 +274,34 @@ export function createHrDocumentService(deps: HrDocumentDeps) {
       return deps.storage.resolveDownloadUrl({ storageReference: rec.storageReference });
     },
 
-    async accept(input: { actorUserId: string; documentId: string }): Promise<HrDocumentRecord> {
+    // Staff verify a document. Optional: the date it expires (a verified certificate stops counting
+    // for job requirements after it) and, for a generic upload, the required certificate it proves.
+    async accept(input: { actorUserId: string; documentId: string; expiresAt?: string | null; certificateKey?: string | null }): Promise<HrDocumentRecord> {
       const rec = await deps.store.getById(input.documentId);
       if (!rec) throw new HrDocumentError("not_found", "That document was not found.");
       if (!canReviewDocument(rec.status)) throw new HrDocumentError("conflict", `A document in state ${rec.status} cannot be accepted.`);
-      const updated = await deps.store.setStatus({ id: rec.id, status: "accepted", reviewedByUserId: input.actorUserId });
-      await deps.store.appendEvent({ documentId: rec.id, workerIdentityId: rec.workerIdentityId, eventType: "document_accepted", priorState: rec.status, newState: "accepted", source: "hr_admin", actorUserId: input.actorUserId });
+      let expiresAt: Date | undefined;
+      if (input.expiresAt) {
+        expiresAt = new Date(input.expiresAt);
+        if (Number.isNaN(expiresAt.getTime())) throw new HrDocumentError("invalid", "The expiry date is not a valid date.");
+        if (expiresAt.getTime() <= now().getTime()) throw new HrDocumentError("invalid", "The expiry date is already past; this document cannot be verified.");
+      }
+      let verifiedCertificateKey: string | undefined;
+      if (input.certificateKey) {
+        if (!isRequiredCertificateKey(input.certificateKey) || input.certificateKey === "other") {
+          throw new HrDocumentError("invalid", "Choose a certificate from the list.");
+        }
+        verifiedCertificateKey = input.certificateKey;
+      }
+      const updated = await deps.store.setStatus({
+        id: rec.id,
+        status: "accepted",
+        reviewedByUserId: input.actorUserId,
+        ...(expiresAt ? { expiresAt } : {}),
+        ...(verifiedCertificateKey ? { verifiedCertificateKey } : {})
+      });
+      const detail = [expiresAt ? `expires ${expiresAt.toISOString().slice(0, 10)}` : null, verifiedCertificateKey ? `certificate ${verifiedCertificateKey}` : null].filter(Boolean).join("; ");
+      await deps.store.appendEvent({ documentId: rec.id, workerIdentityId: rec.workerIdentityId, eventType: "document_accepted", priorState: rec.status, newState: "accepted", ...(detail ? { reason: detail } : {}), source: "hr_admin", actorUserId: input.actorUserId });
       return withEffective(updated);
     },
     async reject(input: { actorUserId: string; documentId: string; reason: string }): Promise<HrDocumentRecord> {
@@ -272,7 +345,7 @@ export function createHrDocumentService(deps: HrDocumentDeps) {
 type DocRow = {
   id: string; workerIdentityId: string; documentType: string; issuingAuthority: string | null; jurisdiction: string | null;
   issuedAt: Date | null; expiresAt: Date | null; status: HrDocumentStatus; storageReference: string | null; checksum: string | null;
-  source: string; supersededById: string | null; reviewReason: string | null; updatedAt: Date;
+  source: string; supersededById: string | null; reviewReason: string | null; verifiedCertificateKey?: string | null; updatedAt: Date;
 };
 
 type DocPrisma = {
@@ -292,7 +365,7 @@ function toDoc(r: DocRow): HrDocumentRecord {
     id: r.id, workerIdentityId: r.workerIdentityId, documentType: r.documentType, issuingAuthority: r.issuingAuthority,
     jurisdiction: r.jurisdiction, issuedAt: r.issuedAt?.toISOString() ?? null, expiresAt: r.expiresAt?.toISOString() ?? null,
     status: r.status, effectiveStatus: r.status, storageReference: r.storageReference, checksum: r.checksum, source: r.source,
-    supersededById: r.supersededById, reviewReason: r.reviewReason, updatedAt: r.updatedAt.toISOString()
+    supersededById: r.supersededById, reviewReason: r.reviewReason, verifiedCertificateKey: r.verifiedCertificateKey ?? null, updatedAt: r.updatedAt.toISOString()
   };
 }
 
@@ -318,11 +391,13 @@ export function createPrismaHrDocumentStore(prisma: DocPrisma): HrDocumentStore 
       const rows = await prisma.hrDocument.findMany({ where: { workerIdentityId }, orderBy: { createdAt: "desc" } });
       return rows.map(toDoc);
     },
-    async setStatus({ id, status, reviewReason, reviewedByUserId, supersededById }) {
+    async setStatus({ id, status, reviewReason, reviewedByUserId, supersededById, expiresAt, verifiedCertificateKey }) {
       return toDoc(await prisma.hrDocument.update({
         where: { id },
         data: {
           status,
+          ...(expiresAt !== undefined ? { expiresAt } : {}),
+          ...(verifiedCertificateKey !== undefined ? { verifiedCertificateKey } : {}),
           ...(reviewReason !== undefined ? { reviewReason } : {}),
           ...(reviewedByUserId !== undefined ? { reviewedByUserId, reviewedAt: new Date() } : {}),
           ...(supersededById !== undefined ? { supersededById } : {})

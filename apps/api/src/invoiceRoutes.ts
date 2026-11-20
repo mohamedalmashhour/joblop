@@ -12,14 +12,32 @@ import {
 } from "@rwos/shared";
 import {
   renderBilingualSyntheticCreditNotePdf,
-  renderBilingualSyntheticInvoicePdf
+  renderBilingualSyntheticInvoicePdf,
+  type InvoicePdfDetails
 } from "./invoicePdf";
-import type { InvoiceRepository } from "./invoiceRepository";
+import type { DurableInvoice, InvoiceRepository } from "./invoiceRepository";
 
 export type InvoiceRouteAuthorization = Readonly<{
   actorId: string;
   role: InvoiceActorRole;
 }>;
+
+// An employer sees an invoice only once staff have sent it. Drafts and issued-but-unsent invoices are
+// still Joblop's own working papers.
+const EMPLOYER_VISIBLE_INVOICE_STATUSES: readonly InvoiceStatus[] = [
+  "sent",
+  "viewed",
+  "partially_paid",
+  "paid",
+  "overdue",
+  "disputed",
+  "voided",
+  "refunded"
+];
+
+function canSeeInvoice(role: InvoiceActorRole, status: InvoiceStatus): boolean {
+  return role === "platform_admin" || EMPLOYER_VISIBLE_INVOICE_STATUSES.includes(status);
+}
 
 export function registerInvoiceRoutes(
   app: FastifyInstance,
@@ -29,6 +47,11 @@ export function registerInvoiceRoutes(
       request: FastifyRequest,
       organizationId: string
     ): Promise<InvoiceRouteAuthorization | null>;
+    // Tells the employer an invoice has been sent. Best-effort: it reports what happened and never
+    // undoes the send.
+    notifyInvoiceSent?(invoice: DurableInvoice): Promise<string>;
+    // Bill-to and job facts for the PDF. Without it the PDF still renders, with less detail.
+    describeInvoice?(invoice: DurableInvoice): Promise<InvoicePdfDetails>;
   }
 ) {
   app.post("/organizations/:organizationId/invoices", async (request, reply) => {
@@ -56,23 +79,32 @@ export function registerInvoiceRoutes(
 
   app.get("/organizations/:organizationId/invoices", async (request, reply) => {
     const organizationId = routeParam(request.params, "organizationId");
-    if (!(await options.authorize(request, organizationId))) return unavailable(reply);
+    const authorization = await options.authorize(request, organizationId);
+    if (!authorization) return unavailable(reply);
     const statuses = statusList(record(request.query).status);
     if (statuses === null) return invalid(reply);
-    return reply.send({ invoices: await options.repository.list(organizationId, statuses) });
+    const invoices = await options.repository.list(organizationId, statuses);
+    return reply.send({
+      invoices: invoices.filter((invoice) => canSeeInvoice(authorization.role, invoice.status))
+    });
   });
 
   app.get("/organizations/:organizationId/invoices/:invoiceId", async (request, reply) => {
     const scope = await authorizedInvoice(request, options);
-    if (!scope) return unavailable(reply);
+    if (!scope || !canSeeInvoice(scope.authorization.role, scope.invoice.status)) {
+      return unavailable(reply);
+    }
     return reply.send({ invoice: scope.invoice });
   });
 
   app.get("/organizations/:organizationId/invoices/:invoiceId/pdf", async (request, reply) => {
     const scope = await authorizedInvoice(request, options);
-    if (!scope) return unavailable(reply);
+    if (!scope || !canSeeInvoice(scope.authorization.role, scope.invoice.status)) {
+      return unavailable(reply);
+    }
     try {
-      const rendered = renderBilingualSyntheticInvoicePdf(scope.invoice);
+      const details = (await options.describeInvoice?.(scope.invoice).catch(() => ({}))) ?? {};
+      const rendered = renderBilingualSyntheticInvoicePdf(scope.invoice, details);
       return reply
         .type("application/pdf")
         .header("content-disposition", `attachment; filename="${rendered.filename}"`)
@@ -150,8 +182,9 @@ export function registerInvoiceRoutes(
     if (!recipientAlias || !idempotencyKey || expectedVersion === null) return invalid(reply);
     try {
       const rendered = renderBilingualSyntheticInvoicePdf(scope.invoice);
+      const deliveryId = randomUUID();
       const result = await options.repository.recordFakeDelivery({
-        id: randomUUID(),
+        id: deliveryId,
         invoiceId: scope.invoice.id,
         organizationId: scope.invoice.organizationId,
         expectedVersion,
@@ -161,7 +194,10 @@ export function registerInvoiceRoutes(
         actorReference: scope.authorization.actorId,
         actorRole: scope.authorization.role
       });
-      return reply.code(201).send(result);
+      // A repeated request returns the first receipt, and must not email the employer again.
+      const firstSend = result.receipt.id === deliveryId;
+      const employerNotice = firstSend ? await options.notifyInvoiceSent?.(result.invoice).catch(() => "error") : undefined;
+      return reply.code(201).send({ ...result, ...(employerNotice ? { employerNotice } : {}) });
     } catch (error) {
       return invoiceFailure(reply, error);
     }
@@ -338,7 +374,7 @@ function invoiceCalculationInput(
   // The shared calculation engine is the authoritative validator for all
   // effective-dated configuration, money, tax, and rounding fields.
   //
-  // Platform-agency model: JobLop invoices every client under the single platform issuer
+  // Platform-agency model: Joblop invoices every client under the single platform issuer
   // (9375-7649 Québec Inc. + Québec GST/QST). The issuer and tax configuration are supplied
   // server-side from @rwos/shared when the caller omits them, so a client can never spoof the
   // issuer identity on a tax invoice. A caller MAY still supply them (tests, self-billing).

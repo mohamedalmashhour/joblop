@@ -1,4 +1,4 @@
-// JobLop platform invoice issuer — the single legal issuer for client invoices (agency model).
+// Joblop platform invoice issuer — the single legal issuer for client invoices (agency model).
 // Built from the owner's real company invoice (#41). These values are snapshotted onto each
 // invoice at issue time, so changing them here only affects NEW invoices.
 //

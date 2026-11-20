@@ -1,22 +1,28 @@
 import { cookies } from "next/headers";
 import { EmployerShell, WorkflowRoutes } from "../EmployerShell";
-import { styles } from "../employerStyles";
 import { InvoiceReviewPanel } from "./InvoiceReviewPanel";
-import { LOCALE_COOKIE, resolveRwosLocale } from "../../i18n/config";
-import { dictionaries } from "../../i18n/messages";
+import { readInvoiceParam } from "./invoiceSelection";
+import { LOCALE_COOKIE, resolveEmployerLocale } from "../../i18n/config";
+import { dictionaries, type Messages } from "../../i18n/messages";
 
-export default async function InvoicesPage() {
+export default async function InvoicesPage({
+  searchParams
+}: {
+  searchParams: Promise<{ invoice?: string | string[]; pay?: string | string[] }>;
+}) {
+  const params = await searchParams;
+  const pay = params.pay === "success" || params.pay === "cancel" ? params.pay : null;
   const store = await cookies();
-  const m = dictionaries[resolveRwosLocale(store.get(LOCALE_COOKIE)?.value)];
+  const locale = resolveEmployerLocale(store.get(LOCALE_COOKIE)?.value);
+  const m: Messages = { ...dictionaries["en-CA"], ...dictionaries[locale] } as Messages;
   return (
     <EmployerShell
       currentRoute="/employer/invoices"
       eyebrow={m["page.invoicesEyebrow"]}
       title={m["page.invoicesTitle"]}
       lede={m["page.invoicesLede"]}
-      actions={<a href="/employer/invoices/detail" style={styles.primaryButton}>{m["page.invoiceDetail"]}</a>}
     >
-      <InvoiceReviewPanel mode="list" />
+      <InvoiceReviewPanel invoiceId={readInvoiceParam(params.invoice)} mode="list" paymentReturn={pay} />
       <WorkflowRoutes currentRoute="/employer/invoices" />
     </EmployerShell>
   );

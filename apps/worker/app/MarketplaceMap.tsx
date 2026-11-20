@@ -29,6 +29,7 @@ type Props = Readonly<{
 const SIZE = 460; // square viewport (px, scales responsively via CSS)
 const CENTER = SIZE / 2;
 const PADDING = 34;
+const HERE_RADIUS_PX = 14; // a pin this close to the centre is hidden by the "You" dot
 
 // Equirectangular local projection (km east/north of origin). Good enough for a city-scale
 // approximate map and fully self-contained (no tiles, no projection library).
@@ -52,7 +53,9 @@ export function MarketplaceMap({ origin, pins, selectedId, onSelect, radiusKm }:
       x: CENTER + k.dEast * scale,
       y: CENTER - k.dNorth * scale // north is up
     }));
-    return { placed, rings, scale };
+    // Jobs that land on the "You" dot (0 km away, or too close to tell apart) get a count badge.
+    const hereCount = placed.filter((p) => Math.hypot(p.x - CENTER, p.y - CENTER) < HERE_RADIUS_PX).length;
+    return { placed, rings, scale, hereCount };
   }, [origin, pins, radiusKm]);
 
   if (!origin || !layout) {
@@ -110,6 +113,14 @@ export function MarketplaceMap({ origin, pins, selectedId, onSelect, radiusKm }:
           </g>
         );
       })}
+      {layout.hereCount > 0 ? (
+        <g aria-hidden="true" transform={`translate(${CENTER}, ${CENTER - 30})`}>
+          <rect x={-46} y={-11} width={92} height={22} rx={11} className="map-here-badge" />
+          <text className="map-here-text" textAnchor="middle" dy="4">
+            {layout.hereCount === 1 ? t("map.hereOne") : t("map.hereMany", { count: layout.hereCount })}
+          </text>
+        </g>
+      ) : null}
     </svg>
   );
 }

@@ -3,8 +3,8 @@ import { buildApi } from "./app";
 import { getRuntimeConfig, resolveCountryConfig, type CountryProfile } from "@rwos/config";
 import { moneyEngineCurrencies } from "@rwos/shared";
 import { createLogger } from "@rwos/observability";
-import { apiCountryRegistry } from "./countryRegistry";
-import { withTestModeCountry, addressPortForCountry } from "./countryRegistry.testMode";
+import { apiAddressPortForCountry, apiCountryRegistry } from "./countryRegistry";
+import { withTestModeCountry } from "./countryRegistry.testMode";
 
 const logger = createLogger("api");
 const config = getRuntimeConfig();
@@ -12,11 +12,9 @@ const config = getRuntimeConfig();
 // Fail-closed country selection (MULTI_COUNTRY_PLATFORM_POLICY.md). The application refuses to serve
 // when the country profile is missing (staging/production), unsupported, or incomplete. Country
 // profiles live in isolated countries/<country>/ implementations and are injected via the API
-// composition-root registry (apiCountryRegistry). Phase 2a wires Syria in as RECOGNIZED, but its
-// gate is CLOSED and its profile INCOMPLETE, so selecting it still fail-closes; local/test with no
-// RWOS_COUNTRY fall back to the non-market neutral fixture. Production deploys must come from
-// a certified country implementation (see the phased migration plan), never directly from this
-// master image. On refusal we do NOT serve the app — we start a liveness-only fail-closed server
+// composition-root registry (apiCountryRegistry). Syria is RECOGNIZED but gate-CLOSED (selecting it
+// still fail-closes); Canada/Québec (RWOS_COUNTRY=canada-quebec) is the approved, activatable launch
+// market; local/test with no RWOS_COUNTRY fall back to the non-market neutral fixture. On refusal we do NOT serve the app — we start a liveness-only fail-closed server
 // (mirrors apps/qa-reset/src/failClosedServer.ts): /health reports the process is alive but NOT
 // ready, and every other path (including /ready) returns 503, so no real traffic is served.
 function resolveSelectedCountry(): { ok: true; profile: CountryProfile } | { ok: false; reason: string } {
@@ -63,7 +61,10 @@ async function startApi(profile: CountryProfile) {
   const app = buildApi({
     countryTimezone: profile.timezone ?? undefined,
     countryCurrency: profile.currency ?? undefined,
-    countryAddress: addressPortForCountry(profile.country)
+    countryAddress: apiAddressPortForCountry(profile.country),
+    // Production-only feature flag defaults (RWOS_JOB_FLOW_ENABLED / RWOS_PUBLIC_SIGNUP_ENABLED when
+    // unset). Ignored outside RWOS_ENV=production, so test/staging behaviour is unchanged.
+    productionFeatureDefaults: profile.productionDefaults
   });
   let shuttingDown = false;
 

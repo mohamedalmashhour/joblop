@@ -5,6 +5,7 @@ import type {
   FinanceInvoice,
   FinancePayment
 } from "../api/finance/financeBoundary";
+import { SignedOut } from "../shared/SignedOut";
 
 type FinanceState =
   | { status: "idle" | "loading" }
@@ -126,8 +127,9 @@ export function FinanceDataPanel() {
             Waiting for both authoritative read paths. No prior result is presented as current.
           </State>
         ) : null}
-        {state.status === "denied" || state.status === "error" || state.status === "unavailable" ? (
-          <State title={state.status === "denied" ? "Access denied" : "Finance data unavailable"}>
+        {state.status === "denied" ? <SignedOut compact /> : null}
+        {state.status === "error" || state.status === "unavailable" ? (
+          <State title="Finance data unavailable">
             {state.message}
           </State>
         ) : null}
@@ -166,7 +168,20 @@ function FinanceResults({
       </State>
     );
   }
+  // Read-only summary: invoiced vs paid vs outstanding (client-side aggregation of the loaded scope).
+  // Single active currency per country (Canada = CAD). No money is moved here — visibility only.
+  const currency = invoices[0]?.currency ?? payments[0]?.currency ?? "CAD";
+  const invoicedMinor = invoices.reduce((sum, i) => sum + i.totalMinor, 0);
+  const paidMinor = payments.reduce((sum, p) => sum + p.allocatedMinor, 0);
+  const outstandingMinor = Math.max(0, invoicedMinor - paidMinor);
   return (
+    <>
+      <section aria-label="Finance summary" style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+        <div style={styles.card}><small>Invoiced to clients</small><strong style={{ fontSize: 20 }}>{formatMoney(invoicedMinor, currency)}</strong></div>
+        <div style={styles.card}><small>Paid</small><strong style={{ fontSize: 20 }}>{formatMoney(paidMinor, currency)}</strong></div>
+        <div style={styles.card}><small>Outstanding</small><strong style={{ fontSize: 20 }}>{formatMoney(outstandingMinor, currency)}</strong></div>
+        <div style={{ ...styles.card, maxWidth: 320 }}><small>Transfers / payouts are disabled (test mode). This view is read-only; no money is moved by Joblop.</small></div>
+      </section>
     <div style={styles.columns}>
       <section aria-labelledby="invoice-results-title">
         <h3 id="invoice-results-title" style={styles.h3}>Invoices ({invoices.length})</h3>
@@ -176,7 +191,7 @@ function FinanceResults({
             <span>{invoice.status.replaceAll("_", " ")}</span>
             <span>{formatMoney(invoice.totalMinor, invoice.currency)}</span>
             <small>Reference: {invoice.id}</small>
-            <small>Due: {invoice.dueAt ? new Date(invoice.dueAt).toLocaleDateString() : "Not set"}</small>
+            <small>Due: {invoice.dueAt ? new Date(invoice.dueAt).toLocaleDateString("en-CA", { timeZone: "America/Toronto" }) : "Not set"}</small>
           </article>
         ))}
       </section>
@@ -197,6 +212,7 @@ function FinanceResults({
         ))}
       </section>
     </div>
+    </>
   );
 }
 
@@ -213,20 +229,20 @@ function formatMoney(minor: number, currency: string) {
 }
 
 const styles: Record<string, CSSProperties> = {
-  panel: { background: "#fff", border: "1px solid #d8e4f5", borderRadius: 8, marginTop: 18, padding: 18 },
+  panel: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, marginTop: 18, padding: 18 },
   header: { alignItems: "start", display: "flex", gap: 12, justifyContent: "space-between" },
-  h2: { color: "#071f4d", fontSize: 21, margin: 0 },
-  h3: { color: "#071f4d", fontSize: 17, margin: "0 0 10px" },
-  help: { color: "#526782", fontSize: 13, lineHeight: 1.55, margin: "6px 0 0" },
-  badge: { background: "#eef5ff", border: "1px solid #c9ddff", borderRadius: 8, fontSize: 12, fontWeight: 900, padding: "7px 10px" },
+  h2: { color: "#f4efe4", fontSize: 21, margin: 0 },
+  h3: { color: "#f4efe4", fontSize: 17, margin: "0 0 10px" },
+  help: { color: "#f4efe4", fontSize: 13, lineHeight: 1.55, margin: "6px 0 0" },
+  badge: { background: "#000000", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, fontSize: 12, fontWeight: 900, padding: "7px 10px" },
   form: { alignItems: "end", display: "grid", gap: 12, gridTemplateColumns: "minmax(240px, 1fr) auto", marginTop: 18 },
   label: { display: "grid", fontSize: 13, fontWeight: 800, gap: 6 },
-  input: { border: "1px solid #b8c8dc", borderRadius: 8, font: "inherit", minHeight: 44, padding: "0 12px" },
-  button: { background: "#071f4d", border: 0, borderRadius: 8, color: "#fff", fontWeight: 800, minHeight: 44, padding: "0 16px" },
-  state: { background: "#f7faff", border: "1px solid #d8e4f5", borderRadius: 8, marginTop: 16, padding: 14 },
+  input: { border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, font: "inherit", minHeight: 44, padding: "0 12px" },
+  button: { background: "#171511", border: 0, borderRadius: 8, color: "#fff", fontWeight: 800, minHeight: 44, padding: "0 16px" },
+  state: { background: "#000000", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, marginTop: 16, padding: 14 },
   columns: { display: "grid", gap: 18, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", marginTop: 18 },
-  card: { border: "1px solid #d8e4f5", borderRadius: 8, display: "grid", gap: 6, marginTop: 10, padding: 14 },
-  actions: { borderTop: "1px solid #d8e4f5", marginTop: 20, paddingTop: 18 },
+  card: { border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, display: "grid", gap: 6, marginTop: 10, padding: 14 },
+  actions: { borderTop: "1px solid rgba(248, 184, 8, 0.16)", marginTop: 20, paddingTop: 18 },
   actionGrid: { display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" },
   disabledButton: { minHeight: 44, padding: "0 12px" }
 };

@@ -20,7 +20,7 @@ function aiReviewHandlerBody(): string {
 
 describe("HR-6.1 external-AI egress path is capability-gated and safe", () => {
   it("external provider is used ONLY when the flag is enabled AND a provider is injected; default synthetic", () => {
-    expect(appSource).toContain("resolveEgressMode({ externalEnabled: runtimeConfig.payrollAiExternalEnabled, externalProvider: options.payrollExternalReviewProvider })");
+    expect(appSource).toContain("resolveEgressMode({ externalEnabled: runtimeConfig.payrollAiExternalEnabled && outsideAiCallsEnabled(environment), externalProvider: options.payrollExternalReviewProvider })");
     expect(appSource).toContain('payrollReviewEgressMode === "external"');
     expect(appSource).toContain("createEgressGatedProvider(");
     // the fallback of the gate is the synthetic provider

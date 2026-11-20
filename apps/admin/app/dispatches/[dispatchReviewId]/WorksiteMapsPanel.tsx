@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AdminWorksiteMap, type WorksitePoint } from "./AdminWorksiteMap";
+import { SignedOut } from "../../shared/SignedOut";
 
 // Two separate maps for the admin:
 //   1) Contract — where the contract worksite is.
@@ -52,12 +53,13 @@ export function WorksiteMapsPanel({ dispatchReviewId }: Readonly<{ dispatchRevie
     return state.schedule.days.find((d) => d.date === selectedDate) ?? state.schedule.days[0] ?? null;
   }, [state, selectedDate]);
 
+  if (state.status === "denied") return <SignedOut compact />;
   if (state.status !== "ready") {
     return (
       <div>
         <h2>Worksite maps</h2>
         <p aria-live="polite">
-          {state.status === "loading" ? "Loading worksite maps…" : state.status === "denied" ? "Administrator authorization is required." : "Worksite maps are unavailable."}
+          {state.status === "loading" ? "Loading worksite maps…" : "Worksite maps are unavailable."}
         </p>
         {state.status !== "loading" ? (
           <button type="button" style={styles.button} onClick={() => void load()}>
@@ -143,21 +145,21 @@ function formatDay(date: string) {
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
 }
 function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return new Date(iso).toLocaleTimeString("en-CA", { timeZone: "America/Toronto", hour: "numeric", minute: "2-digit" });
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  muted: { color: "#64748b", fontSize: 13, lineHeight: 1.5 },
-  dim: { color: "#94a3b8", fontSize: 12 },
+  muted: { color: "#b3a894", fontSize: 13, lineHeight: 1.5 },
+  dim: { color: "#ece3d2", fontSize: 12 },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, marginTop: 8 },
   mapCard: { display: "flex", flexDirection: "column", gap: 8 },
   h3: { fontSize: 14, margin: 0 },
-  caption: { fontSize: 13, color: "#334155", margin: 0, lineHeight: 1.5 },
+  caption: { fontSize: 13, color: "#f4efe4", margin: 0, lineHeight: 1.5 },
   dayTabs: { display: "flex", flexWrap: "wrap", gap: 6 },
-  dayTab: { border: "1px solid #cbd5e1", background: "transparent", color: "#334155", borderRadius: 999, padding: "5px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" },
-  dayTabActive: { border: "1px solid #1d4ed8", background: "#1d4ed8", color: "#fff", borderRadius: 999, padding: "5px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" },
+  dayTab: { border: "1px solid rgba(248, 184, 8, 0.16)", background: "transparent", color: "#f4efe4", borderRadius: 999, padding: "5px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" },
+  dayTabActive: { border: "1px solid rgba(248, 184, 8, 0.16)", background: "#171511", color: "#fff", borderRadius: 999, padding: "5px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" },
   roster: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 },
-  rosterItem: { display: "flex", justifyContent: "space-between", gap: 8, borderBottom: "1px solid #eef2f7", paddingBottom: 5 },
-  emptyDays: { color: "#64748b", fontSize: 13, border: "1px dashed #cbd5e1", borderRadius: 10, padding: 20, textAlign: "center" },
-  button: { border: "1px solid #1d4ed8", background: "#1d4ed8", color: "#fff", borderRadius: 8, padding: "7px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer" }
+  rosterItem: { display: "flex", justifyContent: "space-between", gap: 8, borderBottom: "1px solid rgba(248, 184, 8, 0.16)", paddingBottom: 5 },
+  emptyDays: { color: "#b3a894", fontSize: 13, border: "1px dashed rgba(248, 184, 8, 0.16)", borderRadius: 10, padding: 20, textAlign: "center" },
+  button: { border: "1px solid rgba(248, 184, 8, 0.16)", background: "#171511", color: "#fff", borderRadius: 8, padding: "7px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer" }
 };

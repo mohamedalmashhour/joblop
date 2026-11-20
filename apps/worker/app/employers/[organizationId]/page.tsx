@@ -1,11 +1,11 @@
 import { EmployerProfile } from "./EmployerProfile";
-import { SubPageHeader } from "../../SubPageHeader";
+import { SiteHeader } from "../../SiteHeader";
 
 export default async function Page({ params }: { params: Promise<{ organizationId: string }> }) {
   const { organizationId } = await params;
   return (
     <>
-      <SubPageHeader />
+      <SiteHeader />
       <main className="wrap">
         <EmployerProfile id={organizationId} />
       </main>

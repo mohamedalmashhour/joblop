@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { styles } from "../../employer/employerStyles";
 import { useT } from "../../i18n/LocaleProvider";
@@ -15,14 +15,23 @@ import { VerifyEmailPanel } from "./VerifyEmailPanel";
 export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) {
   const t = useT();
   const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [confirmEmail, setConfirmEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [acceptedNotices, setAcceptedNotices] = useState(false);
   const [state, setState] = useState<"idle" | "submitting" | "error">("idle");
   const [verifying, setVerifying] = useState(false);
   const [message, setMessage] = useState(() => t("auth.signUpIntro"));
+  // Invite-a-friend: capture ?ref=CODE once and remember it across the signup flow.
+  const [referralCode, setReferralCode] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      const fromUrl = new URLSearchParams(window.location.search).get("ref");
+      if (fromUrl) { setReferralCode(fromUrl); try { localStorage.setItem("jl_ref", fromUrl); } catch { /* ignore */ } return; }
+      const stored = (() => { try { return localStorage.getItem("jl_ref"); } catch { return null; } })();
+      if (stored) setReferralCode(stored);
+    } catch { /* ignore */ }
+  }, []);
 
   const continueToOnboarding = () => window.location.assign("/employer/onboarding/company");
 
@@ -32,7 +41,7 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
 
   if (!registrationOpen) {
     return (
-      <div style={styles.formGrid}>
+      <div style={styles.authForm}>
         <p style={styles.warning}>{t("auth.regClosed")}</p>
         <a href="/signin" style={styles.primaryButton}>
           {t("auth.goToSignIn")}
@@ -47,10 +56,6 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
       setState("error");
       return setMessage(t("auth.emailMismatch"));
     }
-    if (password !== confirmPassword) {
-      setState("error");
-      return setMessage(t("auth.passwordMismatch"));
-    }
     if (!acceptedNotices) {
       setState("error");
       return setMessage(t("auth.acceptNotices"));
@@ -64,19 +69,17 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
         body: JSON.stringify({
           email,
           confirmEmail,
-          password,
-          confirmPassword,
           acceptedNotices,
-          displayName: fullName || null
+          displayName: fullName || null,
+          phone: phone.trim(),
+          referralCode
         })
       });
-      setPassword("");
-      setConfirmPassword("");
       if (!response.ok) {
         setState("error");
         if (response.status === 404) return setMessage(t("auth.regNotOpen"));
         if (response.status === 409) return setMessage(t("auth.emailRegistered"));
-        if (response.status === 400) return setMessage(t("auth.strongerPassword"));
+        if (response.status === 400) return setMessage(t("auth.numberUnusable"));
         if (response.status === 429) return setMessage(t("auth.tooManyAttempts"));
         if (response.status === 503) return setMessage(t("auth.signUpUnavailable"));
         return setMessage(t("auth.createFailed"));
@@ -90,7 +93,7 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
   };
 
   return (
-    <form style={styles.formGrid} onSubmit={submit}>
+    <form style={styles.authForm} onSubmit={submit}>
       <label style={styles.fieldLabel}>
         {t("auth.workEmail")}
         <input
@@ -127,33 +130,20 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
         />
       </label>
       <label style={styles.fieldLabel}>
-        {t("auth.password")}
+        {t("auth.phone")}
         <input
           style={styles.input}
-          type="password"
-          autoComplete="new-password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          placeholder={t("auth.createPassword")}
-          minLength={12}
+          type="tel"
+          autoComplete="tel"
+          value={phone}
+          onChange={(event) => setPhone(event.target.value)}
+          placeholder={t("auth.phonePlaceholder")}
           required
         />
       </label>
-      <label style={styles.fieldLabel}>
-        {t("auth.confirmPassword")}
+      <label style={styles.checkboxLabel}>
         <input
-          style={styles.input}
-          type="password"
-          autoComplete="new-password"
-          value={confirmPassword}
-          onChange={(event) => setConfirmPassword(event.target.value)}
-          placeholder={t("auth.repeatPassword")}
-          minLength={12}
-          required
-        />
-      </label>
-      <label style={{ ...styles.fieldLabel, gridTemplateColumns: "auto 1fr", alignItems: "start" }}>
-        <input
+          style={styles.checkbox}
           type="checkbox"
           checked={acceptedNotices}
           onChange={(event) => setAcceptedNotices(event.target.checked)}
@@ -161,14 +151,14 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
         />
         <span>
           {t("auth.acceptPre")}
-          <a href="/terms">{t("auth.terms")}</a>
+          <a href="/terms" style={styles.inlineLink}>{t("auth.terms")}</a>
           {t("auth.acceptMid")}
-          <a href="/privacy">{t("auth.privacy")}</a>
+          <a href="/privacy" style={styles.inlineLink}>{t("auth.privacy")}</a>
           {t("auth.acceptPost")}
         </span>
       </label>
       <p style={state === "error" ? styles.warning : styles.sectionCopy}>{message}</p>
-      <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+      <div style={styles.authActions}>
         <button type="submit" disabled={state === "submitting"} style={styles.primaryButton}>
           {state === "submitting" ? t("auth.creating") : t("auth.createEmployerAccount")}
         </button>

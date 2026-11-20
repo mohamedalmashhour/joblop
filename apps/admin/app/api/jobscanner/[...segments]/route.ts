@@ -2,7 +2,7 @@ import { sessionBoundary, isSameOriginMutation, sessionFailure } from "../../ses
 
 // Scoped JobScanner proxy: forwards ONLY the /platform/jobscanner/* namespace. Session-gated here; the
 // API enforces admin authority. Mutations require same-origin (CSRF). External job leads + CV drafts
-// only — no money, no JobLop governance, nothing sent on anyone's behalf.
+// only — no money, no Joblop governance, nothing sent on anyone's behalf.
 function targetPath(segments: string[], search: string): string {
   const safe = segments.map((s) => encodeURIComponent(s)).join("/");
   return `/platform/jobscanner/${safe}${search}`;

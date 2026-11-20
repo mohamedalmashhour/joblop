@@ -4,6 +4,8 @@ export const secureEmployerSessionCookieName = "__Host-rwos_employer_session";
 export const localEmployerSessionCookieName = "rwos_local_employer_session";
 export const secureAdminSessionCookieName = "__Host-rwos_admin_session";
 export const localAdminSessionCookieName = "rwos_local_admin_session";
+export const secureCrmSessionCookieName = "__Host-rwos_crm_session";
+export const localCrmSessionCookieName = "rwos_local_crm_session";
 
 export type FrontendSessionFetch = (
   input: string,
@@ -19,6 +21,7 @@ export type FrontendSessionFetch = (
     status: number;
     headers?: Readonly<{ get(name: string): string | null }>;
     json(): Promise<unknown>;
+    arrayBuffer?(): Promise<ArrayBuffer>;
   }>
 >;
 
@@ -26,9 +29,43 @@ export type FrontendSessionResult =
   | Readonly<{ status: "ok"; payload: unknown }>
   | Readonly<{ status: "denied" }>
   | Readonly<{ status: "not_found" }>
-  | Readonly<{ status: "stale" }>
+  // `conflict` is set only for RWOS_SHIFT_OVERLAP (the worker already holds a shift at that time):
+  // its body names that shift in EN / FR / AR, so a screen can say why instead of "state changed".
+  | Readonly<{ status: "stale"; conflict?: ShiftOverlapConflict }>
   | Readonly<{ status: "unavailable" }>
   | Readonly<{ status: "error" }>;
+
+export type ShiftOverlapConflict = Readonly<{
+  error: "RWOS_SHIFT_OVERLAP";
+  message?: string;
+  messages?: Readonly<Record<string, string>>;
+  heldShift?: unknown;
+}>;
+
+async function readShiftOverlapConflict(response: Readonly<{ json(): Promise<unknown> }>): Promise<ShiftOverlapConflict | null> {
+  try {
+    const body = (await response.json()) as Record<string, unknown> | null;
+    if (!body || body.error !== "RWOS_SHIFT_OVERLAP") return null;
+    const messages: Record<string, string> = {};
+    if (body.messages && typeof body.messages === "object") {
+      for (const [key, value] of Object.entries(body.messages as Record<string, unknown>)) {
+        if ((key === "en" || key === "fr" || key === "ar") && typeof value === "string") messages[key] = value;
+      }
+    }
+    return {
+      error: "RWOS_SHIFT_OVERLAP",
+      ...(typeof body.message === "string" ? { message: body.message } : {}),
+      messages,
+      ...(body.heldShift !== undefined ? { heldShift: body.heldShift } : {})
+    };
+  } catch {
+    return null;
+  }
+}
+
+export type PdfResult =
+  | Readonly<{ status: "ok"; bytes: Uint8Array }>
+  | Readonly<{ status: "denied" | "not_found" | "stale" | "unavailable" | "error" }>;
 
 export type FrontendSignInResult =
   FrontendSessionResult | Readonly<{ status: "rate_limited"; retryAfterSeconds: number }>;
@@ -66,7 +103,11 @@ export function createFrontendSessionGateway(options: {
       });
       if (response.status === 401 || response.status === 403) return { status: "denied" };
       if (response.status === 404) return { status: "not_found" };
-      if (response.status === 409 || response.status === 412) return { status: "stale" };
+      if (response.status === 409) {
+        const conflict = await readShiftOverlapConflict(response);
+        return conflict ? { status: "stale", conflict } : { status: "stale" };
+      }
+      if (response.status === 412) return { status: "stale" };
       if (response.status === 502 || response.status === 503 || response.status === 504) {
         return { status: "unavailable" };
       }
@@ -128,7 +169,7 @@ export function createFrontendSessionGateway(options: {
       }
     },
     async register(
-      input: Readonly<{ email: string; password: string; displayName?: string | null }>,
+      input: Readonly<{ email: string; password: string; displayName?: string | null; phone?: string | null; referralCode?: string | null; acceptedLegalVersion?: string | null }>,
       persistToken: (token: string) => void
     ): Promise<FrontendRegisterResult> {
       try {
@@ -235,6 +276,62 @@ export function createFrontendSessionGateway(options: {
         return { status: "unavailable" };
       }
     },
+    async phoneRequest(audience: PhoneSignInSite, input: { phone: string }): Promise<void> {
+      await options
+        .fetch(`${origin}/auth/${audience}-phone/request`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json" },
+          body: JSON.stringify(input),
+          cache: "no-store"
+        })
+        .catch(() => undefined);
+    },
+    async phoneVerify(
+      audience: PhoneSignInSite,
+      input: { phone: string; code: string },
+      persistToken: (token: string) => void
+    ): Promise<FrontendSessionResult> {
+      try {
+        const response = await options.fetch(`${origin}/auth/${audience}-phone/verify`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json" },
+          body: JSON.stringify(input),
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403 || response.status === 429) return { status: "denied" };
+        if (response.status === 502 || response.status === 503 || response.status === 504) {
+          return { status: "unavailable" };
+        }
+        if (!response.ok) return { status: "error" };
+        const payload = await response.json();
+        const token = readToken(payload);
+        if (!token) return { status: "error" };
+        persistToken(token);
+        return { status: "ok", payload: sanitizeSessionPayload(payload) };
+      } catch {
+        return { status: "unavailable" };
+      }
+    },
+    // A signed-in user's PDF, such as an invoice. The bytes pass through untouched.
+    async requestPdf(path: string, sessionToken: string | null): Promise<PdfResult> {
+      if (!sessionToken) return { status: "denied" };
+      try {
+        const response = await options.fetch(`${origin}${path}`, {
+          method: "GET",
+          headers: { accept: "application/pdf", authorization: `Bearer ${sessionToken}` },
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 404) return { status: "not_found" };
+        if (response.status === 409) return { status: "stale" };
+        if (!response.ok || !response.arrayBuffer || !(response.headers?.get("content-type") ?? "").startsWith("application/pdf")) {
+          return { status: "error" };
+        }
+        return { status: "ok", bytes: new Uint8Array(await response.arrayBuffer()) };
+      } catch {
+        return { status: "unavailable" };
+      }
+    },
     // Connect Google Calendar for an already-signed-in user (authenticated; no new session).
     googleLinkCalendar(input: { code: string; redirectUri: string }, token: string | null) {
       return request("/worker/google/calendar/link", "POST", token, input);
@@ -243,6 +340,8 @@ export function createFrontendSessionGateway(options: {
     request
   };
 }
+
+export type PhoneSignInSite = "staff" | "employer" | "worker";
 
 function readRetryAfter(value: string | null | undefined) {
   const parsed = Number(value);
@@ -271,7 +370,7 @@ function sanitizeSessionPayload(input: unknown) {
   return {
     authenticated: source.authenticated === true,
     user: source.user
-      ? pickScalar(user, ["id", "publicId", "emailNormalized", "displayName", "status"])
+      ? pickScalar(user, ["id", "publicId", "emailNormalized", "displayName", "status", "emailVerified"])
       : null,
     session: source.session ? pickScalar(session, ["id", "userId", "expiresAt"]) : null
   };

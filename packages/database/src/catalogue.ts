@@ -395,6 +395,166 @@ export const developmentWorkGroups = [
         "Urgent facility maintenance support."
       )
     ]
+  },
+  {
+    key: "pharmacy",
+    displayLabel: "Pharmacy",
+    displayOrder: 50,
+    iconKey: "pill",
+    qualificationSummary: "Pharmacy experience; licences or registrations where the role requires them.",
+    safetyRequirementSummary: "Confidentiality, safe medication handling, and site orientation.",
+    defaultTemplateKey: "pharmacy_request",
+    roles: [
+      role("pharmacy_assistant", "Pharmacy assistant", 10, "Pharmacy assistant support."),
+      role("pharmacy_technician", "Pharmacy technician", 20, "Pharmacy technician support."),
+      role("pharmacy_stock_clerk", "Pharmacy stock clerk", 30, "Pharmacy stock clerk support.")
+    ]
+  },
+  {
+    key: "factory_production",
+    displayLabel: "Factories / Production",
+    displayOrder: 60,
+    iconKey: "factory",
+    qualificationSummary: "Production-line or manufacturing experience.",
+    safetyRequirementSummary: "Safety shoes, PPE, and machine-safety orientation.",
+    defaultTemplateKey: "factory_production_request",
+    roles: [
+      role("production_worker", "Production worker", 10, "Production worker support."),
+      role("machine_operator", "Machine operator", 20, "Machine operator support."),
+      role("assembler", "Assembler", 30, "Assembler support."),
+      role("quality_inspector", "Quality inspector", 40, "Quality inspector support.")
+    ]
+  },
+  {
+    key: "warehouse_logistics",
+    displayLabel: "Warehouse / Logistics",
+    displayOrder: 70,
+    iconKey: "warehouse",
+    qualificationSummary: "Warehouse, picking, or shipping experience.",
+    safetyRequirementSummary: "Safety shoes and lifting or equipment orientation.",
+    defaultTemplateKey: "warehouse_logistics_request",
+    roles: [
+      role("warehouse_associate", "Warehouse associate", 10, "Warehouse associate support."),
+      role("picker_packer", "Picker / packer", 20, "Picker / packer support."),
+      role("forklift_operator", "Forklift operator", 30, "Forklift operator support."),
+      role("inventory_clerk", "Inventory clerk", 40, "Inventory clerk support.")
+    ]
+  },
+  {
+    key: "construction_trades",
+    displayLabel: "Construction / Trades",
+    displayOrder: 80,
+    iconKey: "hammer",
+    qualificationSummary: "Site or trade experience; trade certification where required.",
+    safetyRequirementSummary: "Hard hat, safety boots, PPE, and site safety orientation.",
+    defaultTemplateKey: "construction_trades_request",
+    roles: [
+      role("general_labourer", "General labourer", 10, "General labourer support."),
+      role("carpenter", "Carpenter", 20, "Carpenter support."),
+      role("painter", "Painter", 30, "Painter support."),
+      role("electrician", "Electrician", 40, "Electrician support."),
+      role("plumber", "Plumber", 50, "Plumber support.")
+    ]
+  },
+  {
+    key: "retail_sales",
+    displayLabel: "Retail / Sales",
+    displayOrder: 90,
+    iconKey: "store",
+    qualificationSummary: "Customer-facing retail or sales experience.",
+    safetyRequirementSummary: "Site orientation and safe-lifting awareness.",
+    defaultTemplateKey: "retail_sales_request",
+    roles: [
+      role("sales_associate", "Sales associate", 10, "Sales associate support."),
+      role("cashier", "Cashier", 20, "Cashier support."),
+      role("shelf_stocker", "Shelf stocker", 30, "Shelf stocker support.")
+    ]
+  },
+  {
+    key: "hospitality_events",
+    displayLabel: "Hotels / Events",
+    displayOrder: 100,
+    iconKey: "concierge-bell",
+    qualificationSummary: "Hospitality, front-desk, or event experience.",
+    safetyRequirementSummary: "Uniform and site orientation where required.",
+    defaultTemplateKey: "hospitality_events_request",
+    roles: [
+      role("front_desk_agent", "Front desk agent", 10, "Front desk agent support."),
+      role("event_staff", "Event staff", 20, "Event staff support."),
+      role("server", "Server", 30, "Server support."),
+      role("bartender", "Bartender", 40, "Bartender support.")
+    ]
+  },
+  {
+    key: "transport_delivery",
+    displayLabel: "Transport / Delivery",
+    displayOrder: 110,
+    iconKey: "truck",
+    qualificationSummary: "A valid driver's licence for the vehicle where driving is required.",
+    safetyRequirementSummary: "Vehicle safety checks and safe-loading awareness.",
+    defaultTemplateKey: "transport_delivery_request",
+    roles: [
+      role("delivery_driver", "Delivery driver", 10, "Delivery driver support."),
+      role("courier", "Courier", 20, "Courier support."),
+      role("truck_driver", "Truck driver", 30, "Truck driver support.")
+    ]
+  },
+  {
+    key: "security",
+    displayLabel: "Security",
+    displayOrder: 120,
+    iconKey: "shield",
+    qualificationSummary: "Security experience; licence where required.",
+    safetyRequirementSummary: "Site orientation and incident-reporting procedures.",
+    defaultTemplateKey: "security_request",
+    roles: [
+      role("security_guard", "Security guard", 10, "Security guard support."),
+      role("site_patrol", "Site patrol", 20, "Site patrol support."),
+      role("access_control_agent", "Access control agent", 30, "Access control agent support.")
+    ]
+  },
+  {
+    key: "office_admin",
+    displayLabel: "Office / Admin",
+    displayOrder: 130,
+    iconKey: "briefcase",
+    qualificationSummary: "Office, data-entry, or customer-service experience.",
+    safetyRequirementSummary: "Confidentiality and workplace orientation.",
+    defaultTemplateKey: "office_admin_request",
+    roles: [
+      role("receptionist", "Receptionist", 10, "Receptionist support."),
+      role("data_entry_clerk", "Data entry clerk", 20, "Data entry clerk support."),
+      role("administrative_assistant", "Administrative assistant", 30, "Administrative assistant support."),
+      role("customer_service_agent", "Customer service agent", 40, "Customer service agent support.")
+    ]
+  },
+  {
+    key: "childcare_education",
+    displayLabel: "Childcare / Education",
+    displayOrder: 140,
+    iconKey: "graduation-cap",
+    qualificationSummary: "Childcare or education experience; background checks where required.",
+    safetyRequirementSummary: "Child-safety procedures and site orientation.",
+    defaultTemplateKey: "childcare_education_request",
+    roles: [
+      role("childcare_assistant", "Childcare assistant", 10, "Childcare assistant support."),
+      role("teaching_assistant", "Teaching assistant", 20, "Teaching assistant support."),
+      role("school_support", "School support", 30, "School support support.")
+    ]
+  },
+  {
+    key: "farming_agriculture",
+    displayLabel: "Farming / Agriculture",
+    displayOrder: 150,
+    iconKey: "sprout",
+    qualificationSummary: "Farm, greenhouse, or outdoor work experience.",
+    safetyRequirementSummary: "Weather readiness, safety boots, and equipment orientation.",
+    defaultTemplateKey: "farming_agriculture_request",
+    roles: [
+      role("farm_worker", "Farm worker", 10, "Farm worker support."),
+      role("greenhouse_worker", "Greenhouse worker", 20, "Greenhouse worker support."),
+      role("harvest_worker", "Harvest worker", 30, "Harvest worker support.")
+    ]
   }
 ] as const satisfies readonly DevelopmentWorkGroup[];
 

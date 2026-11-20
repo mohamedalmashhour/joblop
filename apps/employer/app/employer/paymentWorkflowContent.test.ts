@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   employerPaymentStates,
   getPaymentStateSummary,
-  paymentBoundaries,
-  paymentDataTruth,
   paymentFixture,
   paymentWorkflow
 } from "./paymentWorkflowContent";
@@ -36,15 +34,10 @@ describe("Employer payment state workflow content", () => {
   });
 
   it("keeps authorization, settlement, and worker payable separate", () => {
-    expect(paymentBoundaries).toContain("Authorized != Succeeded");
-    expect(paymentBoundaries).toContain("Succeeded employer payment != Worker paid");
     expect(paymentFixture.workerPayableBoundary).toContain("does not confirm worker payable");
   });
 
   it("shows intended methods without claiming integration or exposing credentials", () => {
-    expect(paymentDataTruth).toContain("Stripe is intended but not connected; local fake provider active");
-    expect(paymentDataTruth).toContain("No Québec payment-method surcharge");
-    expect(paymentDataTruth).toContain("No real charge execution");
     expect(paymentFixture.maskedDetails).toBe("Synthetic provider token alias only");
     expect(paymentFixture.methodSummary).toContain("Mastercard");
     expect(paymentFixture.alternativeMethod).toContain("ACSS");

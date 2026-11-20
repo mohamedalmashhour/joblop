@@ -4,8 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { formatRwosDateTime } from "@rwos/shared";
 import type { EmployerDispatchStatus } from "../../../api/job-requests/jobRequestBoundary";
 import { styles } from "../../employerStyles";
+import { useLocale } from "../../../i18n/LocaleProvider";
+import { fill, langOf } from "../../../i18n/localText";
+import { staffingText } from "./staffingText";
 
 export function StaffingProgressPanel({ requestId }: Readonly<{ requestId: string | null }>) {
+  const tx = staffingText[langOf(useLocale())];
   const [status, setStatus] = useState<EmployerDispatchStatus | null>(null);
   const [view, setView] = useState<
     "loading" | "ready" | "denied" | "organization_required" | "unavailable" | "error" | "invalid"
@@ -56,88 +60,79 @@ export function StaffingProgressPanel({ requestId }: Readonly<{ requestId: strin
       <article aria-busy={view === "loading"} aria-live="polite" style={styles.panel}>
         <h2 style={styles.sectionTitle}>
           {view === "loading"
-            ? "Loading staffing progress"
+            ? tx.loadingTitle
             : view === "invalid"
-              ? "Request reference required"
+              ? tx.invalidTitle
               : view === "organization_required"
-                ? "Choose an employer organization"
+                ? tx.chooseTitle
                 : view === "unavailable"
-                  ? "Staffing progress temporarily unavailable"
+                  ? tx.unavailableTitle
                   : view === "error"
-                    ? "Staffing progress could not be loaded"
-                    : "Staffing progress unavailable"}
+                    ? tx.errorTitle
+                    : tx.deniedTitle}
         </h2>
         <p style={styles.sectionCopy}>
           {view === "denied"
-            ? "Sign in through the request calendar with an authorized employer account. This page does not reveal whether an inaccessible request exists."
+            ? tx.deniedBody
             : view === "organization_required"
-              ? "Select the organization whose request calendar you are authorized to view, then reopen staffing progress."
+              ? tx.chooseBody
               : view === "invalid"
-                ? "Open staffing progress from a persisted request in your request calendar."
+                ? tx.invalidBody
                 : view === "loading"
-                  ? "Checking your organization-authorized request status."
+                  ? tx.loadingBody
                   : view === "unavailable"
-                    ? "The staffing service could not be reached. No fixture status or worker identity is substituted, and your request was not changed."
-                    : "A current staffing status could not be confirmed. No fixture status is shown."}
+                    ? tx.unavailableBody
+                    : tx.errorBody}
         </p>
         {view === "unavailable" || view === "error" ? (
           <button onClick={() => void load()} style={styles.secondaryButton} type="button">
-            Try again
+            {tx.retry}
           </button>
         ) : null}
         {view !== "loading" ? (
           <a href="/employer/calendar" style={styles.secondaryButton}>
-            {view === "organization_required" ? "Choose organization" : "Back to request calendar"}
+            {view === "organization_required" ? tx.chooseAction : tx.back}
           </a>
         ) : null}
       </article>
     );
   }
 
-  const copy = stateCopy(status.state);
+  const copy = tx.stages[status.state];
   return (
     <div style={styles.twoColumn}>
       <article style={styles.panel}>
-        <p style={styles.eyebrowDark}>Persisted staffing progress</p>
+        <p style={styles.eyebrowDark}>{tx.eyebrow}</p>
         <h2 style={styles.sectionTitle}>{copy.title}</h2>
         <p style={styles.sectionCopy}>{copy.body}</p>
         {[
-          ["Request", status.requestNumber],
-          ["Workers requested", String(status.requiredWorkerCount)],
-          ["Worker places without a prepared offer", String(status.remainingWorkerCount)]
+          [tx.request, status.requestNumber],
+          [tx.requested, String(status.requiredWorkerCount)],
+          [tx.stillToFill, String(status.remainingWorkerCount)]
         ].map(([label, value]) => (
           <div key={label} style={styles.tintedCard}>
             <strong>{label}</strong>
             <p style={styles.cardText}>{value}</p>
           </div>
         ))}
-        <p style={styles.cardText}>
-          A remaining count of zero does not confirm accepted offers or assignments.
-        </p>
+        <p style={styles.cardText}>{tx.zeroNote}</p>
         {status.updatedAt ? (
           <p style={styles.cardText}>
-            Updated:{" "}
             <time dateTime={status.updatedAt}>
-              {formatRwosDateTime(status.updatedAt, {
-                timeZone: "UTC",
-                dateStyle: "medium",
-                timeStyle: "short"
+              {fill(tx.updated, {
+                date: formatRwosDateTime(status.updatedAt, {
+                  timeZone: "UTC",
+                  dateStyle: "medium",
+                  timeStyle: "short"
+                })
               })}
-            </time>{" "}
-            (UTC)
+            </time>
           </p>
         ) : null}
       </article>
       <article style={styles.panel}>
-        <h2 style={styles.sectionTitle}>Worker offers and assignments</h2>
-        <p style={styles.sectionCopy}>
-          This staffing-progress status does not show whether a worker offer was authorized, sent,
-          delivered, viewed, accepted, declined, expired, withdrawn, or cancelled.
-        </p>
-        <p style={styles.sectionCopy}>
-          This status does not include an authoritative assignment record or worker identity. Worker
-          identities, compensation, candidate details, and platform notes remain hidden.
-        </p>
+        <h2 style={styles.sectionTitle}>{tx.sideTitle}</h2>
+        <p style={styles.sectionCopy}>{tx.sideBody}</p>
       </article>
     </div>
   );
@@ -145,46 +140,4 @@ export function StaffingProgressPanel({ requestId }: Readonly<{ requestId: strin
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
-
-function stateCopy(state: EmployerDispatchStatus["state"]) {
-  const copy: Record<EmployerDispatchStatus["state"], { title: string; body: string }> = {
-    not_started: {
-      title: "Dispatch review has not started",
-      body: "No candidate review, worker offer, or assignment is shown."
-    },
-    draft: {
-      title: "Dispatch review created",
-      body: "Operational candidate review has not started. No worker offer or assignment is confirmed."
-    },
-    active: {
-      title: "Dispatch review active",
-      body: "The operations team is reviewing the request. No worker offer or assignment is confirmed."
-    },
-    candidate_review: {
-      title: "Candidate review in progress",
-      body: "Review does not mean a worker was contacted, offered work, or assigned."
-    },
-    shortlist_ready: {
-      title: "Candidate shortlist prepared",
-      body: "Shortlisting does not mean a worker was contacted, accepted work, or was assigned."
-    },
-    offer_preparation: {
-      title: "Worker-offer preparation in progress",
-      body: "Prepared does not mean sent, delivered, viewed, accepted, or assigned."
-    },
-    paused: {
-      title: "Dispatch review paused",
-      body: "Existing counts do not confirm worker availability, an accepted offer, or coverage."
-    },
-    cancelled: {
-      title: "Dispatch review cancelled",
-      body: "Cancellation does not prove that staffing was arranged elsewhere."
-    },
-    closed: {
-      title: "Dispatch review closed",
-      body: "Confirmed outcomes require authoritative worker-offer and assignment records."
-    }
-  };
-  return copy[state];
 }

@@ -5,6 +5,8 @@
 // per-role hourly rate a job request reads — the request never invents a price.
 // Only an active OWNER/ADMINISTRATOR member of the organization may read or sign it.
 
+import { belowMinimumWageMessage, isBelowMinimumWage } from "@rwos/shared";
+
 const CONTRACT_MANAGER_ROLES: readonly string[] = [
   "ORGANIZATION_OWNER",
   "ORGANIZATION_ADMINISTRATOR"
@@ -188,6 +190,13 @@ export function createEmployerContractService(
       return contract ? toPublicContract(contract) : null;
     },
 
+    // Staff reading a company's rate card before replacing it. Platform-admin authority only.
+    async getActiveContractForPlatform(input: { actorUserId: string; organizationId: string }) {
+      await assertPlatformAdmin(platformAuthority, input.actorUserId);
+      const contract = await repository.findActiveContract(input.organizationId);
+      return contract ? toPublicContract(contract) : null;
+    },
+
     // Publish/replace the governed rate card. Platform-admin authority ONLY — an
     // organization owner/administrator is denied here, so a client cannot create,
     // publish, modify, or override governed rates.
@@ -226,6 +235,11 @@ export function createEmployerContractService(
             "invalid",
             "Each hourly rate must be a non-negative integer (minor units)."
           );
+        }
+        // Québec minimum wage: the worker's pay is this rate minus Joblop's share, so a rate below
+        // the minimum can never pay the worker enough. Refused here, before any job is priced on it.
+        if (isBelowMinimumWage({ workerHourlyRateMinor: rate.hourlyRateMinor, currency, at: now() })) {
+          throw new EmployerContractError("invalid", belowMinimumWageMessage(now()));
         }
         if (seenRoles.has(rate.roleDefinitionId)) {
           throw new EmployerContractError("invalid", "Each role may appear only once in the rate card.");

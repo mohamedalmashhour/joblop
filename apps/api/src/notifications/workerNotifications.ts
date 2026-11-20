@@ -1,9 +1,28 @@
 import type { PrismaClient } from "@rwos/database";
 import type { EmailMessage, EmailSender } from "../mailer/emailSender";
-import { resolveLanguage, type NotificationLanguage } from "./clientNotifications";
+import type { SmsSender } from "../mailer/smsSender";
+import { sendsText } from "./noticeChannels";
+import { intlLocale, resolveWorkerLanguage, type WorkerLanguage } from "./workerLanguage";
+import { workerJobAddress, WORKSITE_ADDRESS_SELECT } from "../worksiteAddress";
+import { pushToWorkers, type PushSender } from "./pushSender";
+import { noticeSms, smsLanguage } from "./smsBrand";
+import { SHIFT_CONDITIONS_SELECT, beforeYouGoEmailBlock, workerShiftConditions, type ShiftConditions } from "../shiftConditions";
+
+// Format a shift start in Québec local time, in the worker's language. Kept simple + fail-soft.
+function formatShiftWhen(startAt: Date, language: WorkerLanguage): string {
+  try {
+    return new Intl.DateTimeFormat(intlLocale(language), {
+      dateStyle: "full",
+      timeStyle: "short",
+      timeZone: "America/Toronto"
+    }).format(startAt);
+  } catch {
+    return startAt.toISOString();
+  }
+}
 
 // Worker-facing notification capsule — the end of the owner's flow: "inform the worker that the
-// money was transferred to their account." Bilingual (FR default for QC), pure copy + a best-effort
+// money was transferred to their account." EN / FR / AR (FR default for QC), pure copy + a best-effort
 // dispatcher that resolves the worker's email from their identity and sends through the gated mailer.
 // It NEVER moves money and NEVER throws into the caller — a missing recipient or unconfigured mailer
 // is a quiet skip. The caller only fires this once a real payout transition to "paid" has happened,
@@ -15,7 +34,7 @@ function formatMoney(amountMinor: number, currency: string): string {
 
 export function payoutPaidEmail(params: {
   to: string;
-  language: NotificationLanguage;
+  language: WorkerLanguage;
   amountMinor: number;
   currency: string;
   // Optional payment reference (Phase 2 test execution records a Stripe TEST transfer id or a
@@ -27,20 +46,30 @@ export function payoutPaidEmail(params: {
   if (params.language === "en") {
     return {
       to: params.to,
-      subject: "JobLop — your payment has been sent",
+      subject: "Joblop — your payment has been sent",
       text:
         `Your payment of ${amount} has been transferred to your account.\n\n` +
         (ref ? `Reference: ${ref}\n\n` : "") +
-        `Thanks for the work you did through JobLop. This completes the transaction.\n\n— JobLop`
+        `Thanks for the work you did through Joblop. This completes the transaction.\n\n— Joblop`
+    };
+  }
+  if (params.language === "ar") {
+    return {
+      to: params.to,
+      subject: "Joblop — تم إرسال دفعتك",
+      text:
+        `تم تحويل دفعتك البالغة ${amount} إلى حسابك.\n\n` +
+        (ref ? `المرجع: ${ref}\n\n` : "") +
+        `شكرًا على العمل الذي قمت به عبر Joblop. بهذا تكتمل المعاملة.\n\n— Joblop`
     };
   }
   return {
     to: params.to,
-    subject: "JobLop — votre paiement a été envoyé",
+    subject: "Joblop — votre paiement a été envoyé",
     text:
       `Votre paiement de ${amount} a été transféré dans votre compte.\n\n` +
       (ref ? `Référence : ${ref}\n\n` : "") +
-      `Merci pour le travail effectué via JobLop. Ceci complète la transaction.\n\n— JobLop`
+      `Merci pour le travail effectué via Joblop. Ceci complète la transaction.\n\n— Joblop`
   };
 }
 
@@ -49,7 +78,7 @@ export function payoutPaidEmail(params: {
 // this tells the worker the amount is confirmed as theirs and will be transferred on the normal cycle.
 export function payoutRegisteredEmail(params: {
   to: string;
-  language: NotificationLanguage;
+  language: WorkerLanguage;
   amountMinor: number;
   currency: string;
 }): EmailMessage {
@@ -57,26 +86,36 @@ export function payoutRegisteredEmail(params: {
   if (params.language === "en") {
     return {
       to: params.to,
-      subject: "JobLop — your earnings are now confirmed",
+      subject: "Joblop — your earnings are now confirmed",
       text:
         `${amount} is now registered in your account.\n\n` +
         `This amount is confirmed as yours and will be transferred to you on the normal payment cycle. ` +
-        `You will get a second message once the transfer has been sent.\n\n— JobLop`
+        `You will get a second message once the transfer has been sent.\n\n— Joblop`
+    };
+  }
+  if (params.language === "ar") {
+    return {
+      to: params.to,
+      subject: "Joblop — أرباحك مؤكدة الآن",
+      text:
+        `تم تسجيل ${amount} في حسابك.\n\n` +
+        `هذا المبلغ مؤكد لك وسيُحوَّل إليك في دورة الدفع المعتادة. ` +
+        `ستصلك رسالة ثانية عند إرسال التحويل.\n\n— Joblop`
     };
   }
   return {
     to: params.to,
-    subject: "JobLop — vos gains sont maintenant confirmés",
+    subject: "Joblop — vos gains sont maintenant confirmés",
     text:
       `${amount} est maintenant enregistré dans votre compte.\n\n` +
       `Ce montant vous est confirmé et vous sera transféré selon le cycle de paiement habituel. ` +
-      `Vous recevrez un second message une fois le transfert effectué.\n\n— JobLop`
+      `Vous recevrez un second message une fois le transfert effectué.\n\n— Joblop`
   };
 }
 
 export function accountPenaltyEmail(params: {
   to: string;
-  language: NotificationLanguage;
+  language: WorkerLanguage;
   penalty: "suspend" | "permanent_close";
   suspensionDays: number;
 }): EmailMessage {
@@ -84,19 +123,174 @@ export function accountPenaltyEmail(params: {
   if (params.language === "en") {
     return {
       to: params.to,
-      subject: suspend ? "JobLop — your account is suspended" : "JobLop — your account has been closed",
+      subject: suspend ? "Joblop — your account is suspended" : "Joblop — your account has been closed",
       text: suspend
-        ? `Because you cancelled a confirmed job less than 24 hours before it started, your JobLop account is suspended for ${params.suspensionDays} days. It will be reactivated automatically after that. Repeated late cancellations lead to permanent closure.\n\n— JobLop`
-        : `Because of repeated late cancellations of confirmed jobs, your JobLop account has been closed.\n\n— JobLop`
+        ? `Because you cancelled a confirmed job less than 24 hours before it started, your Joblop account is suspended for ${params.suspensionDays} days. It will be reactivated automatically after that. Repeated late cancellations lead to permanent closure.\n\n— Joblop`
+        : `Because of repeated late cancellations of confirmed jobs, your Joblop account has been closed.\n\n— Joblop`
+    };
+  }
+  if (params.language === "ar") {
+    return {
+      to: params.to,
+      subject: suspend ? "Joblop — تم تعليق حسابك" : "Joblop — تم إغلاق حسابك",
+      text: suspend
+        ? `لأنك ألغيت عملًا مؤكدًا قبل أقل من 24 ساعة من بدايته، تم تعليق حسابك في Joblop لمدة ${params.suspensionDays} أيام. سيُعاد تفعيله تلقائيًا بعد ذلك. تكرار الإلغاء المتأخر يؤدي إلى الإغلاق النهائي.\n\n— Joblop`
+        : `بسبب تكرار الإلغاء المتأخر لأعمال مؤكدة، تم إغلاق حسابك في Joblop.\n\n— Joblop`
     };
   }
   return {
     to: params.to,
-    subject: suspend ? "JobLop — votre compte est suspendu" : "JobLop — votre compte a été fermé",
+    subject: suspend ? "Joblop — votre compte est suspendu" : "Joblop — votre compte a été fermé",
     text: suspend
-      ? `Parce que vous avez annulé un travail confirmé moins de 24 heures avant le début, votre compte JobLop est suspendu pour ${params.suspensionDays} jours. Il sera réactivé automatiquement par la suite. Des annulations tardives répétées entraînent une fermeture définitive.\n\n— JobLop`
-      : `En raison d'annulations tardives répétées de travaux confirmés, votre compte JobLop a été fermé.\n\n— JobLop`
+      ? `Parce que vous avez annulé un travail confirmé moins de 24 heures avant le début, votre compte Joblop est suspendu pour ${params.suspensionDays} jours. Il sera réactivé automatiquement par la suite. Des annulations tardives répétées entraînent une fermeture définitive.\n\n— Joblop`
+      : `En raison d'annulations tardives répétées de travaux confirmés, votre compte Joblop a été fermé.\n\n— Joblop`
   };
+}
+
+// Check-in opens 30 minutes before the start (checkInWindow.ts), in Toronto time.
+function checkInOpensClock(startAt: Date, language: WorkerLanguage): string {
+  const opens = new Date(startAt.getTime() - 30 * 60_000);
+  try {
+    return new Intl.DateTimeFormat(intlLocale(language), { timeStyle: "short", timeZone: "America/Toronto" }).format(opens);
+  } catch {
+    return opens.toISOString();
+  }
+}
+
+// "You got the job!" — confirmation that a worker is assigned to a shift. Email copy, bilingual.
+export function assignedJobEmail(params: {
+  to: string;
+  language: WorkerLanguage;
+  title: string;
+  startAt: Date;
+  address?: string | null;
+  jobUrl?: string | null;
+  /** "Before you go": break, dress code, equipment, arrival, notes for workers (when stated). */
+  conditions?: ShiftConditions | null;
+}): EmailMessage {
+  const when = formatShiftWhen(params.startAt, params.language);
+  const link = params.jobUrl?.trim() || null;
+  const beforeYouGo = beforeYouGoEmailBlock(params.conditions ?? null, params.language);
+  // On the day the worker checks in from the job page: say from when, with the link.
+  const opens = checkInOpensClock(params.startAt, params.language);
+  if (params.language === "en") {
+    return {
+      to: params.to,
+      subject: "Joblop — you got the job!",
+      text:
+        `Good news — you're confirmed for "${params.title}".\n\n` +
+        `When: ${when}\n\n` +
+        (params.address ? `Where: ${params.address}\n\n` : "") +
+        beforeYouGo +
+        (link
+          ? `See the job details and the map: ${link}\n\nOn the day, open this page to check in from ${opens}: ${link}\n\nSee you there!\n\n— Joblop`
+          : `Open Joblop to see the full details in your schedule. See you there!\n\n— Joblop`)
+    };
+  }
+  if (params.language === "ar") {
+    return {
+      to: params.to,
+      subject: "Joblop — حصلت على العمل!",
+      text:
+        `خبر سار — تم تأكيدك في «${params.title}».\n\n` +
+        `متى: ${when}\n\n` +
+        (params.address ? `أين: ${params.address}\n\n` : "") +
+        beforeYouGo +
+        (link
+          ? `تفاصيل العمل والخريطة هنا: ${link}\n\nفي يوم العمل، افتح هذه الصفحة لتسجيل وصولك ابتداءً من الساعة ${opens}: ${link}\n\nنراك هناك!\n\n— Joblop`
+          : `افتح Joblop لرؤية كل التفاصيل في جدولك. نراك هناك!\n\n— Joblop`)
+    };
+  }
+  return {
+    to: params.to,
+    subject: "Joblop — vous avez obtenu le travail !",
+    text:
+      `Bonne nouvelle — vous êtes confirmé(e) pour « ${params.title} ».\n\n` +
+      `Quand : ${when}\n\n` +
+      (params.address ? `Où : ${params.address}\n\n` : "") +
+      beforeYouGo +
+      (link
+        ? `Voir les détails du travail et la carte : ${link}\n\nLe jour même, ouvrez cette page pour pointer votre arrivée à partir de ${opens} : ${link}\n\nÀ bientôt !\n\n— Joblop`
+        : `Ouvrez Joblop pour voir tous les détails dans votre horaire. À bientôt !\n\n— Joblop`)
+  };
+}
+
+// Short SMS twin of assignedJobEmail (SMS is billed per message, so keep it tight).
+export function assignedJobSmsText(raw: {
+  language: WorkerLanguage;
+  title: string;
+  startAt: Date;
+  jobUrl?: string | null;
+}): string {
+  const params = { ...raw, language: smsLanguage(raw.language) };
+  const when = formatShiftWhen(params.startAt, params.language);
+  const link = params.jobUrl?.trim() || null;
+  if (params.language === "ar") return noticeSms("ar", `حصلت على العمل! «${params.title}» — ${when}. ${link ? `التفاصيل: ${link}` : "التفاصيل في التطبيق."}`);
+  return params.language === "en"
+    ? noticeSms("en", `you got the job! "${params.title}" - ${when}. ${link ? `Details and map: ${link}` : "Details in the app."}`)
+    : noticeSms("fr", `travail obtenu! "${params.title}" - ${when}. ${link ? `Détails et carte: ${link}` : "Détails dans l'app."}`);
+}
+
+// Pre-shift reminder — "your shift is coming up". Email copy, bilingual.
+export function shiftReminderEmail(params: {
+  to: string;
+  language: WorkerLanguage;
+  title: string;
+  startAt: Date;
+  jobUrl?: string | null;
+}): EmailMessage {
+  const when = formatShiftWhen(params.startAt, params.language);
+  const link = params.jobUrl?.trim() || null;
+  if (params.language === "en") {
+    return {
+      to: params.to,
+      subject: "Joblop — reminder: your shift is coming up",
+      text:
+        `This is a reminder for your upcoming shift "${params.title}".\n\n` +
+        `When: ${when}\n\n` +
+        (link
+          ? `See the job details and the map: ${link}\n\nPlease arrive on time.\n\n— Joblop`
+          : `Open Joblop for the full details. Please arrive on time.\n\n— Joblop`)
+    };
+  }
+  if (params.language === "ar") {
+    return {
+      to: params.to,
+      subject: "Joblop — تذكير: موعد مناوبتك يقترب",
+      text:
+        `هذا تذكير بمناوبتك القادمة «${params.title}».\n\n` +
+        `متى: ${when}\n\n` +
+        (link
+          ? `تفاصيل العمل والخريطة هنا: ${link}\n\nيُرجى الحضور في الموعد.\n\n— Joblop`
+          : `افتح Joblop لرؤية كل التفاصيل. يُرجى الحضور في الموعد.\n\n— Joblop`)
+    };
+  }
+  return {
+    to: params.to,
+    subject: "Joblop — rappel : votre quart approche",
+    text:
+      `Rappel pour votre prochain quart « ${params.title} ».\n\n` +
+      `Quand : ${when}\n\n` +
+      (link
+        ? `Voir les détails du travail et la carte : ${link}\n\nMerci d'arriver à l'heure.\n\n— Joblop`
+        : `Ouvrez Joblop pour tous les détails. Merci d'arriver à l'heure.\n\n— Joblop`)
+  };
+}
+
+// Short SMS twin of shiftReminderEmail.
+export function shiftReminderSmsText(raw: {
+  language: WorkerLanguage;
+  title: string;
+  startAt: Date;
+  jobUrl?: string | null;
+}): string {
+  const params = { ...raw, language: smsLanguage(raw.language) };
+  const when = formatShiftWhen(params.startAt, params.language);
+  const link = params.jobUrl?.trim() || null;
+  if (params.language === "ar") return noticeSms("ar", `تذكير: «${params.title}» — ${when}. ${link ? `التفاصيل: ${link}` : "التفاصيل في التطبيق."}`);
+  return params.language === "en"
+    ? noticeSms("en", `reminder: "${params.title}" - ${when}. ${link ? `Details and map: ${link}` : "Details in the app."}`)
+    : noticeSms("fr", `rappel: "${params.title}" - ${when}. ${link ? `Détails et carte: ${link}` : "Détails dans l'app."}`);
 }
 
 export type WorkerPayoutNotificationResult = Readonly<{
@@ -107,18 +301,21 @@ export type WorkerPayoutNotificationResult = Readonly<{
 export async function notifyWorkerPayoutPaid(
   prisma: PrismaClient,
   emailSender: EmailSender,
-  input: { workerIdentityId: string; amountMinor: number; currency: string; reference?: string | null }
+  input: { workerIdentityId: string; amountMinor: number; currency: string; reference?: string | null },
+  // Only the paths that just moved the payout to "paid" pass this, so a retried email never re-pushes.
+  pushSender?: PushSender
 ): Promise<WorkerPayoutNotificationResult> {
   try {
     const identity = await prisma.workerIdentity.findUnique({
       where: { id: input.workerIdentityId },
-      select: { user: { select: { emailNormalized: true, primaryLanguage: true } } }
+      select: { userId: true, user: { select: { emailNormalized: true, primaryLanguage: true } } }
     });
+    if (identity?.userId) await pushToWorkers(pushSender, [identity.userId], "payout_paid");
     const email = identity?.user?.emailNormalized;
     if (!email) return { status: "no_recipient" };
     const message = payoutPaidEmail({
       to: email,
-      language: resolveLanguage(identity?.user?.primaryLanguage),
+      language: resolveWorkerLanguage(identity?.user?.primaryLanguage),
       amountMinor: input.amountMinor,
       currency: input.currency,
       reference: input.reference ?? null
@@ -145,7 +342,7 @@ export async function notifyWorkerPayoutRegistered(
     if (!email) return { status: "no_recipient" };
     const message = payoutRegisteredEmail({
       to: email,
-      language: resolveLanguage(identity?.user?.primaryLanguage),
+      language: resolveWorkerLanguage(identity?.user?.primaryLanguage),
       amountMinor: input.amountMinor,
       currency: input.currency
     });
@@ -171,7 +368,7 @@ export async function notifyWorkerAccountPenalty(
     if (!email) return { status: "no_recipient" };
     const message = accountPenaltyEmail({
       to: email,
-      language: resolveLanguage(identity?.user?.primaryLanguage),
+      language: resolveWorkerLanguage(identity?.user?.primaryLanguage),
       penalty: input.penalty,
       suspensionDays: input.suspensionDays
     });
@@ -179,5 +376,471 @@ export async function notifyWorkerAccountPenalty(
     return { status: result.status === "sent" ? "sent" : result.status === "error" ? "error" : "skipped" };
   } catch {
     return { status: "error" };
+  }
+}
+
+// "You got the job!" — notify a worker (by userId) that they are confirmed for a shift. Sends email
+// AND, when enabled + a phone is on file, SMS. Best-effort: resolves the user + job, never throws.
+export async function notifyWorkerAssigned(
+  prisma: PrismaClient,
+  emailSender: EmailSender,
+  smsSender: SmsSender | undefined,
+  input: { userId: string; jobRequestId: string; workerWebOrigin?: string | null },
+  pushSender?: PushSender
+): Promise<WorkerPayoutNotificationResult> {
+  try {
+    const [user, job] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: input.userId },
+        select: { emailNormalized: true, phone: true, primaryLanguage: true }
+      }),
+      prisma.jobRequest.findUnique({
+        where: { id: input.jobRequestId },
+        select: { title: true, startAt: true, roleDefinition: { select: { displayLabel: true } }, residence: { select: WORKSITE_ADDRESS_SELECT }, calendarProfile: { select: { addressSummary: true, ...SHIFT_CONDITIONS_SELECT } } }
+      })
+    ]);
+    if (job) {
+      await pushToWorkers(pushSender, [input.userId], "shift_confirmed", {
+        role: job.roleDefinition?.displayLabel?.trim() || job.title,
+        jobRequestId: input.jobRequestId
+      });
+    }
+    // Workers sign in by phone, so many have no email. The text must go out on its own: never make
+    // it depend on an email address being on file (owner's first real job: no text, no email).
+    const email = user?.emailNormalized;
+    const textable = Boolean(smsSender && user?.phone && sendsText("shift_confirmed"));
+    if (!job || (!email && !textable)) return { status: "no_recipient" };
+    const language = resolveWorkerLanguage(user?.primaryLanguage);
+    // The job page shows every detail plus the map and directions (address is shown once assigned).
+    const origin = input.workerWebOrigin?.trim().replace(/\/+$/, "");
+    const jobUrl = origin ? `${origin}/jobs/${encodeURIComponent(input.jobRequestId)}` : null;
+    let texted = false;
+    if (textable && smsSender && user?.phone) {
+      texted = await smsSender
+        .send({ to: user.phone, text: assignedJobSmsText({ language, title: job.title, startAt: job.startAt, jobUrl }) })
+        .then((sent) => sent.status === "sent", () => false);
+    }
+    if (!email) return { status: texted ? "sent" : "error" };
+    const result = await emailSender.send(
+      assignedJobEmail({
+        to: email,
+        language,
+        title: job.title,
+        startAt: job.startAt,
+        address: workerJobAddress(job.calendarProfile?.addressSummary, job.residence),
+        jobUrl,
+        // The worker now holds the shift, so arrival instructions are included.
+        conditions: workerShiftConditions(job.calendarProfile, true)
+      })
+    );
+    return { status: result.status === "sent" || texted ? "sent" : result.status === "error" ? "error" : "skipped" };
+  } catch {
+    return { status: "error" };
+  }
+}
+
+// ── Shift cancelled / shift changed ──────────────────────────────────────────────────────────────
+// A worker who holds a shift (or was sent an offer for it) must hear at once when it is cancelled
+// or changed, so they do not travel to a shift that is gone or arrive at the wrong time or place.
+// Urgent, so by text always, plus email (noticeChannels: shift_cancelled / shift_changed).
+
+// What a worker needs to recognise the shift: role, when, and the area (city level, never the street).
+export type ShiftNoticeDetails = Readonly<{
+  role: string;
+  startAt: Date;
+  endAt: Date;
+  timeZone: string;
+  area: string | null;
+}>;
+
+function formatInZone(date: Date, language: WorkerLanguage, timeZone: string, options: Intl.DateTimeFormatOptions): string {
+  const locale = intlLocale(language);
+  try {
+    return new Intl.DateTimeFormat(locale, { ...options, timeZone }).format(date);
+  } catch {
+    try {
+      return new Intl.DateTimeFormat(locale, { ...options, timeZone: "America/Toronto" }).format(date);
+    } catch {
+      return date.toISOString();
+    }
+  }
+}
+
+function shiftDate(shift: Pick<ShiftNoticeDetails, "startAt" | "timeZone">, language: WorkerLanguage): string {
+  return formatInZone(shift.startAt, language, shift.timeZone, { dateStyle: "medium" });
+}
+
+function shiftDateTime(shift: Pick<ShiftNoticeDetails, "startAt" | "timeZone">, language: WorkerLanguage): string {
+  return formatInZone(shift.startAt, language, shift.timeZone, { dateStyle: "medium", timeStyle: "short" });
+}
+
+function timeRange(startAt: Date, endAt: Date, language: WorkerLanguage, timeZone: string): string {
+  const opts: Intl.DateTimeFormatOptions = { timeStyle: "short" };
+  return `${formatInZone(startAt, language, timeZone, opts)}–${formatInZone(endAt, language, timeZone, opts)}`;
+}
+
+function calendarLine(workerWebOrigin: string | null | undefined, language: WorkerLanguage): string {
+  const origin = workerWebOrigin?.trim().replace(/\/+$/, "");
+  if (language === "ar") return origin ? `يمكنك مراجعة تقويمك هنا: ${origin}/jobs-calendar` : "افتح Joblop لمراجعة تقويمك.";
+  if (origin) return language === "en" ? `See your calendar: ${origin}/jobs-calendar` : `Voir votre calendrier : ${origin}/jobs-calendar`;
+  return language === "en" ? "Open Joblop to see your calendar." : "Ouvrez Joblop pour voir votre calendrier.";
+}
+
+export type ShiftCancelledCopyInput = Readonly<{
+  language: WorkerLanguage;
+  shift: ShiftNoticeDetails;
+  cancelledBy: "employer" | "staff";
+  // True when the worker had only been sent an offer for the shift, not assigned to it.
+  offerOnly?: boolean;
+  // No free-text reason: what staff or the employer typed is internal and never reaches the worker.
+  // The email says only who cancelled (Joblop or the employer).
+  workerWebOrigin?: string | null;
+}>;
+
+export function shiftCancelledSmsText(input: Pick<ShiftCancelledCopyInput, "language" | "shift" | "offerOnly">): string {
+  const { shift } = input;
+  const language = smsLanguage(input.language);
+  const when = shiftDateTime(shift, language);
+  if (language === "en") {
+    const where = shift.area ? ` at ${shift.area}` : "";
+    return input.offerOnly
+      ? noticeSms("en", `the shift you were offered, ${shift.role} on ${when}${where}, was cancelled. Check your calendar.`)
+      : noticeSms("en", `your shift ${shift.role} on ${when}${where} was cancelled. Check your calendar.`);
+  }
+  if (language === "ar") {
+    const whereAr = shift.area ? ` في ${shift.area}` : "";
+    return input.offerOnly
+      ? noticeSms("ar", `أُلغيت المناوبة التي عُرضت عليك، ${shift.role} في ${when}${whereAr}. راجع تقويمك.`)
+      : noticeSms("ar", `أُلغيت مناوبتك ${shift.role} في ${when}${whereAr}. راجع تقويمك.`);
+  }
+  const where = shift.area ? ` à ${shift.area}` : "";
+  return input.offerOnly
+    ? noticeSms("fr", `le quart offert, ${shift.role} le ${when}${where}, a été annulé. Voir votre calendrier.`)
+    : noticeSms("fr", `votre quart ${shift.role} le ${when}${where} a été annulé. Voir votre calendrier.`);
+}
+
+export function shiftCancelledEmail(input: ShiftCancelledCopyInput & { to: string }): EmailMessage {
+  const { language, shift } = input;
+  const when = shiftDateTime(shift, language);
+  if (language === "en") {
+    const where = shift.area ? ` at ${shift.area}` : "";
+    const who = input.cancelledBy === "employer" ? "by the employer" : "by Joblop";
+    return {
+      to: input.to,
+      subject: "Joblop — your shift was cancelled",
+      text:
+        (input.offerOnly
+          ? `The shift you were offered, "${shift.role}" on ${when}${where}, was cancelled ${who}. The offer no longer applies.\n\n`
+          : `Your shift "${shift.role}" on ${when}${where} was cancelled ${who}. You do not need to go.\n\n`) +
+        `${calendarLine(input.workerWebOrigin, language)}\n\n` +
+        `If you were already on your way, contact Joblop.\n\n— Joblop`
+    };
+  }
+  if (language === "ar") {
+    const whereAr = shift.area ? ` في ${shift.area}` : "";
+    const whoAr = input.cancelledBy === "employer" ? "صاحب العمل" : "فريق Joblop";
+    return {
+      to: input.to,
+      subject: "Joblop — أُلغيت مناوبتك",
+      text:
+        (input.offerOnly
+          ? `نأسف، أُلغيت المناوبة التي عُرضت عليك (${shift.role}) يوم ${when}${whereAr}. ألغاها ${whoAr}، ولم يعد هذا العرض متاحًا.\n\n`
+          : `نأسف، أُلغيت مناوبتك (${shift.role}) يوم ${when}${whereAr}. ألغاها ${whoAr}، فلا حاجة إلى الذهاب إلى موقع العمل.\n\n`) +
+        `${calendarLine(input.workerWebOrigin, language)}\n\n` +
+        `إذا كنت في طريقك إلى العمل الآن، يُرجى التواصل مع Joblop.\n\n— Joblop`
+    };
+  }
+  const where = shift.area ? ` à ${shift.area}` : "";
+  const who = input.cancelledBy === "employer" ? "par l'employeur" : "par Joblop";
+  return {
+    to: input.to,
+    subject: "Joblop — votre quart a été annulé",
+    text:
+      (input.offerOnly
+        ? `Le quart qui vous était offert, « ${shift.role} » le ${when}${where}, a été annulé ${who}. L'offre ne s'applique plus.\n\n`
+        : `Votre quart « ${shift.role} » le ${when}${where} a été annulé ${who}. Vous n'avez pas à vous présenter.\n\n`) +
+      `${calendarLine(input.workerWebOrigin, language)}\n\n` +
+      `Si vous étiez déjà en route, communiquez avec Joblop.\n\n— Joblop`
+  };
+}
+
+// What changed on a shift, as data; turned into a short plain sentence in the worker's language.
+export type ShiftChangeSummary = Readonly<{
+  // New start/end. `dateChanged` says the day moved (else only the time did).
+  newStartAt?: Date;
+  newEndAt?: Date;
+  dateChanged?: boolean;
+  newRole?: string;
+  newPlace?: string;
+  // A pending change was settled: "final" = it now applies; "withdrawn" = the original details stay.
+  outcome?: "final" | "withdrawn";
+}>;
+
+export function describeShiftChange(change: ShiftChangeSummary, language: WorkerLanguage, timeZone: string): string {
+  const en = language === "en";
+  if (language === "ar") return describeShiftChangeAr(change, timeZone);
+  const parts: string[] = [];
+  if (change.newStartAt && change.newEndAt) {
+    const range = timeRange(change.newStartAt, change.newEndAt, language, timeZone);
+    if (change.dateChanged) {
+      const day = formatInZone(change.newStartAt, language, timeZone, { dateStyle: "medium" });
+      parts.push(en ? `new date ${day}, ${range}` : `nouvelle date ${day}, ${range}`);
+    } else {
+      parts.push(en ? `new time ${range}` : `nouvel horaire ${range}`);
+    }
+  }
+  if (change.newRole) parts.push(en ? `new role ${change.newRole}` : `nouveau poste ${change.newRole}`);
+  if (change.newPlace) parts.push(en ? `new place ${change.newPlace}` : `nouveau lieu ${change.newPlace}`);
+  if (change.outcome === "final") parts.push(en ? "the change is now final" : "le changement est maintenant confirmé");
+  if (change.outcome === "withdrawn") {
+    parts.push(en ? "the change was dropped, your original details stay" : "le changement est abandonné, vos détails d'origine restent");
+  }
+  return parts.join("; ") || (en ? "details updated" : "détails mis à jour");
+}
+
+function describeShiftChangeAr(change: ShiftChangeSummary, timeZone: string): string {
+  const parts: string[] = [];
+  if (change.newStartAt && change.newEndAt) {
+    const range = timeRange(change.newStartAt, change.newEndAt, "ar", timeZone);
+    if (change.dateChanged) {
+      const day = formatInZone(change.newStartAt, "ar", timeZone, { dateStyle: "medium" });
+      parts.push(`تاريخ جديد ${day}، ${range}`);
+    } else {
+      parts.push(`وقت جديد ${range}`);
+    }
+  }
+  if (change.newRole) parts.push(`وظيفة جديدة ${change.newRole}`);
+  if (change.newPlace) parts.push(`مكان جديد ${change.newPlace}`);
+  if (change.outcome === "final") parts.push("أصبح التغيير نهائيًا");
+  if (change.outcome === "withdrawn") parts.push("أُلغي التغيير، وتبقى تفاصيلك الأصلية");
+  return parts.join("؛ ") || "تم تحديث التفاصيل";
+}
+
+export function shiftChangedSmsText(input: { language: WorkerLanguage; shift: ShiftNoticeDetails; summary: ShiftChangeSummary }): string {
+  const { shift } = input;
+  const language = smsLanguage(input.language);
+  const what = describeShiftChange(input.summary, language, shift.timeZone);
+  if (language === "ar") return noticeSms("ar", `تغيّرت مناوبتك ${shift.role} في ${shiftDate(shift, language)}: ${what}. التفاصيل في تقويمك.`);
+  return language === "en"
+    ? noticeSms("en", `your shift ${shift.role} on ${shiftDate(shift, language)} changed: ${what}. Open your calendar to see the new details.`)
+    : noticeSms("fr", `votre quart ${shift.role} le ${shiftDate(shift, language)} a changé: ${what}. Voir les détails dans votre calendrier.`);
+}
+
+export function shiftChangedEmail(input: {
+  to: string;
+  language: WorkerLanguage;
+  shift: ShiftNoticeDetails;
+  summary: ShiftChangeSummary;
+  workerWebOrigin?: string | null;
+}): EmailMessage {
+  const { language, shift } = input;
+  const what = describeShiftChange(input.summary, language, shift.timeZone);
+  const when = shiftDateTime(shift, language);
+  if (language === "en") {
+    const where = shift.area ? ` at ${shift.area}` : "";
+    return {
+      to: input.to,
+      subject: "Joblop — your shift has changed",
+      text:
+        `Your shift "${shift.role}" on ${when}${where} has changed: ${what}.\n\n` +
+        `${calendarLine(input.workerWebOrigin, language)}\n\n` +
+        `If you can no longer work this shift, contact Joblop.\n\n— Joblop`
+    };
+  }
+  if (language === "ar") {
+    const whereAr = shift.area ? ` في ${shift.area}` : "";
+    return {
+      to: input.to,
+      subject: "Joblop — تغيّرت مناوبتك",
+      text:
+        `تغيّرت مناوبتك «${shift.role}» في ${when}${whereAr}: ${what}.\n\n` +
+        `${calendarLine(input.workerWebOrigin, language)}\n\n` +
+        `إذا لم تعد قادرًا على العمل في هذه المناوبة، تواصل مع Joblop.\n\n— Joblop`
+    };
+  }
+  const where = shift.area ? ` à ${shift.area}` : "";
+  return {
+    to: input.to,
+    subject: "Joblop — votre quart a changé",
+    text:
+      `Votre quart « ${shift.role} » le ${when}${where} a changé : ${what}.\n\n` +
+      `${calendarLine(input.workerWebOrigin, language)}\n\n` +
+      `Si vous ne pouvez plus faire ce quart, communiquez avec Joblop.\n\n— Joblop`
+  };
+}
+
+// One worker to tell. `offerOnly` only applies to cancellations. Cancellation notices never promise
+// pay: owner decision 2026-11-09, Joblop reviews a late employer cancellation with each worker.
+export type ShiftNoticeWorker = Readonly<{ userId: string; offerOnly?: boolean }>;
+
+export type ShiftNoticeResult = Readonly<{ sent: number; skipped: number; failed: number }>;
+
+type ShiftNoticeRecipient = Readonly<{ worker: ShiftNoticeWorker; email: string | null; phone: string | null; language: WorkerLanguage }>;
+
+async function loadShiftNoticeContext(
+  prisma: PrismaClient,
+  jobRequestId: string,
+  workers: readonly ShiftNoticeWorker[]
+): Promise<{ shift: ShiftNoticeDetails; recipients: ShiftNoticeRecipient[] } | null> {
+  // One notice per worker, even when they appear twice (e.g. an offer and its assignment).
+  const unique = [...new Map(workers.map((w) => [w.userId, w] as const)).values()];
+  if (unique.length === 0) return null;
+  const [job, users] = await Promise.all([
+    prisma.jobRequest.findUnique({
+      where: { id: jobRequestId },
+      select: {
+        title: true,
+        startAt: true,
+        endAt: true,
+        timezone: true,
+        roleDefinition: { select: { displayLabel: true } },
+        residence: { select: { city: true, region: true, province: true } }
+      }
+    }),
+    prisma.user.findMany({
+      where: { id: { in: unique.map((w) => w.userId) } },
+      select: { id: true, emailNormalized: true, phone: true, primaryLanguage: true }
+    })
+  ]);
+  if (!job) return null;
+  const byId = new Map(users.map((u) => [u.id, u] as const));
+  const shift: ShiftNoticeDetails = {
+    role: job.roleDefinition?.displayLabel?.trim() || job.title,
+    startAt: job.startAt,
+    endAt: job.endAt,
+    timeZone: job.timezone || "America/Toronto",
+    area: job.residence?.city?.trim() || job.residence?.region?.trim() || job.residence?.province?.trim() || null
+  };
+  const recipients = unique.map((worker) => {
+    const user = byId.get(worker.userId);
+    return {
+      worker,
+      email: user?.emailNormalized ?? null,
+      phone: user?.phone ?? null,
+      language: resolveWorkerLanguage(user?.primaryLanguage)
+    };
+  });
+  return { shift, recipients };
+}
+
+async function deliverShiftNotice(
+  recipient: ShiftNoticeRecipient,
+  emailSender: EmailSender,
+  smsSender: SmsSender | undefined,
+  textAllowed: boolean,
+  build: () => { email: EmailMessage | null; sms: string }
+): Promise<"sent" | "skipped" | "failed"> {
+  try {
+    const { email, sms } = build();
+    let delivered = false;
+    let failed = false;
+    if (email) {
+      const result = await emailSender.send(email).catch(() => ({ status: "error" }) as const);
+      if (result.status === "sent") delivered = true;
+      if (result.status === "error") failed = true;
+    }
+    if (smsSender && recipient.phone && textAllowed) {
+      const result = await smsSender.send({ to: recipient.phone, text: sms }).catch(() => ({ status: "error" }) as const);
+      if (result.status === "sent") delivered = true;
+      if (result.status === "error") failed = true;
+    }
+    return failed ? "failed" : delivered ? "sent" : "skipped";
+  } catch {
+    return "failed";
+  }
+}
+
+function tally(outcomes: readonly ("sent" | "skipped" | "failed")[]): ShiftNoticeResult {
+  return {
+    sent: outcomes.filter((o) => o === "sent").length,
+    skipped: outcomes.filter((o) => o === "skipped").length,
+    failed: outcomes.filter((o) => o === "failed").length
+  };
+}
+
+// Tell each worker who held (or was sent an offer for) the shift that it was cancelled: text always
+// + email. Best-effort; never throws into the request path. The caller collects the workers BEFORE
+// the cancel changes any status, and calls this only after the cancel succeeded.
+export async function notifyWorkersShiftCancelled(
+  prisma: PrismaClient,
+  emailSender: EmailSender,
+  smsSender: SmsSender | undefined,
+  input: {
+    jobRequestId: string;
+    workers: readonly ShiftNoticeWorker[];
+    cancelledBy: "employer" | "staff";
+    workerWebOrigin?: string | null;
+  },
+  pushSender?: PushSender
+): Promise<ShiftNoticeResult> {
+  try {
+    const context = await loadShiftNoticeContext(prisma, input.jobRequestId, input.workers);
+    if (!context) return { sent: 0, skipped: input.workers.length, failed: 0 };
+    await pushToWorkers(pushSender, context.recipients.map((r) => r.worker.userId), "shift_cancelled", {
+      role: context.shift.role,
+      jobRequestId: input.jobRequestId
+    });
+    const outcomes = await Promise.all(
+      context.recipients.map((recipient) =>
+        deliverShiftNotice(recipient, emailSender, smsSender, sendsText("shift_cancelled"), () => {
+          const copy = {
+            language: recipient.language,
+            shift: context.shift,
+            cancelledBy: input.cancelledBy,
+            offerOnly: recipient.worker.offerOnly === true,
+            workerWebOrigin: input.workerWebOrigin ?? null
+          };
+          return {
+            email: recipient.email ? shiftCancelledEmail({ ...copy, to: recipient.email }) : null,
+            sms: shiftCancelledSmsText(copy)
+          };
+        })
+      )
+    );
+    return tally(outcomes);
+  } catch {
+    return { sent: 0, skipped: 0, failed: input.workers.length };
+  }
+}
+
+// Tell each worker assigned to the shift what changed on it: text always + email. Best-effort.
+export async function notifyWorkersShiftChanged(
+  prisma: PrismaClient,
+  emailSender: EmailSender,
+  smsSender: SmsSender | undefined,
+  input: {
+    jobRequestId: string;
+    workers: readonly ShiftNoticeWorker[];
+    summary: ShiftChangeSummary;
+    workerWebOrigin?: string | null;
+  },
+  pushSender?: PushSender
+): Promise<ShiftNoticeResult> {
+  try {
+    const context = await loadShiftNoticeContext(prisma, input.jobRequestId, input.workers);
+    if (!context) return { sent: 0, skipped: input.workers.length, failed: 0 };
+    await pushToWorkers(pushSender, context.recipients.map((r) => r.worker.userId), "shift_changed", {
+      role: context.shift.role,
+      jobRequestId: input.jobRequestId
+    });
+    const outcomes = await Promise.all(
+      context.recipients.map((recipient) =>
+        deliverShiftNotice(recipient, emailSender, smsSender, sendsText("shift_changed"), () => ({
+          email: recipient.email
+            ? shiftChangedEmail({
+                to: recipient.email,
+                language: recipient.language,
+                shift: context.shift,
+                summary: input.summary,
+                workerWebOrigin: input.workerWebOrigin ?? null
+              })
+            : null,
+          sms: shiftChangedSmsText({ language: recipient.language, shift: context.shift, summary: input.summary })
+        }))
+      )
+    );
+    return tally(outcomes);
+  } catch {
+    return { sent: 0, skipped: 0, failed: input.workers.length };
   }
 }

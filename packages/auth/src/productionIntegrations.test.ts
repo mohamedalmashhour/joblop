@@ -4,7 +4,7 @@ import {
   ProductionIntegrationError,
   createHttpCandidateSource,
   createHttpWorkerOfferDeliveryProvider,
-  createResendWorkerOfferDeliveryProvider
+  createBrevoWorkerOfferDeliveryProvider
 } from "./productionIntegrations";
 
 const dispatchReview = {
@@ -312,10 +312,10 @@ describe("production offer-delivery boundary", () => {
 });
 
 
-describe("Resend worker offer delivery", () => {
-  const RESEND_URL = "https://api.resend.com/emails";
-  const API_KEY = "re_testkey_1234567890";
-  const FROM = "JobLop <no-reply@notifications.example>";
+describe("Brevo worker offer delivery", () => {
+  const BREVO_URL = "https://api.brevo.com/v3/smtp/email";
+  const API_KEY = "xkeysib-testkey-1234567890";
+  const FROM = "Joblop <no-reply@notifications.example>";
   const deliverInput = {
     organizationId: "00000000-0000-4000-8000-0000000003a1",
     workerOfferId: "00000000-0000-4000-8000-0000000003a2",
@@ -335,14 +335,14 @@ describe("Resend worker offer delivery", () => {
     ...over
   });
 
-  it("POSTs a bilingual offer email to Resend with bearer auth, idempotency key, and worker-safe fields", async () => {
+  it("POSTs a bilingual offer email to Brevo with its key header, sender shape, and worker-safe fields", async () => {
     let captured: { url: unknown; init: RequestInit | undefined } | null = null;
     const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
       captured = { url, init };
-      return jsonResponse({ id: "resend-msg-123" });
+      return jsonResponse({ messageId: "<brevo-msg-1>" });
     }) as unknown as typeof fetch;
 
-    const provider = createResendWorkerOfferDeliveryProvider({
+    const provider = createBrevoWorkerOfferDeliveryProvider({
       apiKey: API_KEY,
       fromAddress: FROM,
       fetch: fetchImpl,
@@ -351,30 +351,30 @@ describe("Resend worker offer delivery", () => {
 
     const result = await provider.deliver(deliverInput);
 
-    expect(result).toEqual({ status: "sent", providerReference: "resend-msg-123", retryable: false });
-    expect(String(captured!.url)).toBe(RESEND_URL);
+    expect(result).toEqual({ status: "sent", providerReference: "<brevo-msg-1>", retryable: false });
+    expect(String(captured!.url)).toBe(BREVO_URL);
     expect(captured!.init?.method).toBe("POST");
     const headers = captured!.init?.headers as Record<string, string>;
-    expect(headers.authorization).toBe(`Bearer ${API_KEY}`);
-    expect(headers["idempotency-key"]).toBe(deliverInput.idempotencyKey);
+    expect(headers["api-key"]).toBe(API_KEY);
+    expect(headers.authorization).toBeUndefined();
     const body = JSON.parse(String(captured!.init?.body));
-    expect(body.from).toBe(FROM);
-    expect(body.to).toEqual(["worker@example.com"]);
+    expect(body.sender).toEqual({ name: "Joblop", email: "no-reply@notifications.example" });
+    expect(body.to).toEqual([{ email: "worker@example.com", name: "Alex" }]);
     expect(body.subject).toContain("New shift offer");
     expect(body.subject).toContain("Personal Support Worker");
     // worker-safe: shows area label, never an exact street address
-    expect(body.text).toContain("Laval, QC");
-    expect(body.html).toContain("JobLop");
-    expect(body.text).toContain("JobLop");
+    expect(body.textContent).toContain("Laval, QC");
+    expect(body.htmlContent).toContain("Joblop");
+    expect(body.textContent).toContain("Joblop");
   });
 
   it("composes the French subject for fr recipients", async () => {
     let body: Record<string, unknown> = {};
     const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
       body = JSON.parse(String(init?.body));
-      return jsonResponse({ id: "resend-msg-fr" });
+      return jsonResponse({ messageId: "brevo-msg-fr" });
     }) as unknown as typeof fetch;
-    const provider = createResendWorkerOfferDeliveryProvider({
+    const provider = createBrevoWorkerOfferDeliveryProvider({
       apiKey: API_KEY,
       fromAddress: FROM,
       fetch: fetchImpl,
@@ -384,9 +384,27 @@ describe("Resend worker offer delivery", () => {
     expect(String(body.subject)).toContain("Nouvelle offre de quart");
   });
 
+  it("composes the Arabic offer email, right-to-left, for ar recipients", async () => {
+    let body: Record<string, unknown> = {};
+    const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
+      body = JSON.parse(String(init?.body));
+      return jsonResponse({ messageId: "brevo-msg-ar" });
+    }) as unknown as typeof fetch;
+    const provider = createBrevoWorkerOfferDeliveryProvider({
+      apiKey: API_KEY,
+      fromAddress: FROM,
+      fetch: fetchImpl,
+      resolveRecipient: async () => recipient({ language: "ar", name: "Alex" })
+    });
+    await provider.deliver(deliverInput);
+    expect(String(body.subject)).toContain("عرض مناوبة جديد");
+    expect(String(body.textContent)).toContain("الأجر: $24.00/h");
+    expect(String(body.htmlContent)).toContain('dir="rtl"');
+  });
+
   it("fails closed without sending when there is no deliverable recipient", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ id: "should-not-send" })) as unknown as typeof fetch;
-    const provider = createResendWorkerOfferDeliveryProvider({
+    const fetchImpl = vi.fn(async () => jsonResponse({ messageId: "should-not-send" })) as unknown as typeof fetch;
+    const provider = createBrevoWorkerOfferDeliveryProvider({
       apiKey: API_KEY,
       fromAddress: FROM,
       fetch: fetchImpl,
@@ -398,8 +416,8 @@ describe("Resend worker offer delivery", () => {
   });
 
   it("refuses to send with a missing or too-short API key", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ id: "nope" })) as unknown as typeof fetch;
-    const provider = createResendWorkerOfferDeliveryProvider({
+    const fetchImpl = vi.fn(async () => jsonResponse({ messageId: "nope" })) as unknown as typeof fetch;
+    const provider = createBrevoWorkerOfferDeliveryProvider({
       apiKey: "short",
       fromAddress: FROM,
       fetch: fetchImpl,
@@ -416,7 +434,7 @@ describe("Resend worker offer delivery", () => {
     [422, false],
     [401, false]
   ])("maps HTTP %i to the right retryable flag without fabricating delivery", async (status, retryable) => {
-    const provider = createResendWorkerOfferDeliveryProvider({
+    const provider = createBrevoWorkerOfferDeliveryProvider({
       apiKey: API_KEY,
       fromAddress: FROM,
       fetch: (async () => jsonResponse({ message: "x" }, status)) as unknown as typeof fetch,

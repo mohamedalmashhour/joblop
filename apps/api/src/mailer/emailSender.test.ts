@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { createEmailSender, verificationEmailMessage, type EmailFetch } from "./emailSender";
+import { brandedEmailHtml, createEmailSender, verificationEmailMessage, type EmailFetch } from "./emailSender";
 
 describe("email sender capsule", () => {
   it("is a no-op that reports skipped when not configured", async () => {
     const noKey = createEmailSender({ apiKey: undefined, from: "ops@example.test" });
-    const noFrom = createEmailSender({ apiKey: "re_key", from: undefined });
+    const noFrom = createEmailSender({ apiKey: "xkeysib_key", from: undefined });
     expect(noKey.configured).toBe(false);
     expect(noFrom.configured).toBe(false);
     await expect(
@@ -13,11 +13,11 @@ describe("email sender capsule", () => {
     ).resolves.toEqual({ status: "skipped", reason: "not_configured" });
   });
 
-  it("posts to Brevo by default with api-key header and structured sender/to body", async () => {
+  it("posts to Brevo with api-key header and structured sender/to body", async () => {
     let captured: Parameters<EmailFetch> | null = null;
     const sender = createEmailSender({
       apiKey: "xkeysib_secret",
-      from: "JobLop <ops@example.test>",
+      from: "Joblop <ops@example.test>",
       fetch: async (input, init) => {
         captured = [input, init];
         return { ok: true, status: 201, json: async () => ({ messageId: "brevo-1" }) };
@@ -32,52 +32,21 @@ describe("email sender capsule", () => {
     expect(url).toBe("https://api.brevo.com/v3/smtp/email");
     expect(init.headers["api-key"]).toBe("xkeysib_secret");
     expect(JSON.parse(init.body)).toMatchObject({
-      sender: { email: "ops@example.test", name: "JobLop" },
+      sender: { email: "ops@example.test", name: "Joblop" },
       to: [{ email: "client@example.test" }],
       subject: "Approved",
       textContent: "code JR-1"
     });
   });
 
-  it("posts to Resend with bearer auth and the configured from-address when keyed", async () => {
-    let captured: Parameters<EmailFetch> | null = null;
-    const sender = createEmailSender({
-      apiKey: "re_secret_key",
-      from: "ops@example.test",
-      provider: "resend",
-      fetch: async (input, init) => {
-        captured = [input, init];
-        return { ok: true, status: 200, json: async () => ({ id: "email-1" }) };
-      }
-    });
-    expect(sender.configured).toBe(true);
-
-    const result = await sender.send({
-      to: "worker@example.test",
-      subject: "Your code",
-      text: "123456"
-    });
-
-    expect(result).toEqual({ status: "sent", id: "email-1" });
-    expect(captured).not.toBeNull();
-    const [url, init] = captured!;
-    expect(url).toBe("https://api.resend.com/emails");
-    expect(init.method).toBe("POST");
-    expect(init.headers.authorization).toBe("Bearer re_secret_key");
-    expect(JSON.parse(init.body)).toMatchObject({
-      from: "ops@example.test",
-      to: "worker@example.test"
-    });
-  });
-
   it("reports error on a non-ok response or a thrown request", async () => {
     const failing = createEmailSender({
-      apiKey: "re_secret_key",
+      apiKey: "xkeysib_secret",
       from: "ops@example.test",
       fetch: async () => ({ ok: false, status: 422, json: async () => ({}) })
     });
     const throwing = createEmailSender({
-      apiKey: "re_secret_key",
+      apiKey: "xkeysib_secret",
       from: "ops@example.test",
       fetch: async () => {
         throw new Error("offline");
@@ -97,5 +66,35 @@ describe("email sender capsule", () => {
     expect(message.text).toContain("482913");
     expect(message.text).toContain("10 minutes");
     expect(message.subject.toLowerCase()).toContain("verification code");
+  });
+
+  it("sends attachments to Brevo in its own format", async () => {
+    let body: Record<string, unknown> = {};
+    const sender = createEmailSender({
+      apiKey: "key",
+      from: "Joblop <a@b.test>",
+      fetch: async (_url, init) => {
+        body = JSON.parse(init.body) as Record<string, unknown>;
+        return { ok: true, status: 201, json: async () => ({ messageId: "m" }) };
+      }
+    });
+    await sender.send({ to: "c@d.test", subject: "s", text: "t", attachments: [{ name: "a.pdf", contentBase64: "cGRm" }] });
+    expect(body.attachment).toEqual([{ name: "a.pdf", content: "cGRm" }]);
+  });
+
+  it("wraps plain text in the Joblop design without trusting its content", () => {
+    const html = brandedEmailHtml({ subject: "Hello", text: "Your <b>invoice</b> is ready.\n\nSign in to pay.\n\n— Joblop" });
+    expect(html).toContain("Your &lt;b&gt;invoice&lt;/b&gt; is ready.");
+    expect(html).toContain("Sign in to pay.");
+    expect(html).not.toContain("— Joblop");
+    expect(html).not.toContain("<b>invoice");
+    expect(html).not.toContain('dir="rtl"');
+  });
+
+  it("lays out Arabic emails right to left so Latin words keep their place", () => {
+    const html = brandedEmailHtml({ subject: "Joblop — أُلغيت مناوبتك", text: "نأسف، أُلغيت مناوبتك (Farm worker) في Laval.\n\nيمكنك مراجعة تقويمك هنا: https://joblop.com/jobs-calendar" });
+    expect(html).toContain('<html dir="rtl" lang="ar">');
+    expect(html).toContain('<p dir="rtl"');
+    expect(html).toContain("text-align:right;");
   });
 });

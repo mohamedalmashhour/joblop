@@ -2,6 +2,10 @@ export type AdminDispatchReview = Readonly<{
   id: string;
   jobRequestId: string;
   jobRequestNumber?: string | null;
+  /** The shift the dispatch staffs (list only; null when the request could not be read). */
+  shiftStartAt?: string | null;
+  shiftEndAt?: string | null;
+  shiftTimezone?: string | null;
   state:
     | "draft"
     | "active"
@@ -96,6 +100,9 @@ export function parseAdminDispatchReview(
     jobRequestId: record.jobRequestId,
     jobRequestNumber:
       typeof record.jobRequestNumber === "string" ? record.jobRequestNumber : null,
+    shiftStartAt: validIsoDate(record.shiftStartAt) ? new Date(record.shiftStartAt as string).toISOString() : null,
+    shiftEndAt: validIsoDate(record.shiftEndAt) ? new Date(record.shiftEndAt as string).toISOString() : null,
+    shiftTimezone: typeof record.shiftTimezone === "string" && record.shiftTimezone ? record.shiftTimezone : null,
     state: record.state as AdminDispatchReview["state"],
     priority: record.priority as AdminDispatchReview["priority"],
     requiredWorkerCount: record.requiredWorkerCount as number,

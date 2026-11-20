@@ -3,7 +3,7 @@ import { LATE_CANCELLATION_WORKER_HOURS, resolveMarginPpm } from "@rwos/shared";
 // Employer cancellation — governed two-step (Option A).
 //
 // The employer INITIATES and CONFIRMS cancellation; this service records the
-// auditable cancellation intent + the employer<->JobLop COMMERCIAL cancellation
+// auditable cancellation intent + the employer<->Joblop COMMERCIAL cancellation
 // obligation, then hands off to the platform-authorized assignment-cancel path to
 // transition confirmed assignments to `employer_cancelled`. Employer-facing code
 // never directly mutates platform-governed assignments.
@@ -79,6 +79,21 @@ export type GovernedRate = Readonly<{
   currency: string;
   contractId: string | null;
   contractVersion: string | null;
+}>;
+
+// The bill rate the employer is actually invoiced at for this request: the immutable pricing
+// snapshot captured at approval (contract rate with urgency and plan applied). Long-term listing jobs
+// are never billed hourly, so they carry no late-cancellation obligation.
+export type RequestBillRate = Readonly<{
+  rateMinor: number;
+  currency: string;
+  contractId: string | null;
+  contractVersion: string | null;
+  jobLength: string | null;
+}>;
+
+export type RequestBillRateReader = Readonly<{
+  getBillRate(jobRequestId: string): Promise<RequestBillRate | null>;
 }>;
 
 export type ContractRateReader = Readonly<{
@@ -207,9 +222,8 @@ export type CancellationPreview = Readonly<{
   cutoffHours: number;
   obligationApplies: boolean;
   obligationAmountMinor: number;
-  // Owner policy: on a late client cancellation the affected worker(s) are paid 3h. This is the
-  // worker compensation amount (3h × worker pay rate × confirmed workers), a payment TO the worker,
-  // never a deduction. 0 when the obligation does not apply. Moves no money (Finance handles it).
+  // Owner decision 2026-11-09: no automatic cancellation pay to workers, so these are always 0. Kept
+  // for the stored obligation's shape. Never sent to the employer.
   workerCompensationHours: number;
   workerCompensationMinor: number;
   requiresPlatformHandoff: boolean;
@@ -267,6 +281,9 @@ export function createEmployerCancellationService(deps: {
   store: CancellationStore;
   assignmentCancelPort: AssignmentCancelPort;
   requestCancellerPort: RequestCancellerPort;
+  // Optional: when given, the request's pricing snapshot wins over the contract rate (it is what the
+  // invoice bills), and a long-term job carries no obligation.
+  billRateReader?: RequestBillRateReader;
   // Stage 2b.3b-2: the selected country's currency, threaded from CountryProfile.currency at the API
   // composition root. Used ONLY as the preview-label currency when there is NO governed rate (a
   // non-applying, zero-amount obligation that is never persisted). Never an implicit "CAD" default;
@@ -290,10 +307,17 @@ export function createEmployerCancellationService(deps: {
     if (!jobRequest || jobRequest.organizationId !== organizationId) {
       throw new EmployerCancellationError("not_found", "The staffing request was not found.");
     }
-    const [confirmedWorkers, rate] = await Promise.all([
+    const [confirmedWorkers, contractRate, billRate] = await Promise.all([
       deps.confirmedAssignmentReader.countConfirmedAssignments(organizationId, jobRequestId),
-      deps.contractRateReader.getGovernedRate(organizationId, jobRequest.roleDefinitionId)
+      deps.contractRateReader.getGovernedRate(organizationId, jobRequest.roleDefinitionId),
+      deps.billRateReader ? deps.billRateReader.getBillRate(jobRequestId) : Promise.resolve(null)
     ]);
+    const rate: GovernedRate | null =
+      billRate === null
+        ? contractRate
+        : billRate.jobLength === "long_term"
+          ? null
+          : { rateMinor: billRate.rateMinor, currency: billRate.currency, contractId: billRate.contractId, contractVersion: billRate.contractVersion };
     const hoursBeforeStart =
       (jobRequest.startAt.getTime() - now().getTime()) / (1000 * 60 * 60);
     return { jobRequest, confirmedWorkers, rate, hoursBeforeStart };
@@ -313,7 +337,7 @@ export function createEmployerCancellationService(deps: {
       governedRateMinor,
       confirmedWorkers
     });
-    // Worker compensation: 3h at the worker PAY rate (employer rate less the platform margin).
+    // Worker compensation: always 0 (LATE_CANCELLATION_WORKER_HOURS is 0, owner decision 2026-11-09).
     const workerRateMinor =
       governedRateMinor === null
         ? 0
@@ -528,13 +552,17 @@ export type EmployerCancellationService = ReturnType<typeof createEmployerCancel
 
 // ── Prisma adapters ──────────────────────────────────────────────────────────
 
-// Assignment statuses that count as an affected "confirmed worker" — exactly the
-// states the platform assignment.cancel path can transition to employer_cancelled.
+// Assignment statuses that count as an affected "confirmed worker" — every state in which the worker
+// is booked, exactly the states the platform assignment.cancel path can transition to
+// employer_cancelled. "attendance_handoff" is the status of every shift on a worker's schedule
+// (claimed or staff-assigned), so it must count: otherwise a late cancel bills nothing and leaves the
+// worker booked (owner decision 2026-11-11).
 export const CONFIRMED_ASSIGNMENT_STATUSES: readonly string[] = [
   "confirmed",
   "worker_acknowledged",
   "ready_for_attendance",
-  "in_attendance_window"
+  "in_attendance_window",
+  "attendance_handoff"
 ];
 
 type PrismaCancellationClient = {
@@ -662,6 +690,33 @@ export function createPrismaConfirmedAssignmentReader(
           status: { in: [...CONFIRMED_ASSIGNMENT_STATUSES] }
         }
       });
+    }
+  };
+}
+
+export function createPrismaRequestBillRateReader(prismaClient: unknown): RequestBillRateReader {
+  const prisma = prismaClient as {
+    requestPricingSnapshot: {
+      findUnique(args: unknown): Promise<
+        | { employerHourlyRateMinor: number; currency: string; contractId: string; contractVersion: string; jobLength: string | null }
+        | null
+      >;
+    };
+  };
+  return {
+    async getBillRate(jobRequestId) {
+      const snap = await prisma.requestPricingSnapshot.findUnique({
+        where: { jobRequestId },
+        select: { employerHourlyRateMinor: true, currency: true, contractId: true, contractVersion: true, jobLength: true }
+      });
+      if (!snap) return null;
+      return {
+        rateMinor: snap.employerHourlyRateMinor,
+        currency: snap.currency,
+        contractId: snap.contractId,
+        contractVersion: snap.contractVersion,
+        jobLength: snap.jobLength
+      };
     }
   };
 }

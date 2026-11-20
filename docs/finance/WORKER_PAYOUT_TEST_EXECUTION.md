@@ -50,6 +50,44 @@ completion-anchored), `canReleaseWorkerPayout` / `nextWorkerPayoutStatus` (now r
 (migration `20261028020000_worker_payout_dispute_window`; both nullable, additive — legacy rows backfill
 `completion_at` on read).
 
+**The 48h anchor is ACTUAL job completion.** `completionByCalc` resolves, per worked-time reference,
+the worker's ACTUAL check-out on the approved timesheet that fed the calculation
+(`Timesheet.actualCheckOutAt`, joined via the reference's `timesheetId`), and falls back to that
+reference's `scheduledEndAt` only when no actual check-out is recorded; the calculation's completion is
+the latest such value. The selection logic is the pure, unit-tested `resolveCompletionByCalc`.
+
+### Background progression — the real driver (not the read path)
+
+The payout lifecycle and its notifications are driven by a scheduled **background job**, not by a
+worker loading `GET /worker/payouts`. The read path still materializes for immediacy but **sends no
+email** and is no longer the only thing that advances a payout.
+
+- **`workerPayoutProgression.ts`** — `runWorkerPayoutProgressionPass` does one bounded pass:
+  (1) materialize + apply the 48h-registration and 14-day-release transitions for a bounded set of
+  workers with locked calculations, then (2) **deliver + retry** the two worker notices. It moves no
+  money and never reads `FINANCE_LIVE_ENABLED`.
+- **Safety shape mirrors the aged-payment sweeper** (`paymentSweepRunner` / `paymentSweepLease`):
+  `createWorkerPayoutProgressionRunner` checks a **fail-closed kill switch FIRST** (the
+  `payment_sweep_control` row named `worker_payout_progression`, default OFF / unreadable → OFF), then
+  takes a **durable cross-instance lease** (`payment_sweep_lease`, same name), then runs exactly one
+  bounded pass, always releasing the lease. Per-row correctness is still the status-guarded
+  `updateMany` writes.
+- **Scheduler** — `startWorkerPayoutProgressionSchedule` (a `setInterval` like the JobScanner
+  scheduler, unref'd, non-overlap, stopped on `app.close`). Wired in `buildApi` **OFF by default**:
+  it starts only when `WORKER_PAYOUT_PROGRESSION_INTERVAL_MIN` is a positive number, and even then
+  every pass is fail-closed behind the kill switch.
+
+### Reliable notification (no lost sends)
+
+Two durable delivery markers on `worker_payouts` (migration
+`20261028030000_worker_payout_notification_outbox`; both nullable, additive):
+`registered_notified_at` and `paid_notified_at`. A notice is delivered only when its marker is null,
+and the marker is stamped **only on a successful send** (status-guarded `updateMany`) — so a failed or
+never-attempted notice is **retried by the next background pass until delivered, and never sent twice**.
+The `execute-test-payout` route still sends the paid notice inline for immediacy and stamps
+`paid_notified_at` on success; if that send fails or the mailer is unconfigured, the background pass
+delivers it. The read path sends nothing.
+
 ## What Phase 2 adds (test execution)
 
 - **Gate** — new independent `PAYOUT_TEST_MODE_ENABLED` flag (`packages/config`): off by default,

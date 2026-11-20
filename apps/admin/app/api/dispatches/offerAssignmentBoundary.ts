@@ -65,11 +65,18 @@ export function readAssignmentCreateInput(input: unknown) {
   } catch {
     return null;
   }
-  if (Object.keys(record).length !== 2) return null;
+  // Two required keys, plus the optional staff certificate override (and its note).
+  const extra = Object.keys(record).filter((key) => key !== "workerOfferId" && key !== "expectedOfferVersion");
+  if (extra.some((key) => key !== "certificateOverride" && key !== "certificateOverrideReason")) return null;
+  if (record.certificateOverride !== undefined && typeof record.certificateOverride !== "boolean") return null;
   try {
     return {
       workerOfferId: uuid(record, "workerOfferId"),
-      expectedOfferVersion: positiveInteger(record, "expectedOfferVersion")
+      expectedOfferVersion: positiveInteger(record, "expectedOfferVersion"),
+      ...(record.certificateOverride === true ? { certificateOverride: true as const } : {}),
+      ...(record.certificateOverride === true && typeof record.certificateOverrideReason === "string" && record.certificateOverrideReason.trim()
+        ? { certificateOverrideReason: record.certificateOverrideReason.trim().slice(0, 500) }
+        : {})
     };
   } catch {
     return null;
@@ -94,9 +101,12 @@ export function readOfferCreateInput(input: unknown) {
       if (typeof value !== "string" || value.length > 500) throw new Error("RWOS_INVALID_ADMIN_OFFER_FIELD");
       return value;
     };
+    if (record.certificateOverride !== undefined && typeof record.certificateOverride !== "boolean") return null;
+    const overrideReason = optionalString("certificateOverrideReason")?.trim();
     return {
       workerIdentityId,
       expiresAt,
+      ...(record.certificateOverride === true ? { certificateOverride: true as const, ...(overrideReason ? { certificateOverrideReason: overrideReason } : {}) } : {}),
       workerVisibleTitle: optionalString("workerVisibleTitle"),
       workerVisibleSummary: optionalString("workerVisibleSummary"),
       compensationSummary: optionalString("compensationSummary"),

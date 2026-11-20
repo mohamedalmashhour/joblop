@@ -95,25 +95,6 @@ export const paymentFixture = {
   workerPayableBoundary: "Employer payment does not confirm worker payable or payout"
 };
 
-export const paymentBoundaries = [
-  "Payment Method != Authorization",
-  "Authorized != Succeeded",
-  "Succeeded employer payment != Worker paid",
-  "Payment failure != Invoice voided",
-  "Unknown outcome != Failed",
-  "Marketplace service fee != Card or Stripe surcharge"
-] as const;
-
-export const paymentDataTruth = [
-  "Synthetic Test Employer Organization A payment state",
-  "Stripe is intended but not connected; local fake provider active",
-  "Mastercard first; ACSS alternative",
-  "No Québec payment-method surcharge",
-  "No real charge execution",
-  "No raw card or bank credentials collected",
-  "Worker payable remains separate"
-] as const;
-
 export function getPaymentStateSummary(state: EmployerPaymentState) {
   return {
     state,

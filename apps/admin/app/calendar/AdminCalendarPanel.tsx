@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   calendarFailureState,
   calendarListState,
@@ -10,11 +10,19 @@ import {
   type AdminCalendarDto,
   type AuthenticatedViewState
 } from "@rwos/shared";
+import { usePageText } from "../i18n/pageText";
+import { useLocale } from "../i18n/LocaleProvider";
+import { SignedOut } from "../shared/SignedOut";
+import { formatHours, intlLocale, parseRequestCards, type RequestCard } from "./requestSummary";
+import { calendarText } from "./text";
 
 export function AdminCalendarPanel() {
+  const t = usePageText(calendarText).panel;
+  const locale = intlLocale(useLocale());
   const [state, setState] = useState<AuthenticatedViewState<readonly AdminCalendarDto[]>>({
     status: "loading"
   });
+  const [cards, setCards] = useState<Record<string, RequestCard>>({});
   const requestGeneration = useRef(0);
   const load = useCallback(async () => {
     const generation = ++requestGeneration.current;
@@ -25,6 +33,7 @@ export function AdminCalendarPanel() {
       if (!response.ok) return setState(calendarFailureState(response.status));
       const payload = await response.json();
       if (generation === requestGeneration.current) {
+        setCards(parseRequestCards((payload as { cards?: unknown } | null)?.cards));
         setState(calendarListState(parseAdminCalendarList(payload)));
       }
     } catch {
@@ -38,189 +47,137 @@ export function AdminCalendarPanel() {
     };
   }, [load]);
 
-  if (state.status === "denied") return <AdminSignIn onSignedIn={load} />;
+  if (state.status === "denied") return <SignedOut />;
   if (state.status === "loading")
-    return <StateCard title="Loading review calendar" message="Checking platform authorization." />;
+    return <StateCard title={t.loadingTitle} message={t.loadingMessage} retryLabel={t.retry} />;
   if (state.status === "empty")
     return (
       <>
-        <SessionAction onSignedOut={load} />
-        <StateCard title="No persisted requests" message="The governed review queue is empty." />
+        <SessionAction />
+        <StateCard title={t.emptyTitle} message={t.emptyMessage} retryLabel={t.retry} />
       </>
     );
   if (state.status !== "ready" && state.status !== "partial") {
     return (
       <StateCard
         title={
-          state.status === "unavailable"
-            ? "Review calendar unavailable"
-            : "Review calendar could not be loaded"
+          state.status === "unavailable" ? t.unavailableTitle : t.errorTitle
         }
-        message="No fixture requests are substituted for persisted records."
+        message={t.noFixtureMessage}
         onRetry={load}
+        retryLabel={t.retry}
       />
     );
   }
   return (
     <>
-      <SessionAction onSignedOut={load} />
+      <SessionAction />
       {state.status === "partial" ? (
         <StateCard
-          title="Some reviews could not be shown"
-          message="The records below passed the administrator privacy whitelist. Retry to check for the remaining records."
+          title={t.partialTitle}
+          message={t.partialMessage}
           onRetry={load}
+          retryLabel={t.retry}
         />
       ) : null}
       <section style={styles.grid}>
-        {state.data.map((request) => (
-          <article key={request.id} style={styles.card}>
-            <span style={badgeStyle(request.status)}>{request.status.replaceAll("_", " ")}</span>
-            <h2 style={styles.h2}>{request.title}</h2>
-            <p style={styles.reference}>Organization reference: {request.organizationId}</p>
-            <p>{formatWindow(request)}</p>
-            <a
-              href={`/calendar/request?request=${encodeURIComponent(request.requestNumber)}`}
-              style={styles.button}
-            >
-              Open review detail
-            </a>
-          </article>
-        ))}
+        {state.data.map((request) => {
+          const card = cards[request.id];
+          const location = card
+            ? [card.locationName, card.locationCity].filter(Boolean).join(", ")
+            : request.addressSummary ?? "";
+          return (
+            <article key={request.id} style={styles.card}>
+              <span style={badgeStyle(request.status)}>{request.status.replaceAll("_", " ")}</span>
+              <h2 style={styles.h2}>{card?.companyName || t.companyUnknown}</h2>
+              <p style={styles.role}>{card?.roleLabel || request.title}</p>
+              {location ? <p style={styles.reference}>{location}</p> : null}
+              <p style={styles.meta}>
+                {t.workersAndHours(request.numberOfWorkers, formatHours(hoursOf(request), locale))}
+              </p>
+              <p style={styles.meta}>{formatWindow(request)}</p>
+              <a
+                href={`/calendar/request?request=${encodeURIComponent(request.requestNumber)}`}
+                style={styles.button}
+              >
+                {t.openDetail}
+              </a>
+            </article>
+          );
+        })}
       </section>
     </>
   );
 }
 
-function SessionAction({ onSignedOut }: Readonly<{ onSignedOut: () => Promise<void> }>) {
+function hoursOf(request: AdminCalendarDto) {
+  const hours = (Date.parse(request.endAt) - Date.parse(request.startAt)) / 3_600_000;
+  return Number.isFinite(hours) && hours > 0 ? Math.round(hours * 100) / 100 : 0;
+}
+
+// "Signed in as …" with a sign-out button. The name comes from the session; when it is missing the
+// line just says you're signed in.
+function SessionAction() {
+  const t = usePageText(calendarText).panel;
   const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState("Authenticated administrator calendar session.");
+  const [clearFailed, setClearFailed] = useState(false);
+  const [name, setName] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    fetch("/api/session", { cache: "no-store" })
+      .then(async (response) => (response.ok ? ((await response.json()) as { user?: { displayName?: unknown; emailNormalized?: unknown } }) : null))
+      .then((payload) => {
+        const user = payload?.user;
+        const value = typeof user?.displayName === "string" && user.displayName.trim()
+          ? user.displayName.trim()
+          : typeof user?.emailNormalized === "string"
+            ? user.emailNormalized
+            : null;
+        if (live) setName(value);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
   const signOut = async () => {
     setSubmitting(true);
     try {
       const cleared = await clearWebCalendarSession(fetch);
-      if (!cleared) return setMessage("Session could not be cleared. Try again.");
-      await onSignedOut();
+      if (!cleared) return setClearFailed(true);
+      window.location.assign("/signin");
     } finally {
       setSubmitting(false);
     }
   };
   return (
-    <section aria-busy={submitting} aria-live="polite" style={styles.stateCard}>
-      <p>{message}</p>
+    <section aria-busy={submitting} aria-live="polite" style={styles.sessionBar}>
+      <p style={{ margin: 0 }}>{clearFailed ? t.sessionClearFailed : name ? t.signedInAs(name) : t.sessionMessage}</p>
       <button
         disabled={submitting}
         onClick={() => void signOut()}
         style={styles.retry}
         type="button"
       >
-        {submitting ? "Signing out…" : "Switch administrator account"}
+        {submitting ? t.signingOut : t.switchAccount}
       </button>
     </section>
-  );
-}
-
-function AdminSignIn({ onSignedIn }: Readonly<{ onSignedIn: () => Promise<void> }>) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [message, setMessage] = useState("Sign in with an authorized platform account.");
-  const [needsSignOut, setNeedsSignOut] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    setSubmitting(true);
-    setNeedsSignOut(false);
-    try {
-      const response = await fetch("/api/session/sign-in", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, password })
-      });
-      setPassword("");
-      if (!response.ok) {
-        setNeedsSignOut(response.status === 409);
-        return setMessage(
-          response.status === 409 ? "Sign out before changing accounts." : "Sign-in failed."
-        );
-      }
-      await onSignedIn();
-    } catch {
-      setMessage("Sign-in service unavailable. Try again.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-  const signOut = async () => {
-    setSubmitting(true);
-    try {
-      const cleared = await clearWebCalendarSession(fetch);
-      if (!cleared) return setMessage("Session could not be cleared. Try again.");
-      setNeedsSignOut(false);
-      setMessage("Local session cleared. Sign in with the intended administrator account.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-  return (
-    <form aria-busy={submitting} onSubmit={submit} style={styles.stateCard}>
-      <h2 style={styles.h2}>Administrator sign-in required</h2>
-      <p aria-live="polite">{message}</p>
-      <label style={styles.label}>
-        Email
-        <input
-          autoComplete="username"
-          disabled={submitting}
-          required
-          type="email"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          style={styles.input}
-        />
-      </label>
-      <label style={styles.label}>
-        Password
-        <input
-          autoComplete="current-password"
-          disabled={submitting}
-          required
-          type="password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          style={styles.input}
-        />
-      </label>
-      <button
-        disabled={submitting}
-        type="submit"
-        style={{ ...styles.button, border: 0, opacity: submitting ? 0.65 : 1 }}
-      >
-        {submitting ? "Checking account…" : "Sign in securely"}
-      </button>
-      {needsSignOut ? (
-        <button
-          disabled={submitting}
-          type="button"
-          onClick={() => void signOut()}
-          style={styles.retry}
-        >
-          Clear prior session
-        </button>
-      ) : null}
-    </form>
   );
 }
 
 function StateCard({
   title,
   message,
-  onRetry
-}: Readonly<{ title: string; message: string; onRetry?: () => Promise<void> }>) {
+  onRetry,
+  retryLabel
+}: Readonly<{ title: string; message: string; onRetry?: () => Promise<void>; retryLabel: string }>) {
   return (
     <section style={styles.stateCard} aria-live="polite">
       <h2 style={styles.h2}>{title}</h2>
       <p>{message}</p>
       {onRetry ? (
         <button type="button" onClick={() => void onRetry()} style={styles.retry}>
-          Retry
+          {retryLabel}
         </button>
       ) : null}
     </section>
@@ -247,19 +204,19 @@ function badgeStyle(status: string) {
       : warning
         ? "#fff8d8"
         : positive
-          ? "#e8f5f3"
+          ? "#faf6ec"
           : informational
-            ? "#eaf2ff"
-            : "#eef2f7",
+            ? "#fbf9f4"
+            : "#fbf9f4",
     color: danger
       ? "#8a1c1c"
       : warning
         ? "#725000"
         : positive
-          ? "#075e58"
+          ? "#171511"
           : informational
-            ? "#174a8b"
-            : "#34445b"
+            ? "#171511"
+            : "#171511"
   };
 }
 
@@ -271,14 +228,14 @@ const styles = {
     padding: "32px clamp(18px, 5vw, 64px)"
   },
   card: {
-    background: "#fff",
-    border: "1px solid #dbe4f0",
+    background: "#0c0c0c",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 14,
-    boxShadow: "0 12px 30px rgba(6,27,65,.08)",
+    boxShadow: "0 12px 30px rgba(0,0,0,.4)",
     overflowWrap: "anywhere" as const,
     padding: 22
   },
-  h2: { color: "#061b41", fontSize: 24 },
+  h2: { color: "#f4efe4", fontSize: 24 },
   badge: {
     borderRadius: 99,
     display: "inline-block",
@@ -289,9 +246,9 @@ const styles = {
   },
   button: {
     alignItems: "center",
-    background: "#0f7f78",
+    background: "#F8B808",
     borderRadius: 8,
-    color: "#fff",
+    color: "#000000",
     cursor: "pointer",
     display: "inline-flex",
     fontWeight: 800,
@@ -301,9 +258,21 @@ const styles = {
     textDecoration: "none"
   },
   reference: { overflowWrap: "anywhere" as const },
+  role: { color: "#F8B808", fontWeight: 800, margin: "4px 0" },
+  meta: { color: "#faf6ec", margin: "4px 0" },
+  sessionBar: {
+    alignItems: "center",
+    color: "#b3a894",
+    display: "flex",
+    flexWrap: "wrap" as const,
+    gap: 12,
+    justifyContent: "space-between",
+    margin: "24px clamp(18px, 5vw, 64px) 0",
+    maxWidth: 720
+  },
   stateCard: {
-    background: "#fff",
-    border: "1px solid #dbe4f0",
+    background: "#0c0c0c",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 14,
     display: "grid",
     gap: 12,
@@ -313,17 +282,19 @@ const styles = {
   },
   label: { display: "grid", fontWeight: 800, gap: 6 },
   input: {
-    border: "1px solid #91a5bf",
+    background: "#0c0c0c",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
+    color: "#f4efe4",
     font: "inherit",
     minHeight: 44,
     padding: "0 12px"
   },
   retry: {
-    background: "#fff",
-    border: "1px solid #91a5bf",
+    background: "#0c0c0c",
+    border: "1px solid rgba(248, 184, 8, 0.3)",
     borderRadius: 8,
-    color: "#061b41",
+    color: "#f4efe4",
     cursor: "pointer",
     fontWeight: 800,
     minHeight: 44,

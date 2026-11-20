@@ -1,5 +1,5 @@
 // Concrete geocoding providers behind the provider-neutral GeocodingProvider seam.
-// The JobLop core depends on GeocodingProvider, never on a specific vendor. Add a
+// The Joblop core depends on GeocodingProvider, never on a specific vendor. Add a
 // Google provider later the same way — it must map its DTOs into CanadianLocation.
 //
 // Phase 2b.2b-ii: the Canada-specific address behavior (postal normalization, geographic bounds,

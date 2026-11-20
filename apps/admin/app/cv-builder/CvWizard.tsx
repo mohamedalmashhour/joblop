@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useLocale } from "../i18n/LocaleProvider";
 
 // Guided CV wizard: short chip-answer questions -> a worker profile -> AI CV (synthetic now, Claude when
 // keyed) -> rendered in a chosen design. Built for low-friction use by service/trade workers.
@@ -67,6 +68,7 @@ function Chips({ options, value, onToggle, multi }: { options: string[]; value: 
 }
 
 export function CvWizard() {
+  const locale = useLocale();
   const [cat, setCat] = useState("kitchen");
   const [name, setName] = useState("");
   const [city, setCity] = useState("Laval");
@@ -144,9 +146,11 @@ export function CvWizard() {
         body: JSON.stringify({ profile, job: { title: category.label } })
       });
       if (!res.ok) { setMsg("CV generation failed."); return; }
-      const d = (await res.json()) as { cv: GeneratedCv; providerKind?: string };
+      const d = (await res.json()) as { cv: GeneratedCv; providerKind?: string; fallback?: { message: { en: string; fr: string; ar: string } } | null };
       setCv(d.cv); setProvider(d.providerKind ?? "");
-      setMsg(`CV ready${d.providerKind?.startsWith("claude") ? " (AI-written)" : " (draft)"}.`);
+      // Launch step 6: the AI writer failed, hit the daily limit or is turned off; this is the basic CV.
+      const note = d.fallback?.message ? d.fallback.message[locale.startsWith("fr") ? "fr" : locale.startsWith("ar") ? "ar" : "en"] : "";
+      setMsg(note || `CV ready${d.providerKind?.startsWith("claude") ? " (AI-written)" : " (draft)"}.`);
     } finally { setBusy(false); }
   };
 
@@ -182,7 +186,7 @@ export function CvWizard() {
         <Chips options={AVAILABILITY} value={avail} onToggle={(v) => toggle(avail, setAvail, v)} multi />
 
         <h2 style={styles.step}>8 · Most recent employer <span style={styles.hint}>(optional)</span></h2>
-        <input style={{ ...styles.input, width: "100%" }} value={lastJob} onChange={(e) => setLastJob(e.target.value)} placeholder="e.g. Bistro Laval" />
+        <input aria-label="Most recent job" style={{ ...styles.input, width: "100%" }} value={lastJob} onChange={(e) => setLastJob(e.target.value)} placeholder="e.g. Bistro Laval" />
 
         <h2 style={styles.step}>9 · Documents &amp; photo <span style={styles.hint}>(optional)</span></h2>
         <p style={styles.q}>Upload certificates (MAPAQ, RCR, cariste, licence…). They&rsquo;ll be listed on your CV.</p>
@@ -228,7 +232,7 @@ export function CvWizard() {
           <hr style={{ margin: "20px 0", border: "none", borderTop: "1px solid currentColor", opacity: 0.2 }} />
           <h3 style={{ marginTop: 0 }}>Cover letter</h3>
           <div className="cv-rendered" dangerouslySetInnerHTML={{ __html: mdToHtml(cv.coverLetterMarkdown || "—") }} />
-          <p style={styles.prov}>{provider.startsWith("claude") ? `AI-written by ${provider}` : "Draft (synthetic — add ANTHROPIC_API_KEY for AI-written CVs)"}. Advisory — review and edit before applying.</p>
+          <p style={styles.prov}>{provider.startsWith("claude") ? `AI-written by ${provider}` : "Basic draft (written offline, no AI)"}. Advisory — review and edit before applying.</p>
         </article>
       ) : null}
     </section>
@@ -236,29 +240,29 @@ export function CvWizard() {
 }
 
 function designStyle(key: string): Record<string, string> {
-  if (key === "healthcare") return { fontFamily: "Georgia, serif", color: "#0b3b52", background: "#f7fbfd", borderTop: "6px solid #1a7f9e" };
-  if (key === "professional") return { fontFamily: "Inter, system-ui, sans-serif", color: "#1a1a2e", background: "#fff", borderTop: "6px solid #2b2d6e" };
-  return { fontFamily: "'Helvetica Neue', Arial, sans-serif", color: "#13303a", background: "#fffdf7", borderTop: "6px solid #0f7f78" }; // service/trades
+  if (key === "healthcare") return { fontFamily: "Georgia, serif", color: "#f4efe4", background: "#000000", borderTop: "6px solid rgba(248, 184, 8, 0.16)" };
+  if (key === "professional") return { fontFamily: "Inter, system-ui, sans-serif", color: "#0c0c0c", background: "#fff", borderTop: "6px solid rgba(248, 184, 8, 0.16)" };
+  return { fontFamily: "'Helvetica Neue', Arial, sans-serif", color: "#f4efe4", background: "#000000", borderTop: "6px solid rgba(248, 184, 8, 0.16)" }; // service/trades
 }
 
 const styles = {
   wrap: { padding: "24px clamp(18px, 5vw, 64px)" },
-  card: { background: "#fff", border: "1px solid #dbe4f0", borderRadius: 14, boxShadow: "0 12px 30px rgba(6,27,65,.06)", marginBottom: 18, padding: 22 },
-  step: { color: "#061b41", fontSize: 16, margin: "18px 0 8px" },
-  hint: { color: "#8696ad", fontSize: 12, fontWeight: 500 },
-  q: { color: "#5a6b85", fontSize: 13, fontWeight: 700, margin: "10px 0 6px" },
+  card: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 14, boxShadow: "0 12px 30px rgba(0,0,0,.4)", marginBottom: 18, padding: 22 },
+  step: { color: "#f4efe4", fontSize: 16, margin: "18px 0 8px" },
+  hint: { color: "#b3a894", fontSize: 12, fontWeight: 500 },
+  q: { color: "#f4efe4", fontSize: 13, fontWeight: 700, margin: "10px 0 6px" },
   row: { display: "flex", flexWrap: "wrap" as const, gap: 12 },
-  label: { color: "#10233f", display: "flex", flexDirection: "column" as const, fontSize: 12, fontWeight: 700, gap: 4 },
-  input: { border: "1px solid #c3d0e4", borderRadius: 8, minHeight: 40, padding: "0 10px", minWidth: 200 },
+  label: { color: "#f4efe4", display: "flex", flexDirection: "column" as const, fontSize: 12, fontWeight: 700, gap: 4 },
+  input: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, color: "#f4efe4", minHeight: 40, padding: "0 10px", minWidth: 200 },
   chips: { display: "flex", flexWrap: "wrap" as const, gap: 8 },
-  chip: { background: "#f1f5fb", border: "1px solid #d4deec", borderRadius: 999, color: "#10233f", cursor: "pointer", fontSize: 13, fontWeight: 600, padding: "8px 14px" },
-  chipOn: { background: "#0f7f78", borderColor: "#0f7f78", color: "#fff" },
-  cta: { background: "#0f7f78", border: "none", borderRadius: 10, color: "#fff", cursor: "pointer", fontSize: 15, fontWeight: 800, padding: "12px 22px" },
-  notice: { color: "#0f7f78", fontSize: 13, fontWeight: 700, marginLeft: 12 },
-  upload: { color: "#8696ad", fontSize: 12, marginTop: 14 },
+  chip: { background: "#000000", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 999, color: "#f4efe4", cursor: "pointer", fontSize: 13, fontWeight: 600, padding: "8px 14px" },
+  chipOn: { background: "#171511", borderColor: "rgba(248, 184, 8, 0.16)", color: "#fff" },
+  cta: { background: "#171511", border: "none", borderRadius: 10, color: "#fff", cursor: "pointer", fontSize: 15, fontWeight: 800, padding: "12px 22px" },
+  notice: { color: "#f4efe4", fontSize: 13, fontWeight: 700, marginLeft: 12 },
+  upload: { color: "#b3a894", fontSize: 12, marginTop: 14 },
   prov: { fontSize: 11, marginTop: 16, opacity: 0.7 },
-  warn: { background: "#fff6e6", border: "1px solid #f0d089", borderRadius: 8, color: "#8a5a00", fontSize: 12, marginTop: 8, padding: "8px 12px" },
+  warn: { background: "#000000", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, color: "#f8b808", fontSize: 12, marginTop: 8, padding: "8px 12px" },
   assetList: { listStyle: "none", margin: "12px 0 0", padding: 0 },
-  assetItem: { alignItems: "center", borderBottom: "1px solid #eef3f9", color: "#10233f", display: "flex", fontSize: 13, justifyContent: "space-between", padding: "8px 0" },
+  assetItem: { alignItems: "center", borderBottom: "1px solid rgba(248, 184, 8, 0.16)", color: "#f4efe4", display: "flex", fontSize: 13, justifyContent: "space-between", padding: "8px 0" },
   remove: { background: "none", border: "none", color: "#b23b2e", cursor: "pointer", fontSize: 12, fontWeight: 700 }
 } as const;

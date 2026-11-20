@@ -1,9 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { formatWhen, formatRate } from "../../MarketplaceExplorer";
-import { useLocale, useT } from "../../i18n/LocaleProvider";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { looksLikePostalCode } from "@rwos/shared";
+import { formatWhen } from "../../MarketplaceExplorer";
+import { useLocale, useT, fmtLocale } from "../../i18n/LocaleProvider";
 import type { MessageKey } from "../../i18n/messages";
+import { workerPayLabel } from "../../workerPayLabel";
+import { MissingCertificatesNotice, RequiredCertificatesSection, type RequiredCertificatesData } from "../../RequiredCertificates";
+import { shiftOverlapNotice } from "../../shiftOverlapNotice";
+import { ShiftAddressMap } from "../../ShiftAddressMap";
+import { CancelShiftControl } from "../../schedule/CancelShift";
+import { ShiftCheckIn, type CheckInShift } from "../../schedule/ShiftCheckIn";
+import type { ShiftConditionsView } from "@rwos/shared";
+import { BeforeYouGo } from "./BeforeYouGo";
+import { JoblopJobBadge } from "../../JobSourceBadge";
 
 type JobDetailData = Readonly<{
   jobRequestId: string;
@@ -20,12 +30,39 @@ type JobDetailData = Readonly<{
   openings: number;
   workerRateMinor: number | null;
   currency: string;
+  /** Long-term listing only: the pay the employer offers and pays directly. */
+  payOffered?: unknown;
   description: string | null;
   duties: string | null;
+  safetyNotes: string | null;
   qualifications: readonly string[];
   allowances?: AllowancesData;
   saved: boolean;
+  // Hybrid auto-offer: when claimable, the worker claims directly instead of expressing interest.
+  openClaim?: boolean;
+  claimable?: boolean;
+  // Why the job can't be taken (the API's claim rule): it has started, or pays below the minimum wage.
+  claimBlockedReason?: string | null;
+  // Extra pay Joblop added to fill the job faster (null when there is none).
+  bonus?: JobBonus | null;
+  // Long-term listing: workers apply and the employer chooses (never claimed).
+  longTerm?: boolean;
+  // Certificates the employer requires, and the ones this worker misses (null when not a worker).
+  requiredCertificates?: RequiredCertificatesData;
+  missingCertificates?: readonly string[] | null;
+  // This worker holds the shift (claimed, or assigned and confirmed): the page is their shift page.
+  booked?: boolean;
+  // "Before you go": break, dress code, equipment, notes; arrival instructions only when booked.
+  conditions?: ShiftConditionsView | null;
 }>;
+
+// The worker's own schedule entry for this job (from /api/attendance).
+type MyShiftRecord = CheckInShift & Readonly<{ assignmentId?: string; worksiteAddress?: string | null }>;
+
+type JobBonus = Readonly<{ kind: string; amountMinor: number }>;
+
+type ClaimState = "idle" | "claiming" | "assigned" | "full" | "election_required" | "ineligible" | "overlap" | "error";
+type ClaimOutcome = Readonly<{ state: ClaimState; reasons: readonly string[] }>;
 
 type AllowanceLine = Readonly<{ provision: string; amountMinor: number | null; note: string | null }>;
 type AllowancesData = Readonly<{
@@ -35,7 +72,8 @@ type AllowancesData = Readonly<{
 }>;
 
 type InterestState = Readonly<{
-  interest: { status: string } | null;
+  interest: { status: string; employerDecision?: string | null } | null;
+  lastEmployerDecision?: string | null;
   eligibility: { eligible: boolean; reasons: string[] };
 }>;
 
@@ -47,21 +85,62 @@ const INELIGIBLE_KEY: Record<string, MessageKey> = {
   job_not_found: "job.inelNotFound"
 };
 
-export function JobDetail({ id, postalCode }: { id: string; postalCode: string | null }) {
+export function JobDetail({ id, place }: { id: string; place: string | null }) {
+  // Only a postal code is sent with an interest (for its audit distance); a city is not.
+  const postalCode = place && looksLikePostalCode(place) ? place : null;
   const t = useT();
-  const locale = useLocale();
-  const [status, setStatus] = useState<"loading" | "ready" | "not_found" | "error">("loading");
+  const uiLocale = useLocale();
+  const locale = fmtLocale(uiLocale);
+  const [overlapMessage, setOverlapMessage] = useState<string | null>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "not_found" | "signed_out" | "error">("loading");
   const [job, setJob] = useState<JobDetailData | null>(null);
   const [interest, setInterest] = useState<InterestState | null>(null);
   const [interestBusy, setInterestBusy] = useState(false);
+  const [claimOutcome, setClaimOutcome] = useState<ClaimOutcome>({ state: "idle", reasons: [] });
+  const setClaimState = (state: ClaimState, reasons: readonly string[] = []) => setClaimOutcome({ state, reasons });
+  // The exact work address, only when this worker is confirmed on this job (from their own schedule;
+  // the API sends it only for a confirmed shift that is not over). Everyone else sees the city only.
+  const [confirmedAddress, setConfirmedAddress] = useState<string | null>(null);
+  // The worker's own schedule entry for this job (any live status): drives the "You're assigned" box
+  // with Check in / Check out, and Cancel while it has not started.
+  const [myRecord, setMyRecord] = useState<MyShiftRecord | null>(null);
+  const [cancelNotice, setCancelNotice] = useState<string | null>(null);
+  const assignedRef = useRef<HTMLElement | null>(null);
+  const confirmedJobId = job?.jobRequestId ?? null;
+  const loadMine = useCallback(async () => {
+    if (!confirmedJobId) return;
+    try {
+      const r = await fetch("/api/attendance?limit=100", { cache: "no-store" });
+      if (!r.ok) return;
+      const p = (await r.json()) as { items?: MyShiftRecord[] };
+      const items = (p.items ?? []).filter((item) => item.jobRequestId === confirmedJobId);
+      const mine = items.find((item) => item.status !== "cancelled") ?? null;
+      setMyRecord(mine);
+      setConfirmedAddress(mine?.worksiteAddress ?? null);
+    } catch {
+      /* keep what is shown */
+    }
+  }, [confirmedJobId]);
+  useEffect(() => {
+    void loadMine();
+  }, [loadMine, claimOutcome.state]);
+  // Right after claiming, bring the new "You're assigned" box (with Check in) into view.
+  useEffect(() => {
+    if (claimOutcome.state === "assigned" && myRecord) assignedRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [claimOutcome.state, myRecord]);
+  const myShift =
+    myRecord && myRecord.status === "pending_start" && myRecord.clockInAllowed !== false
+      ? { attendanceRecordId: myRecord.attendanceRecordId, scheduledStartAt: myRecord.scheduledStartAt }
+      : null;
 
   useEffect(() => {
     let active = true;
-    const url = `/api/jobs/${encodeURIComponent(id)}${postalCode ? `?postalCode=${encodeURIComponent(postalCode)}` : ""}`;
+    const url = `/api/jobs/${encodeURIComponent(id)}${place ? `?place=${encodeURIComponent(place)}` : ""}`;
     fetch(url, { cache: "no-store" })
       .then(async (r) => {
         if (!active) return;
         if (r.status === 404) return setStatus("not_found");
+        if (r.status === 401) return setStatus("signed_out");
         if (!r.ok) return setStatus("error");
         const payload = (await r.json()) as { job: JobDetailData };
         setJob(payload.job);
@@ -77,7 +156,7 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
     return () => {
       active = false;
     };
-  }, [id, postalCode]);
+  }, [id, place]);
 
   const expressInterest = useCallback(async () => {
     setInterestBusy(true);
@@ -105,6 +184,28 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
       setInterestBusy(false);
     }
   }, [id]);
+
+  const claimJob = useCallback(async () => {
+    setClaimState("claiming");
+    try {
+      const r = await fetch(`/api/jobs/${encodeURIComponent(id)}/claim`, { method: "POST" });
+      if (r.status === 201) {
+        setClaimState("assigned");
+        return;
+      }
+      const body = (await r.json().catch(() => ({}))) as { error?: string; reasons?: string[] };
+      const overlap = r.status === 409 ? shiftOverlapNotice(body, uiLocale) : null;
+      if (overlap) {
+        setOverlapMessage(overlap);
+        setClaimState("overlap");
+      } else if (r.status === 409 && body.error === "RWOS_CLASSIFICATION_ELECTION_REQUIRED") setClaimState("election_required");
+      else if (r.status === 409) setClaimState("full");
+      else if (r.status === 422) setClaimState("ineligible", Array.isArray(body.reasons) ? body.reasons : []);
+      else setClaimState("error");
+    } catch {
+      setClaimState("error");
+    }
+  }, [id, uiLocale]);
 
   const toggleSaved = useCallback(async () => {
     if (!job) return;
@@ -134,6 +235,13 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
         </div>
       </div>
     );
+  if (status === "signed_out")
+    return (
+      <div className="state">
+        {t("job.signInToView")}
+        <div style={{ marginTop: 12 }}><a className="btn" href="/">{t("job.signInCta")}</a></div>
+      </div>
+    );
   if (status === "error" || !job)
     return (
       <div className="state error" role="alert">
@@ -145,6 +253,7 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
     <article className="detail">
       <div className="detail-head">
         <div>
+          <JoblopJobBadge />
           <h1>{job.role}</h1>
           <p className="detail-title">{job.title}</p>
           <p className="employer">
@@ -165,13 +274,56 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
             {job.travelTime.distanceKm !== null ? ` · ${job.travelTime.distanceKm} km` : ""}
           </Fact>
         ) : null}
-        <Fact label={t("job.factWhen")}>{formatWhen(job.startAt, job.endAt, locale)}</Fact>
+        <Fact label={t("job.factWhen")}>{formatWhen(job.startAt, job.endAt, uiLocale === "ar" ? "ar" : locale)}</Fact>
         <Fact label={t("job.factOpenings")}>{job.openings}</Fact>
-        {job.workerRateMinor !== null ? <Fact label={t("job.factPay")}>{formatRate(job.workerRateMinor, job.currency, locale)}</Fact> : null}
+        <Fact label={t("job.factPay")}>
+          <bdi>{workerPayLabel(job, locale, { paidByEmployer: t("pay.paidByEmployer"), employerPaysDirectly: t("pay.employerPaysDirectly"), pending: t("pay.pending") })}</bdi>
+        </Fact>
       </div>
 
-      <WorksiteMap point={job.mapPoint} locale={locale} />
-      <p className="notice">{t("job.mapApproxNotice")}</p>
+      {job.bonus && job.bonus.amountMinor > 0 ? <BonusBox bonus={job.bonus} currency={job.currency} locale={locale} /> : null}
+
+      {cancelNotice ? <p className="notice" role="status" style={{ color: "var(--accent)" }}>{cancelNotice}</p> : null}
+      {myRecord ? (
+        <section ref={assignedRef} className="detail-section interest submitted" data-testid="my-shift" aria-labelledby="my-shift-title">
+          <h2 id="my-shift-title">{t("job.claimAssignedTitle")}</h2>
+          <p>{t("checkin.assignedBody")}</p>
+          <ShiftCheckIn shift={myRecord} onChanged={loadMine} />
+          {/* "Report my hours" (feat/report-hours) goes here, next to Check in / Check out. */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+            {myRecord.assignmentId ? (
+              <a className="btn ghost" href={`/contact?topic=shift&relatedType=assignment&relatedId=${encodeURIComponent(myRecord.assignmentId)}`}>
+                {t("sched.askJoblop")}
+              </a>
+            ) : null}
+            <a className="btn ghost" href="/schedule">{t("job.goToSchedule")}</a>
+          </div>
+          {myShift ? (
+            <CancelShiftControl
+              attendanceRecordId={myShift.attendanceRecordId}
+              scheduledStartAt={myShift.scheduledStartAt}
+              onCancelled={(message) => {
+                setCancelNotice(message);
+                setMyRecord(null);
+                setConfirmedAddress(null);
+              }}
+            />
+          ) : null}
+        </section>
+      ) : null}
+      {confirmedAddress ? (
+        <Section title={t("map.workAddress")}>
+          <p>{confirmedAddress}</p>
+          <ShiftAddressMap address={confirmedAddress} height={220} />
+        </Section>
+      ) : (
+        <>
+          <WorksiteMap point={job.mapPoint} locale={locale} />
+          <p className="notice">{t("job.mapApproxNotice")}</p>
+        </>
+      )}
+
+      <BeforeYouGo conditions={job.conditions} />
 
       {job.description ? (
         <Section title={t("job.aboutShift")}>
@@ -181,6 +333,11 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
       {job.duties ? (
         <Section title={t("job.duties")}>
           <p>{job.duties}</p>
+        </Section>
+      ) : null}
+      {job.safetyNotes ? (
+        <Section title={t("job.safetyNotes")}>
+          <p>{job.safetyNotes}</p>
         </Section>
       ) : null}
       {job.qualifications.length > 0 ? (
@@ -193,9 +350,32 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
         </Section>
       ) : null}
 
+      <RequiredCertificatesSection required={job.requiredCertificates} missing={job.missingCertificates} />
+
       <AllowancesSection allowances={job.allowances} currency={job.currency} locale={locale} />
 
-      <InterestPanel state={interest} busy={interestBusy} onExpress={expressInterest} onWithdraw={withdrawInterest} />
+      {myRecord || job.booked ? null : blockedReasonKey(job.claimBlockedReason) ? (
+        <section className="detail-section interest" role="status">
+          <p className="muted">{t(blockedReasonKey(job.claimBlockedReason)!)}</p>
+        </section>
+      ) : job.claimable ? (
+        <ClaimPanel
+          outcome={claimOutcome}
+          onClaim={claimJob}
+          overlapMessage={overlapMessage}
+          blocked={(job.missingCertificates ?? []).length > 0}
+          other={job.requiredCertificates?.other ?? null}
+        />
+      ) : (
+        <InterestPanel
+          state={interest}
+          busy={interestBusy}
+          onExpress={expressInterest}
+          onWithdraw={withdrawInterest}
+          longTerm={job.longTerm === true}
+          other={job.requiredCertificates?.other ?? null}
+        />
+      )}
 
       <div className="detail-cta no-print">
         <button className="btn ghost" type="button" aria-pressed={job.saved} onClick={toggleSaved}>
@@ -204,7 +384,7 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
         <a className="btn ghost" href={`/employers/${encodeURIComponent(job.employer.id)}`}>{t("job.viewEmployer")}</a>
         <a className="btn ghost" href="/my-interests">{t("nav.interests")}</a>
         <button className="btn ghost" type="button" onClick={() => window.print()}>
-          {locale.startsWith("fr") ? "🖨 Imprimer" : "🖨 Print details"}
+          {t("job.print")}
         </button>
       </div>
     </article>
@@ -252,6 +432,31 @@ function WorksiteMap({ point, locale }: { point: { latitude: number; longitude: 
   );
 }
 
+function BonusBox({ bonus, currency, locale }: { bonus: JobBonus; currency: string; locale: string }) {
+  const t = useT();
+  const amount = (bonus.amountMinor / 100).toLocaleString(locale, { style: "currency", currency: currency || "CAD" });
+  const label =
+    bonus.kind === "hourly"
+      ? t("job.bonusHourly", { amount })
+      : bonus.kind === "transport"
+        ? t("job.bonusTransport", { amount })
+        : t("job.bonusOneTime", { amount });
+  return (
+    <section
+      aria-label={t("job.bonusTitle")}
+      style={{ marginTop: 12, padding: "12px 14px", borderRadius: 12, background: "#fff8dc", border: "2px solid #F8B808", color: "#3d2c00" }}
+    >
+      <span
+        style={{ display: "inline-block", background: "#F8B808", color: "#111", fontWeight: 800, borderRadius: 999, padding: "3px 12px" }}
+      >
+        <span aria-hidden="true">★ </span>
+        <bdi>{label}</bdi>
+      </span>
+      <p style={{ margin: "8px 0 0" }}>{t("job.bonusNote")}</p>
+    </section>
+  );
+}
+
 function AllowancesSection({ allowances, currency, locale }: { allowances: AllowancesData | undefined; currency: string; locale: string }) {
   const t = useT();
   const rows: { label: string; line: AllowanceLine }[] = [];
@@ -293,17 +498,44 @@ function InterestPanel({
   state,
   busy,
   onExpress,
-  onWithdraw
+  onWithdraw,
+  longTerm,
+  other
 }: {
   state: InterestState | null;
   busy: boolean;
   onExpress: () => void;
   onWithdraw: () => void;
+  longTerm: boolean;
+  other: string | null;
 }) {
   const t = useT();
   const current = state?.interest?.status ?? null;
+  const decision = state?.interest?.employerDecision ?? state?.lastEmployerDecision ?? null;
   const eligible = state?.eligibility?.eligible ?? true;
   const reasons = state?.eligibility?.reasons ?? [];
+  const certificateBlocked = reasons.some((r) => r.startsWith("missing_certificate:"));
+
+  // Long-term job: the worker applied and the employer chooses.
+  if (longTerm && decision === "hired") {
+    return (
+      <section className="detail-section interest submitted">
+        <h2>{t("job.appHiredTitle")}</h2>
+        <p>{t("job.appHiredBody")}</p>
+      </section>
+    );
+  }
+  if (longTerm && current && ["submitted", "under_review", "shortlisted"].includes(current)) {
+    return (
+      <section className="detail-section interest submitted">
+        <h2>{t("job.appliedTitle")}</h2>
+        <p>{decision === "shortlisted" ? t("job.appShortlisted") : t("job.appliedBody")}</p>
+        <button className="btn ghost" type="button" onClick={onWithdraw} disabled={busy}>
+          {t("job.withdrawApplication")}
+        </button>
+      </section>
+    );
+  }
 
   if (current && ["submitted", "under_review", "shortlisted"].includes(current)) {
     return (
@@ -329,19 +561,85 @@ function InterestPanel({
 
   return (
     <section className="detail-section interest">
-      <h2>{t("job.interestedTitle")}</h2>
+      <h2>{longTerm ? t("job.applyTitle") : t("job.interestedTitle")}</h2>
+      {longTerm && decision === "not_selected" ? <p className="muted">{t("job.appNotSelected")}</p> : null}
       {eligible ? (
         <>
-          <p>{t("job.interestedBody")}</p>
+          <p>{longTerm ? t("job.applyBody") : t("job.interestedBody")}</p>
           <button className="btn" type="button" onClick={onExpress} disabled={busy}>
-            {busy ? t("job.submitting") : t("job.expressInterest")}
+            {busy ? t("job.submitting") : longTerm ? t("job.applyButton") : t("job.expressInterest")}
           </button>
         </>
+      ) : certificateBlocked ? (
+        <MissingCertificatesNotice reasons={reasons} other={other} />
       ) : (
         <p className="muted">{t(INELIGIBLE_KEY[reasons[0] ?? ""] ?? "job.inelDefault")}</p>
       )}
     </section>
   );
+}
+
+// Hybrid auto-offer — direct claim CTA. First eligible worker to claim each slot is assigned
+// instantly; once slots fill, the claim returns "full". The pay-channel election gate still applies.
+function ClaimPanel({
+  outcome,
+  onClaim,
+  overlapMessage,
+  blocked,
+  other
+}: {
+  outcome: ClaimOutcome;
+  onClaim: () => void;
+  overlapMessage: string | null;
+  blocked: boolean;
+  other: string | null;
+}) {
+  const t = useT();
+  const state = outcome.state;
+  const certificateReasons = outcome.reasons.filter((r) => r.startsWith("missing_certificate:"));
+  const blockedKey = outcome.reasons.map(blockedReasonKey).find((key) => key !== null) ?? null;
+
+  if (state === "assigned") {
+    return (
+      <section className="detail-section interest submitted">
+        <h2>{t("job.claimAssignedTitle")}</h2>
+        <p>{t("job.claimAssignedBody")}</p>
+        <a className="btn" href="/schedule">{t("job.goToSchedule")}</a>
+      </section>
+    );
+  }
+
+  return (
+    <section className="detail-section interest">
+      <h2>{t("job.claimTitle")}</h2>
+      <p>{t("job.claimBody")}</p>
+      {state === "full" ? <p className="muted">{t("job.claimFull")}</p> : null}
+      {state === "election_required" ? (
+        <p className="muted">
+          {t("job.claimElectionRequired")} <a href="/onboarding">{t("common.setUpWorker")}</a>
+        </p>
+      ) : null}
+      {state === "ineligible" && certificateReasons.length > 0 ? (
+        <MissingCertificatesNotice reasons={certificateReasons} other={other} />
+      ) : state === "ineligible" ? (
+        <p className="muted">{t(blockedKey ?? "job.inelDefault")}</p>
+      ) : null}
+      {state === "overlap" && overlapMessage ? <p className="muted" role="alert">{overlapMessage}</p> : null}
+      {state === "error" ? <p className="muted">{t("job.loadError")}</p> : null}
+      {state !== "full" && !blocked && certificateReasons.length === 0 ? (
+        <button className="btn" type="button" onClick={onClaim} disabled={state === "claiming"}>
+          {state === "claiming" ? t("job.claiming") : t("job.claimButton")}
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
+/** The message for a claim-block reason from the API, or null for any other reason. */
+export function blockedReasonKey(reason: string | null | undefined): "job.blockedStarted" | "job.blockedBelowWage" | null {
+  if (reason === "job_started") return "job.blockedStarted";
+  if (reason === "below_minimum_wage") return "job.blockedBelowWage";
+  return null;
 }
 
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {

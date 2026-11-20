@@ -1,25 +1,45 @@
+// Reviewed and accepted by the owner's Québec lawyer (2026-11-09). See docs/legal/LEGAL_REVIEW_NOTES.md before changing any wording.
+// (Code comment only. The English clauses below are the approved October 26, 2026 text and are kept
+// word for word; new clauses live in ./workerLegalUpdates.ts and @rwos/shared legalPrivacyAdditions,
+// the French translation in ./workerLegalFr.ts. See docs/legal/LEGAL_REVIEW_NOTES.md.)
 import type { ReactNode } from "react";
 import Link from "next/link";
+import {
+  LEGAL_CONTACT_EMAIL,
+  LEGAL_DOCUMENTS_VERSION,
+  privacyAdditions,
+  type LegalBlock,
+  type LegalLanguage
+} from "@rwos/shared";
+import { activeCountry } from "../country";
+import { accountDeletionFr, privacyPolicyFr, termsOfServiceFr } from "./workerLegalFr";
+import {
+  accountDeletionAdditions,
+  accountDeletionArabic,
+  workerPrivacyArabic,
+  workerTermsAdditions,
+  workerTermsArabic
+} from "./workerLegalUpdates";
 
-// Shared legal content for JobLop's public Privacy Policy and Terms of Service.
+// Shared legal content for Joblop's public Privacy Policy and Terms of Service.
 // Rendered at /privacy and /terms. Kept as plain, reviewable prose so the pages
 // satisfy Google Play's requirement for a real, publicly accessible policy that
 // comprehensively discloses how the app collects, uses and shares user data.
 
-const LAST_UPDATED = "October 26, 2026";
-const ENTITY = "9375-7649 Québec inc.";
-const CONTACT = "info@sybnb.app";
+const ENTITY = activeCountry().legalEntityName;
+const CONTACT = LEGAL_CONTACT_EMAIL;
 
 const page: React.CSSProperties = {
   maxWidth: 820,
   margin: "0 auto",
   padding: "40px 20px 72px",
   fontFamily: "-apple-system,Segoe UI,Roboto,sans-serif",
-  color: "#0f1d33",
+  // Dark-first: readable cream text on the black canvas (was #000 → invisible on black).
+  color: "#ece3d1",
   lineHeight: 1.6
 };
-const h1: React.CSSProperties = { fontSize: 28, margin: "16px 0 4px" };
-const meta: React.CSSProperties = { color: "#5c749c", fontSize: 13, margin: "0 0 24px" };
+const h1: React.CSSProperties = { fontSize: 28, margin: "16px 0 4px", color: "#f4ead6" };
+const meta: React.CSSProperties = { color: "#b3a894", fontSize: 13, margin: "0 0 24px" };
 const h2: React.CSSProperties = { fontSize: 18, margin: "28px 0 8px" };
 const p: React.CSSProperties = { margin: "0 0 12px", fontSize: 15 };
 const li: React.CSSProperties = { marginBottom: 6, fontSize: 15 };
@@ -30,44 +50,184 @@ const table: React.CSSProperties = {
   margin: "4px 0 16px"
 };
 const cell: React.CSSProperties = {
-  border: "1px solid #dfe6f2",
+  border: "1px solid rgba(248, 184, 8, 0.22)",
   padding: "8px 10px",
   textAlign: "left",
   verticalAlign: "top"
 };
 
-function LegalShell({ title, children }: { title: string; children: ReactNode }) {
+const shellWords: Readonly<Record<LegalLanguage, { version: string; effective: string; operated: string; contact: string; privacy: string; terms: string; deletion: string; back: string }>> = {
+  en: { version: "Version", effective: "Effective November 11, 2026", operated: "Operated by", contact: "Contact", privacy: "Privacy Policy", terms: "Terms of Service", deletion: "Delete your account", back: "← Joblop" },
+  fr: { version: "Version", effective: "En vigueur le 11 novembre 2026", operated: "Exploité par", contact: "Nous joindre", privacy: "Politique de confidentialité", terms: "Conditions d’utilisation", deletion: "Supprimer votre compte", back: "← Joblop" },
+  ar: { version: "الإصدار", effective: "ساري المفعول من 11 نوفمبر 2026", operated: "تديره", contact: "للتواصل", privacy: "سياسة الخصوصية", terms: "شروط الاستخدام", deletion: "حذف الحساب", back: "جوب‑لوب →" }
+};
+
+function LegalShell({ title, lang, children }: { title: string; lang: LegalLanguage; children: ReactNode }) {
+  const w = shellWords[lang];
   return (
-    <main style={page}>
-      <Link href="/" style={{ color: "#3b3bee", textDecoration: "none", fontSize: 13 }}>
-        ← JobLop
+    <main style={page} dir={lang === "ar" ? "rtl" : "ltr"} lang={lang}>
+      <Link href="/" style={{ color: "#e0a500", textDecoration: "none", fontSize: 13 }}>
+        {w.back}
       </Link>
       <h1 style={h1}>{title}</h1>
       <p style={meta}>
-        Last updated: {LAST_UPDATED} · Operated by {ENTITY} · Contact:{" "}
-        <a href={`mailto:${CONTACT}`} style={{ color: "#3b3bee" }}>
+        {w.version} {LEGAL_DOCUMENTS_VERSION} · {w.effective} · {w.operated} {ENTITY} · {w.contact}:{" "}
+        <a href={`mailto:${CONTACT}`} style={{ color: "#e0a500" }}>
           {CONTACT}
         </a>
       </p>
       {children}
       <p style={{ ...meta, marginTop: 40 }}>
-        <Link href="/privacy" style={{ color: "#3b3bee" }}>
-          Privacy Policy
+        <Link href="/privacy" style={{ color: "#e0a500" }}>
+          {w.privacy}
         </Link>{" "}
         ·{" "}
-        <Link href="/terms" style={{ color: "#3b3bee" }}>
-          Terms of Service
+        <Link href="/terms" style={{ color: "#e0a500" }}>
+          {w.terms}
+        </Link>{" "}
+        ·{" "}
+        <Link href="/account-deletion" style={{ color: "#e0a500" }}>
+          {w.deletion}
         </Link>
       </p>
     </main>
   );
 }
 
-export function PrivacyPolicy() {
+const linkStyle: React.CSSProperties = { color: "#e0a500" };
+
+/** Text with any email address turned into a mailto link. */
+function WithEmails({ text }: { text: string }) {
+  const parts = text.split(/([\w.+-]+@[\w-]+\.[\w.]+[\w])/g);
   return (
-    <LegalShell title="Privacy Policy">
+    <>
+      {parts.map((part, index) =>
+        index % 2 === 1 ? (
+          <a key={index} href={`mailto:${part}`} style={linkStyle}>
+            {part}
+          </a>
+        ) : (
+          part
+        )
+      )}
+    </>
+  );
+}
+
+/** Renders legal text kept as data (the French translation and the new clauses). */
+export function LegalBlocks({ blocks }: { blocks: readonly LegalBlock[] }) {
+  return (
+    <>
+      {blocks.map((block, index) => {
+        switch (block.kind) {
+          case "h2":
+            return (
+              <h2 key={index} id={block.id} style={h2}>
+                {block.text}
+              </h2>
+            );
+          case "h3":
+            return (
+              <h3 key={index} style={{ ...h2, fontSize: 16, margin: "20px 0 6px" }}>
+                {block.text}
+              </h3>
+            );
+          case "p":
+            return (
+              <p key={index} style={p}>
+                <WithEmails text={block.text} />
+              </p>
+            );
+          case "ul":
+          case "ol": {
+            const List = block.kind;
+            return (
+              <List key={index}>
+                {block.items.map((item) => (
+                  <li key={item} style={li}>
+                    <WithEmails text={item} />
+                  </li>
+                ))}
+              </List>
+            );
+          }
+          case "table":
+            return (
+              <div key={index} style={{ overflowX: "auto" }}>
+                <table style={table}>
+                  <thead>
+                    <tr>
+                      {block.head.map((cellText) => (
+                        <th key={cellText} style={cell}>
+                          {cellText}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {block.rows.map((row) => (
+                      <tr key={row.join("|")}>
+                        {row.map((cellText, cellIndex) => (
+                          <td key={cellIndex} style={cell}>
+                            {cellText}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          case "links":
+            return (
+              <p key={index} style={p}>
+                {block.links.map((link) => (
+                  <Link key={link.href} href={link.href as "/account-deletion"} style={linkStyle}>
+                    {link.label}
+                  </Link>
+                ))}
+              </p>
+            );
+        }
+      })}
+    </>
+  );
+}
+
+const arabicFullTextNote = "النص الكامل باللغة الإنجليزية (معتمد)";
+
+export function PrivacyPolicy({ lang = "en" }: { lang?: LegalLanguage }) {
+  if (lang === "fr") {
+    return (
+      <LegalShell title="Politique de confidentialité" lang="fr">
+        <LegalBlocks blocks={privacyPolicyFr} />
+        <LegalBlocks blocks={privacyAdditions("worker", "fr")} />
+      </LegalShell>
+    );
+  }
+  if (lang === "ar") {
+    return (
+      <LegalShell title="سياسة الخصوصية" lang="ar">
+        <LegalBlocks blocks={workerPrivacyArabic} />
+        <h2 style={h2}>{arabicFullTextNote}</h2>
+        <div dir="ltr" lang="en">
+          <PrivacyPolicyEnglish />
+        </div>
+      </LegalShell>
+    );
+  }
+  return (
+    <LegalShell title="Privacy Policy" lang="en">
+      <PrivacyPolicyEnglish />
+    </LegalShell>
+  );
+}
+
+function PrivacyPolicyEnglish() {
+  return (
+    <>
       <p style={p}>
-        JobLop is a staffing and job-matching platform operating in Québec and across Canada. This
+        Joblop is a staffing and job-matching platform operating in Québec and across Canada. This
         Privacy Policy explains what personal information we collect, how we use it, who we share it
         with, and the choices and rights you have. We handle personal information in accordance with
         Québec&rsquo;s <em>Act respecting the protection of personal information in the private
@@ -81,9 +241,10 @@ export function PrivacyPolicy() {
       <ul>
         <li style={li}>Email address (to create and secure your account and sign you in)</li>
         <li style={li}>
-          Password (stored only as a salted hash — we never store your password in plain text)
+          Sign-in codes: you sign in with a one-time code texted to your mobile number; you do not create or enter a password
         </li>
         <li style={li}>Display name</li>
+        <li style={li}>Mobile number — required; used to sign you in with a texted code and for shift alerts and urgent notices</li>
       </ul>
       <p style={p}>
         <strong>Profile and location information</strong>
@@ -91,8 +252,8 @@ export function PrivacyPolicy() {
       <ul>
         <li style={li}>Postal address (street, city, province, postal code)</li>
         <li style={li}>
-          Approximate geolocation (latitude/longitude) used to match you with nearby work and, for
-          workers, to verify check-in and check-out at a work site when you choose to clock in
+          Approximate geolocation (latitude/longitude) used to match you with nearby work. We do not
+          use your location to verify check-in or check-out.
         </li>
         <li style={li}>Work preferences, availability, roles and skills you enter</li>
       </ul>
@@ -116,9 +277,12 @@ export function PrivacyPolicy() {
         </li>
       </ul>
       <p style={p}>
-        We do <strong>not</strong> collect your phone number, government identification numbers, or
-        payment card details through the app. We do not knowingly collect information from anyone
-        under 18; JobLop is intended for adults.
+        Your mobile number is <strong>required</strong> — we use it to sign you in with a texted code
+        and for shift alerts and urgent notices. If you upload them on the Documents page, we collect
+        identity documents and your social insurance number (a government identification number) to
+        check that you can work and to set up your pay. We do <strong>not</strong> collect payment card
+        details through the app. We do not knowingly
+        collect information from anyone under 18; Joblop is intended for adults.
       </p>
 
       <h2 style={h2}>2. How we use your information</h2>
@@ -182,6 +346,9 @@ export function PrivacyPolicy() {
         information when required by law, to protect our rights or users&rsquo; safety, or in
         connection with a corporate transaction, with notice where required.
       </p>
+      <p style={p}>
+        {"All the above categories exclude text messaging originator opt-in data and consent; this information won't be shared with any third parties."}
+      </p>
 
       <h2 style={h2}>4. How long we keep it</h2>
       <p style={p}>
@@ -203,7 +370,7 @@ export function PrivacyPolicy() {
         information we hold about you, correct inaccurate information, request deletion of your
         account and associated personal information, and withdraw consent to optional communications.
         To exercise any of these rights, contact{" "}
-        <a href={`mailto:${CONTACT}`} style={{ color: "#3b3bee" }}>
+        <a href={`mailto:${CONTACT}`} style={{ color: "#e0a500" }}>
           {CONTACT}
         </a>
         . We will respond within the timelines required by law.
@@ -224,35 +391,63 @@ export function PrivacyPolicy() {
       <h2 style={h2}>9. Contact</h2>
       <p style={p}>
         Questions or requests:{" "}
-        <a href={`mailto:${CONTACT}`} style={{ color: "#3b3bee" }}>
+        <a href={`mailto:${CONTACT}`} style={{ color: "#e0a500" }}>
           {CONTACT}
         </a>{" "}
         — {ENTITY}.
       </p>
+      <LegalBlocks blocks={privacyAdditions("worker", "en")} />
+    </>
+  );
+}
+
+export function TermsOfService({ lang = "en" }: { lang?: LegalLanguage }) {
+  if (lang === "fr") {
+    return (
+      <LegalShell title="Conditions d’utilisation" lang="fr">
+        <LegalBlocks blocks={termsOfServiceFr} />
+        <LegalBlocks blocks={workerTermsAdditions("fr")} />
+      </LegalShell>
+    );
+  }
+  if (lang === "ar") {
+    return (
+      <LegalShell title="شروط الاستخدام" lang="ar">
+        <LegalBlocks blocks={workerTermsArabic} />
+        <h2 style={h2}>{arabicFullTextNote}</h2>
+        <div dir="ltr" lang="en">
+          <TermsOfServiceEnglish />
+        </div>
+      </LegalShell>
+    );
+  }
+  return (
+    <LegalShell title="Terms of Service" lang="en">
+      <TermsOfServiceEnglish />
     </LegalShell>
   );
 }
 
-export function TermsOfService() {
+function TermsOfServiceEnglish() {
   return (
-    <LegalShell title="Terms of Service">
+    <>
       <p style={p}>
-        Welcome to JobLop. By creating an account or using the JobLop app or website, you agree to
+        Welcome to Joblop. By creating an account or using the Joblop app or website, you agree to
         these Terms of Service. If you do not agree, do not use the service.
       </p>
 
-      <h2 style={h2}>1. Who can use JobLop</h2>
+      <h2 style={h2}>1. Who can use Joblop</h2>
       <p style={p}>
         You must be at least 18 years old and able to form a binding contract. You agree to provide
         accurate information and to keep your account credentials secure. You are responsible for
         activity under your account.
       </p>
 
-      <h2 style={h2}>2. What JobLop is</h2>
+      <h2 style={h2}>2. What Joblop is</h2>
       <p style={p}>
-        JobLop is a platform that connects workers with employers for staffing and shift work in
+        Joblop is a platform that connects workers with employers for staffing and shift work in
         Québec and across Canada, and provides supporting tools such as job search (JobScanner) and
-        an AI-assisted CV builder. JobLop facilitates connections and scheduling; the working
+        an AI-assisted CV builder. Joblop facilitates connections and scheduling; the working
         relationship and any obligations arising from it are between the worker and the employer.
       </p>
 
@@ -273,27 +468,27 @@ export function TermsOfService() {
       <p style={p}>
         Employers are responsible for the accuracy of their job requests and for meeting their legal
         obligations toward workers. Workers are responsible for performing accepted work as agreed.
-        JobLop is not the employer of workers unless expressly stated in a separate written
+        Joblop is not the employer of workers unless expressly stated in a separate written
         agreement, and does not guarantee any particular job, worker, outcome, pay or availability.
       </p>
 
       <h2 style={h2}>5. JobScanner and third-party listings</h2>
       <p style={p}>
         JobScanner surfaces job listings from third-party partner sources. Those listings and the
-        sites you apply on are controlled by third parties; JobLop does not control and is not
+        sites you apply on are controlled by third parties; Joblop does not control and is not
         responsible for their content, accuracy or hiring decisions.
       </p>
 
       <h2 style={h2}>6. Fees and payments</h2>
       <p style={p}>
-        JobLop does not take a cut of a worker&rsquo;s pay for applying through the platform. Any fees
+        Joblop does not take a cut of a worker&rsquo;s pay for applying through the platform. Any fees
         that may apply to specific services will be disclosed before you incur them. Payment-processing
         features, where offered, are provided through a third-party processor subject to its own terms.
       </p>
 
       <h2 style={h2}>7. Content you provide</h2>
       <p style={p}>
-        You keep ownership of the content you submit (such as your CV). You grant JobLop a limited
+        You keep ownership of the content you submit (such as your CV). You grant Joblop a limited
         licence to host, display and process that content solely to provide the service to you (for
         example, to show your profile to a potential employer or to generate a CV).
       </p>
@@ -308,14 +503,14 @@ export function TermsOfService() {
       <p style={p}>
         The service is provided &ldquo;as is&rdquo; and &ldquo;as available&rdquo; without warranties
         of any kind, to the extent permitted by law. To the maximum extent permitted by applicable
-        law, JobLop is not liable for indirect, incidental or consequential damages, or for the
+        law, Joblop is not liable for indirect, incidental or consequential damages, or for the
         conduct of any worker, employer or third party.
       </p>
 
       <h2 style={h2}>10. Termination</h2>
       <p style={p}>
-        You may stop using JobLop and request deletion of your account at any time (contact{" "}
-        <a href={`mailto:${CONTACT}`} style={{ color: "#3b3bee" }}>
+        You may stop using Joblop and request deletion of your account at any time (contact{" "}
+        <a href={`mailto:${CONTACT}`} style={{ color: "#e0a500" }}>
           {CONTACT}
         </a>
         ). We may suspend or terminate access for breach of these Terms or misuse of the platform.
@@ -334,34 +529,80 @@ export function TermsOfService() {
         &ldquo;Last updated&rdquo; date; continued use after changes means you accept them.
       </p>
 
-      <h2 style={h2}>13. Contact</h2>
+      <h2 style={h2}>13. Text messages (SMS)</h2>
+      <p style={p}>
+        By providing your mobile phone number, you agree to receive text messages from JobLop
+        (9375-7649 Québec inc.) at the number provided — account and job messages such as verification
+        codes, sign-in codes, job-offer and assignment confirmations, and shift reminders —
+        sent using an automated system. Consent is not a condition of using the service. Message
+        frequency varies. Message and data rates may apply. Reply STOP to unsubscribe at any time, or
+        HELP for help. For assistance, contact{" "}
+        <a href={`mailto:${CONTACT}`} style={{ color: "#e0a500" }}>
+          {CONTACT}
+        </a>
+        . Carriers are not liable for delayed or undelivered messages. See our{" "}
+        <a href="/privacy" style={{ color: "#e0a500" }}>
+          Privacy Policy
+        </a>{" "}
+        for how we handle your personal information.
+      </p>
+
+      <h2 style={h2}>14. Contact</h2>
       <p style={p}>
         Questions:{" "}
-        <a href={`mailto:${CONTACT}`} style={{ color: "#3b3bee" }}>
+        <a href={`mailto:${CONTACT}`} style={{ color: "#e0a500" }}>
           {CONTACT}
         </a>{" "}
         — {ENTITY}.
       </p>
+      <LegalBlocks blocks={workerTermsAdditions("en")} />
+    </>
+  );
+}
+
+export function AccountDeletion({ lang = "en" }: { lang?: LegalLanguage }) {
+  if (lang === "fr") {
+    return (
+      <LegalShell title="Supprimer votre compte Joblop" lang="fr">
+        <LegalBlocks blocks={accountDeletionFr} />
+        <LegalBlocks blocks={accountDeletionAdditions("fr")} />
+      </LegalShell>
+    );
+  }
+  if (lang === "ar") {
+    return (
+      <LegalShell title="حذف حساب جوب‑لوب" lang="ar">
+        <LegalBlocks blocks={accountDeletionArabic} />
+        <h2 style={h2}>{arabicFullTextNote}</h2>
+        <div dir="ltr" lang="en">
+          <AccountDeletionEnglish />
+        </div>
+      </LegalShell>
+    );
+  }
+  return (
+    <LegalShell title="Delete your Joblop account" lang="en">
+      <AccountDeletionEnglish />
     </LegalShell>
   );
 }
 
-export function AccountDeletion() {
+function AccountDeletionEnglish() {
   return (
-    <LegalShell title="Delete your JobLop account">
+    <>
       <p style={p}>
-        You can ask us to delete your JobLop account and the personal information associated with it
-        at any time. JobLop is operated by {ENTITY}.
+        You can ask us to delete your Joblop account and the personal information associated with it
+        at any time. Joblop is operated by {ENTITY}.
       </p>
 
       <h2 style={h2}>How to request deletion</h2>
       <ol>
         <li style={li}>
           Email{" "}
-          <a href={`mailto:${CONTACT}?subject=Delete my account`} style={{ color: "#3b3bee" }}>
+          <a href={`mailto:${CONTACT}?subject=Delete my account`} style={{ color: "#e0a500" }}>
             {CONTACT}
           </a>{" "}
-          from the email address on your JobLop account, with the subject{" "}
+          from the email address on your Joblop account, with the subject{" "}
           <strong>&ldquo;Delete my account&rdquo;</strong>.
         </li>
         <li style={li}>
@@ -391,15 +632,16 @@ export function AccountDeletion() {
       <h2 style={h2}>Questions</h2>
       <p style={p}>
         Contact{" "}
-        <a href={`mailto:${CONTACT}`} style={{ color: "#3b3bee" }}>
+        <a href={`mailto:${CONTACT}`} style={{ color: "#e0a500" }}>
           {CONTACT}
         </a>
         . See our{" "}
-        <a href="/privacy" style={{ color: "#3b3bee" }}>
+        <a href="/privacy" style={{ color: "#e0a500" }}>
           Privacy Policy
         </a>{" "}
         for how we handle your data.
       </p>
-    </LegalShell>
+      <LegalBlocks blocks={accountDeletionAdditions("en")} />
+    </>
   );
 }

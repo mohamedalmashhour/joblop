@@ -401,17 +401,16 @@ function summaryState(input: unknown) {
   ]);
 }
 
-// ── Resend email offer delivery ──────────────────────────────────────────────
-// A direct worker-offer delivery channel over Resend (https://resend.com) — the free,
-// reliable default. Implements the same WorkerOfferDeliveryProvider seam as the HTTP
-// provider. The worker's contact + offer summary are resolved via an injected
+// ── Brevo email offer delivery ───────────────────────────────────────────────
+// A direct worker-offer delivery channel over Brevo's transactional email API. Implements
+// the same WorkerOfferDeliveryProvider seam as the HTTP provider. The worker's contact + offer summary are resolved via an injected
 // resolveRecipient (the API layer supplies a Prisma-backed one), so this stays free of
 // any database dependency. Fail-closed: no key / no deliverable email => a failed result
 // (non-retryable when retrying cannot help, e.g. the worker has no email on file).
 export type OfferEmailRecipient = Readonly<{
   email: string;
   name: string | null;
-  language: "en" | "fr";
+  language: "en" | "fr" | "ar"; // the worker's own language
   title: string; // worker-visible role/title
   summary: string | null; // worker-visible summary
   compensation: string | null; // compensation summary (already worker-safe)
@@ -420,9 +419,9 @@ export type OfferEmailRecipient = Readonly<{
   ctaUrl: string | null; // deep link into the worker app
 }>;
 
-export type ResendOfferDeliveryOptions = Readonly<{
+export type BrevoOfferDeliveryOptions = Readonly<{
   apiKey: string;
-  fromAddress: string; // e.g. "JobLop <offers@mail.yourdomain.ca>"
+  fromAddress: string; // e.g. "Joblop <offers@mail.yourdomain.ca>"
   replyTo?: string;
   fetch?: Fetch;
   baseUrl?: string;
@@ -446,22 +445,23 @@ function escapeHtml(value: string): string {
 }
 
 function composeOfferEmail(r: OfferEmailRecipient): { subject: string; html: string; text: string } {
-  const fr = r.language === "fr";
-  const L = (en: string, frl: string) => (fr ? frl : en);
-  const hello = r.name ? L(`Hi ${r.name},`, `Bonjour ${r.name},`) : L("Hi,", "Bonjour,");
-  const subject = L(`New shift offer: ${r.title}`, `Nouvelle offre de quart : ${r.title}`);
-  const intro = L("You've received a shift offer on JobLop.", "Vous avez reçu une offre de quart sur JobLop.");
+  const L = (en: string, frl: string, ar: string) => (r.language === "fr" ? frl : r.language === "ar" ? ar : en);
+  const rtl = r.language === "ar";
+  const hello = r.name ? L(`Hi ${r.name},`, `Bonjour ${r.name},`, `مرحبًا ${r.name}،`) : L("Hi,", "Bonjour,", "مرحبًا،");
+  const subject = L(`New shift offer: ${r.title}`, `Nouvelle offre de quart : ${r.title}`, `عرض مناوبة جديد: ${r.title}`);
+  const intro = L("You've received a shift offer on Joblop.", "Vous avez reçu une offre de quart sur Joblop.", "وصلك عرض مناوبة على Joblop.");
   const rows: Array<[string, string | null]> = [
-    [L("Role", "Poste"), r.title],
-    [L("When", "Quand"), r.whenLabel],
-    [L("Area", "Secteur"), r.areaLabel],
-    [L("Pay", "Rémunération"), r.compensation],
-    [L("Details", "Détails"), r.summary]
+    [L("Role", "Poste", "الوظيفة"), r.title],
+    [L("When", "Quand", "متى"), r.whenLabel],
+    [L("Area", "Secteur", "المنطقة"), r.areaLabel],
+    [L("Pay", "Rémunération", "الأجر"), r.compensation],
+    [L("Details", "Détails", "التفاصيل"), r.summary]
   ];
-  const ctaText = L("View and respond to the offer", "Voir et répondre à l'offre");
+  const ctaText = L("View and respond to the offer", "Voir et répondre à l'offre", "اطّلع على العرض وردّ عليه");
   const closing = L(
     "Please respond before the offer expires.",
-    "Veuillez répondre avant l'expiration de l'offre."
+    "Veuillez répondre avant l'expiration de l'offre.",
+    "يُرجى الرد قبل انتهاء صلاحية العرض."
   );
 
   const textLines = [
@@ -475,7 +475,7 @@ function composeOfferEmail(r: OfferEmailRecipient): { subject: string; html: str
     "",
     closing,
     "",
-    "— JobLop"
+    "— Joblop"
   ].filter((line, i, arr) => !(line === "" && arr[i - 1] === ""));
   const text = textLines.join("\n");
 
@@ -483,7 +483,7 @@ function composeOfferEmail(r: OfferEmailRecipient): { subject: string; html: str
     .filter(([, v]) => v && v.trim().length > 0)
     .map(
       ([k, v]) =>
-        `<tr><td style="padding:6px 12px 6px 0;color:#5c749c;font-size:13px;white-space:nowrap;vertical-align:top">${escapeHtml(
+        `<tr><td style="padding:${rtl ? "6px 0 6px 12px" : "6px 12px 6px 0"};color:#5c749c;font-size:13px;white-space:nowrap;vertical-align:top">${escapeHtml(
           k
         )}</td><td style="padding:6px 0;color:#0f1d33;font-size:14px">${escapeHtml(v as string)}</td></tr>`
     )
@@ -495,26 +495,36 @@ function composeOfferEmail(r: OfferEmailRecipient): { subject: string; html: str
         ctaText
       )}</a></p>`
     : "";
-  const html = `<!doctype html><html><body style="margin:0;background:#f4f7fb;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
-<div style="max-width:560px;margin:0 auto;padding:24px 16px">
+  const html = `<!doctype html><html${rtl ? ' lang="ar" dir="rtl"' : ""}><body style="margin:0;background:#f4f7fb;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+<div style="max-width:560px;margin:0 auto;padding:24px 16px"${rtl ? ' dir="rtl"' : ""}>
   <div style="background:#fff;border:1px solid #e3eaf4;border-radius:14px;padding:22px 22px 10px">
-    <p style="font-weight:700;font-size:18px;color:#0f1d33;margin:0 0 14px">JobLop</p>
+    <p style="font-weight:700;font-size:18px;color:#0f1d33;margin:0 0 14px">Joblop</p>
     <p style="font-size:15px;color:#0f1d33;margin:0 0 6px">${escapeHtml(hello)}</p>
     <p style="font-size:14px;color:#32496e;margin:0 0 14px">${escapeHtml(intro)}</p>
     <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:100%">${rowHtml}</table>
     ${button}
     <p style="font-size:13px;color:#5c749c;margin:14px 0 0">${escapeHtml(closing)}</p>
   </div>
-  <p style="font-size:11px;color:#8aa0c2;text-align:center;margin:14px 0 0">JobLop</p>
+  <p style="font-size:11px;color:#8aa0c2;text-align:center;margin:14px 0 0">Joblop</p>
 </div></body></html>`;
   return { subject, html, text };
 }
 
-export function createResendWorkerOfferDeliveryProvider(
-  options: ResendOfferDeliveryOptions
+// "Name <email@domain>" or a bare address, in the structured sender shape Brevo requires.
+function brevoSender(from: string): { email: string; name?: string } {
+  const match = /^\s*(.+?)\s*<([^>]+)>\s*$/.exec(from);
+  const name = match?.[1];
+  const email = match?.[2];
+  return name && email ? { email: email.trim(), name: name.trim() } : { email: from.trim() };
+}
+
+// No idempotency header is sent, so a retry after a lost reply could repeat the email; the offer
+// itself is unaffected.
+export function createBrevoWorkerOfferDeliveryProvider(
+  options: BrevoOfferDeliveryOptions
 ): WorkerOfferDeliveryProvider {
   const fetcher = options.fetch ?? fetch;
-  const baseUrl = options.baseUrl ?? "https://api.resend.com/emails";
+  const baseUrl = options.baseUrl ?? "https://api.brevo.com/v3/smtp/email";
   return {
     async deliver(input) {
       if (!options.apiKey || options.apiKey.trim().length < 10 || !options.fromAddress) {
@@ -538,17 +548,17 @@ export function createResendWorkerOfferDeliveryProvider(
         const response = await fetcher(baseUrl, {
           method: "POST",
           headers: {
-            authorization: `Bearer ${options.apiKey}`,
+            "api-key": options.apiKey,
             "content-type": "application/json",
-            "idempotency-key": input.idempotencyKey
+            accept: "application/json"
           },
           body: JSON.stringify({
-            from: options.fromAddress,
-            to: [recipient.email],
+            sender: brevoSender(options.fromAddress),
+            to: [{ email: recipient.email, ...(recipient.name ? { name: recipient.name } : {}) }],
             subject,
-            html,
-            text,
-            ...(options.replyTo ? { reply_to: options.replyTo } : {})
+            htmlContent: html,
+            textContent: text,
+            ...(options.replyTo ? { replyTo: { email: options.replyTo } } : {})
           })
         });
         if (!response.ok) {
@@ -556,7 +566,7 @@ export function createResendWorkerOfferDeliveryProvider(
           return { status: "failed", providerReference: null, retryable };
         }
         const record = asRecord(await response.json().catch(() => null));
-        const providerReference = typeof record.id === "string" ? record.id : null;
+        const providerReference = typeof record.messageId === "string" ? record.messageId : null;
         return { status: "sent", providerReference, retryable: false };
       } catch {
         return failedDelivery();

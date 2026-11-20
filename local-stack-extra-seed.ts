@@ -30,14 +30,14 @@ async function main() {
     key: `wg_care_${randomUUID().slice(0, 6)}`,
     displayLabel: "Personal Support / Care",
     status: "active",
-    displayOrder: 10
+    displayOrder: 900_000 + Math.floor(Math.random() * 90_000)
   }});
   const role = await prisma.roleDefinition.create({ data: {
     workGroupId: wg.id,
     key: `role_psw_${randomUUID().slice(0, 6)}`,
     displayLabel: "Personal Support Worker (PSW)",
     status: "active",
-    displayOrder: 10
+    displayOrder: 900_000 + Math.floor(Math.random() * 90_000)
   }});
   console.log("EXTRA_SEED_OK", JSON.stringify({ residence: residence.id, department: department.id, workGroup: wg.id, role: role.id }));
 }

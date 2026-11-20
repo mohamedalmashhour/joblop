@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLocale, useT, type Translate } from "../i18n/LocaleProvider";
 import type { MessageKey } from "../i18n/messages";
+import { resolveDeniedKind } from "../resolveDenied";
 
 type Item = Readonly<{ status: string; requestedAt: string | null; completedAt: string | null; expiresAt: string | null; provider: string | null }>;
 type State =
   | { status: "loading" }
   | { status: "signed_out" }
+  | { status: "needs_setup" }
   | { status: "error" }
   | { status: "ready"; identity: Item; backgroundCheck: Item };
 
@@ -37,7 +39,7 @@ export function VerificationPanel() {
   const load = useCallback(async () => {
     try {
       const r = await fetch("/api/verification", { cache: "no-store" });
-      if (r.status === 401) return setState({ status: "signed_out" });
+      if (r.status === 401) return setState({ status: await resolveDeniedKind() });
       if (!r.ok) return setState({ status: "error" });
       const payload = (await r.json()) as { identity: Item; backgroundCheck: Item };
       setState({ status: "ready", identity: payload.identity, backgroundCheck: payload.backgroundCheck });
@@ -64,6 +66,13 @@ export function VerificationPanel() {
       <div className="state">
         {t("ver.signInPrompt")}
         <div style={{ marginTop: 12 }}><a className="btn" href="/">{t("common.goToSearch")}</a></div>
+      </div>
+    );
+  if (state.status === "needs_setup")
+    return (
+      <div className="state">
+        {t("common.needsWorkerSetup")}
+        <div style={{ marginTop: 12 }}><a className="btn" href="/onboarding">{t("common.setUpWorker")}</a></div>
       </div>
     );
   if (state.status === "error") return <div className="state error" role="alert">{t("ver.loadError")}</div>;

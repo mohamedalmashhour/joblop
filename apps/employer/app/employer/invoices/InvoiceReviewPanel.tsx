@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { invoiceBoundaries, invoiceDataTruth, invoiceStates } from "../invoiceWorkflowContent";
+import { invoiceStates } from "../invoiceWorkflowContent";
 import { styles } from "../employerStyles";
-import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
-import { useLocale, useT } from "../../i18n/LocaleProvider";
+import { fmtLocale, useLocale, useT } from "../../i18n/LocaleProvider";
 import { previewInvoicePaymentOptions } from "./invoicePaymentPreview";
+import { findSelectedInvoice, invoiceDetailHref } from "./invoiceSelection";
+import { confirmCardPayment, isInvoicePayable, nextCardPaymentStep } from "./invoiceCardPayment";
 import type { RwosLocale } from "../../i18n/config";
 
 type InvoiceSummary = Readonly<{
@@ -27,10 +28,57 @@ type LoadState =
   | { status: "ready"; invoices: readonly InvoiceSummary[] }
   | { status: "error"; message: string };
 
-export function InvoiceReviewPanel({ mode }: { mode: "list" | "detail" | "breakdown" }) {
+export function InvoiceReviewPanel({
+  mode,
+  invoiceId = null,
+  paymentReturn = null
+}: {
+  mode: "list" | "detail" | "breakdown";
+  invoiceId?: string | null;
+  paymentReturn?: "success" | "cancel" | null;
+}) {
   const t = useT();
-  const locale = useLocale();
+  const locale = fmtLocale(useLocale());
   const [state, setState] = useState<LoadState>({ status: "loading" });
+  const [reloadKey, setReloadKey] = useState(0);
+  const [payBusy, setPayBusy] = useState(false);
+  const [payMessage, setPayMessage] = useState<string | null>(
+    paymentReturn === "cancel" ? t("inv.payCancelled") : paymentReturn === "success" ? t("inv.payConfirming") : null
+  );
+
+  // Back from Stripe's hosted page: the server checks the payment with Stripe before anything changes.
+  useEffect(() => {
+    if (paymentReturn !== "success" || !invoiceId) return;
+    void confirmCardPayment(invoiceId, fetch).then((confirmed) => {
+      setPayMessage(t(confirmed ? "inv.paySuccess" : "inv.payIncomplete"));
+      setReloadKey((key) => key + 1);
+    });
+  }, [paymentReturn, invoiceId]);
+
+  async function payByCard(id: string) {
+    setPayBusy(true);
+    setPayMessage(null);
+    const step = await nextCardPaymentStep(id, fetch);
+    if (step.kind === "open") {
+      window.location.assign(step.url);
+      return;
+    }
+    setPayMessage(t(step.kind === "paid" ? "inv.paySuccess" : "inv.payUnavailable"));
+    if (step.kind === "paid") setReloadKey((key) => key + 1);
+    setPayBusy(false);
+  }
+
+  // Opening an unpaid invoice checks with Stripe too, in case the employer never came back from paying.
+  const openInvoice = state.status === "ready" ? state.invoices.find((invoice) => invoice.id === invoiceId) : undefined;
+  const openInvoiceIsPayable = openInvoice ? isInvoicePayable(openInvoice.status) : false;
+  useEffect(() => {
+    if (mode !== "detail" || paymentReturn || !invoiceId || !openInvoiceIsPayable) return;
+    void confirmCardPayment(invoiceId, fetch).then((confirmed) => {
+      if (!confirmed) return;
+      setPayMessage(t("inv.paySuccess"));
+      setReloadKey((key) => key + 1);
+    });
+  }, [mode, paymentReturn, invoiceId, openInvoiceIsPayable]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -59,16 +107,13 @@ export function InvoiceReviewPanel({ mode }: { mode: "list" | "detail" | "breakd
     }
     void load();
     return () => controller.abort();
-  }, []);
+  }, [reloadKey]);
 
   const invoices = state.status === "ready" ? state.invoices : [];
-  const selected = invoices[0] ?? null;
+  const selected = findSelectedInvoice(invoices, invoiceId);
   const paymentPreview = selected ? previewInvoicePaymentOptions(selected) : null;
   return (
     <section style={styles.section}>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-        <LanguageSwitcher />
-      </div>
       <div style={styles.panel}>
         <div style={styles.sectionHeader}>
           <p style={styles.eyebrowDark}>{t("inv.eyebrow")}</p>
@@ -78,6 +123,7 @@ export function InvoiceReviewPanel({ mode }: { mode: "list" | "detail" | "breakd
           <p style={styles.sectionCopy}>{t("inv.copy")}</p>
           <span style={styles.statusBadgeWarning}>{t("inv.readOnly")}</span>
         </div>
+        {payMessage ? <p aria-live="polite" role="status" style={styles.cardText}>{payMessage}</p> : null}
 
         {state.status === "loading" ? (
           <p aria-live="polite" style={styles.cardText}>{t("inv.loading")}</p>
@@ -93,7 +139,7 @@ export function InvoiceReviewPanel({ mode }: { mode: "list" | "detail" | "breakd
                 <p style={styles.cardText}>{t("inv.stateLine", { state: invoice.status })}</p>
                 <p style={styles.cardText}>{t("inv.total", { amount: formatCad(invoice.totalMinor, locale) })}</p>
                 <p style={styles.cardText}>{t("inv.due", { date: formatDate(invoice.dueAt, locale, t) })}</p>
-                <a href="/employer/invoices/detail" style={{ ...styles.secondaryButton, marginTop: 12 }}>
+                <a href={invoiceDetailHref(invoice.id)} style={{ ...styles.secondaryButton, marginTop: 12 }}>
                   {t("inv.openDetail")}
                 </a>
               </article>
@@ -124,6 +170,20 @@ export function InvoiceReviewPanel({ mode }: { mode: "list" | "detail" | "breakd
               </article>
             ))}
           </div>
+          {mode === "detail" && selected.invoiceNumber ? (
+            <a
+              download
+              href={`/api/invoices/${encodeURIComponent(selected.id)}/pdf`}
+              style={{ ...styles.secondaryButton, display: "inline-block", marginTop: 18, marginRight: 12 }}
+            >
+              {t("inv.downloadPdf")}
+            </a>
+          ) : null}
+          {mode === "detail" && isInvoicePayable(selected.status) ? (
+            <button disabled={payBusy} onClick={() => void payByCard(selected.id)} style={{ ...styles.primaryButton, marginTop: 18 }} type="button">
+              {t("inv.payByCard")}
+            </button>
+          ) : null}
           {paymentPreview ? (
             <section style={{ marginTop: 18 }}>
               <p style={styles.eyebrowDark}>{t("inv.payTitle")}</p>
@@ -159,21 +219,19 @@ export function InvoiceReviewPanel({ mode }: { mode: "list" | "detail" | "breakd
             </section>
           ) : null}
           </>
-        ) : null}
+        ) : (
+          <>
+            <p style={styles.cardText}>{t("inv.chooseFromList")}</p>
+            <a href="/employer/invoices" style={{ ...styles.secondaryButton, marginTop: 12 }}>
+              {t("inv.backToList")}
+            </a>
+          </>
+        )}
       </div>
       <section style={{ marginTop: 22 }}>
         <div style={styles.pillGrid}>
           {invoiceStates.map((item) => (
             <span key={item} style={styles.pill}>{item}</span>
-          ))}
-        </div>
-      </section>
-      <section style={{ marginTop: 22 }}>
-        <div style={styles.cardGrid}>
-          {[...invoiceBoundaries, ...invoiceDataTruth].map((item) => (
-            <article key={item} style={styles.card}>
-              <p style={styles.cardText}>{item}</p>
-            </article>
           ))}
         </div>
       </section>

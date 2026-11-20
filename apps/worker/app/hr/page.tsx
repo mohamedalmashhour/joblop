@@ -1,11 +1,16 @@
 import { MyHrProfile } from "./MyHrProfile";
-import { SubPageHeader } from "../SubPageHeader";
+import { SiteHeader } from "../SiteHeader";
+import { BackToDashboard } from "../BackToDashboard";
+import { AddEmailCard } from "../AddEmailCard";
 
 export default function Page() {
   return (
     <>
-      <SubPageHeader />
+      <SiteHeader />
       <main className="wrap">
+        <BackToDashboard />
+        {/* Shown only while the worker has no confirmed email (item 45). */}
+        <AddEmailCard />
         <MyHrProfile />
       </main>
     </>

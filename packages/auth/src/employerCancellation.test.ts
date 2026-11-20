@@ -10,6 +10,7 @@ import {
   type ContractRateReader,
   type EmployerCancellationCause,
   type GovernedRate,
+  type RequestBillRate,
   type StoredCancellation
 } from "./employerCancellation";
 
@@ -120,6 +121,7 @@ function service(opts: {
   port?: AssignmentCancelPort;
   requestStatus?: string;
   requestCancelOk?: boolean; // whether the job-request cancel succeeds (default true)
+  billRate?: RequestBillRate | null;
 }) {
   const { store, rows } = makeStore();
   const requestCancels: string[] = [];
@@ -128,6 +130,7 @@ function service(opts: {
     jobRequestReader: jobRequestReader(opts.requestStatus),
     confirmedAssignmentReader: { async countConfirmedAssignments() { return opts.confirmed; } },
     contractRateReader: rateReader(opts.rate === undefined ? RATE_30 : opts.rate),
+    ...(opts.billRate !== undefined ? { billRateReader: { async getBillRate() { return opts.billRate ?? null; } } } : {}),
     store,
     countryCurrency: "CAD", // Stage 2b.3b-2: Canada value; keeps null-rate preview label byte-identical
     assignmentCancelPort:
@@ -142,6 +145,30 @@ function service(opts: {
   });
   return { svc, rows, requestCancels };
 }
+
+describe("employer cancellation — bill rate from the pricing snapshot", () => {
+  const snap = (jobLength: string | null): RequestBillRate => ({ rateMinor: 3450, currency: "CAD", contractId: "c1", contractVersion: "v1", jobLength });
+
+  it("bills the snapshot rate (what the invoice uses) over the contract rate", async () => {
+    const { svc } = service({ confirmed: 2, billRate: snap("short_term"), now: () => nowAtHoursBefore(2) });
+    const p = await svc.previewCancellation({ actorUserId: "u1", organizationId: ORG, jobRequestId: REQ });
+    expect(p.obligationApplies).toBe(true);
+    expect(p.obligationAmountMinor).toBe(6 * 3450 * 2);
+  });
+
+  it("never charges a long-term job", async () => {
+    const { svc } = service({ confirmed: 2, billRate: snap("long_term"), now: () => nowAtHoursBefore(2) });
+    const p = await svc.previewCancellation({ actorUserId: "u1", organizationId: ORG, jobRequestId: REQ });
+    expect(p.obligationApplies).toBe(false);
+    expect(p.obligationAmountMinor).toBe(0);
+  });
+
+  it("falls back to the contract rate when the request has no snapshot", async () => {
+    const { svc } = service({ confirmed: 1, billRate: null, now: () => nowAtHoursBefore(2) });
+    const p = await svc.previewCancellation({ actorUserId: "u1", organizationId: ORG, jobRequestId: REQ });
+    expect(p.obligationAmountMinor).toBe(6 * 3000);
+  });
+});
 
 describe("employer cancellation — preview (authoritative consequence)", () => {
   it("charges nothing at exactly 24h before start", async () => {
@@ -158,9 +185,9 @@ describe("employer cancellation — preview (authoritative consequence)", () => 
     expect(p.obligationApplies).toBe(true);
     expect(p.obligationAmountMinor).toBe(36000); // 6×3000×2 = $360 (client billed)
     expect(p.affectedConfirmedWorkers).toBe(2);
-    // Owner policy: workers paid 3h at the worker pay rate (employer $30 less 20% margin = $24).
-    expect(p.workerCompensationHours).toBe(3);
-    expect(p.workerCompensationMinor).toBe(3 * 2400 * 2); // 3h × $24 × 2 = $144
+    // Owner decision 2026-11-09: no automatic worker pay on a late employer cancellation.
+    expect(p.workerCompensationHours).toBe(0);
+    expect(p.workerCompensationMinor).toBe(0);
   });
 
   it("zero confirmed workers → $0 and no handoff", async () => {

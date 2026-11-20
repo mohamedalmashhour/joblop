@@ -1,81 +1,129 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { OutsideApplyLink, OutsideSiteBadge } from "../JobSourceBadge";
+import { outsideApplyUrl } from "../jobSource";
+import { accountHref } from "../authScroll";
+import { fmtLocale, useLocale, useT, type Translate } from "../i18n/LocaleProvider";
+import type { MessageKey } from "../i18n/messages";
 
-type Lead = { id?: string; title: string; employer: string | null; city: string | null; province: string | null; salaryMaxMinor: number | null; url: string; score?: number; distanceKm?: number | null };
+type Lead = { id?: string; title: string; employer: string | null; city: string | null; province: string | null; salaryMaxMinor: number | null; url: string; source?: string; score?: number; distanceKm?: number | null };
+type Msg = Readonly<{ key: MessageKey; vars?: Readonly<Record<string, string | number>> }>;
 
-const money = (m: number | null) => (m ? `~${(m / 100).toLocaleString("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 })}/yr` : "");
+// Hourly pay is stored in cents per hour (small numbers); yearly salaries are large.
+const money = (m: number | null, t: Translate, fmt: string) => {
+  if (!m) return "";
+  const n = m / 100;
+  if (m < 20000) {
+    return t("scanner.perHour", { amount: n.toLocaleString(fmt, { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 }) });
+  }
+  return t("scanner.perYear", { amount: n.toLocaleString(fmt, { style: "currency", currency: "CAD", maximumFractionDigits: 0 }) });
+};
 
 export function JobScannerFeed() {
+  const t = useT();
+  const fmt = fmtLocale(useLocale());
   const [role, setRole] = useState("");
   const [city, setCity] = useState("");
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [msg, setMsg] = useState("");
+  const [msg, setMsg] = useState<Msg | null>(null);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [pro, setPro] = useState(false);
+  // Visitors without an account still get real results (a preview); applying asks them to sign up.
+  const [visitor, setVisitor] = useState(false);
 
-  const search = async () => {
-    setBusy(true); setMsg("Searching jobs near you…");
+  const search = async (override?: string) => {
+    setBusy(true); setMsg({ key: "scanner.searching" });
     try {
       const qs = new URLSearchParams({ province: "QC", limit: "50" });
-      if (role.trim()) qs.set("roleKeywords", role.trim());
+      const roleText = (override ?? role).trim();
+      if (roleText) qs.set("roleKeywords", roleText);
       if (city.trim()) qs.set("city", city.trim());
       const res = await fetch(`/api/jobscanner/leads?${qs.toString()}`, { cache: "no-store" });
-      if (res.status === 401 || res.status === 403) { setMsg("Please sign in to see jobs."); return; }
-      if (!res.ok) { setMsg("Could not load jobs."); return; }
+      if (res.status === 401 || res.status === 403) {
+        const pub = new URLSearchParams({ limit: "12" });
+        if (roleText) pub.set("q", roleText);
+        if (city.trim()) pub.set("city", city.trim());
+        const pr = await fetch(`/api/public/jobscanner/leads?${pub.toString()}`, { cache: "no-store" });
+        const pd = (await pr.json().catch(() => ({}))) as { leads?: Array<{ title: string; employer: string | null; areaLabel: string; salaryMaxMinor: number | null; source: string; url?: string | null }>; total?: number };
+        const list = (pd.leads ?? []).map((l) => ({ title: l.title, employer: l.employer, city: l.areaLabel, province: null, salaryMaxMinor: l.salaryMaxMinor, url: l.url ?? "", source: l.source }));
+        setLeads(list); setLoaded(true); setVisitor(true);
+        setMsg(list.length ? { key: "scanner.visitorFound", vars: { count: pd.total ?? list.length } } : { key: "scanner.noneYet" });
+        return;
+      }
+      if (!res.ok) { setMsg({ key: "scanner.loadFailed" }); return; }
       const d = (await res.json()) as { leads: Lead[]; pro?: boolean };
       setLeads(d.leads ?? []); setLoaded(true); setPro(Boolean(d.pro));
-      setMsg(d.leads?.length ? `${d.leads.length} jobs found.` : "No jobs match yet — try a broader search.");
+      setMsg(d.leads?.length ? { key: "scanner.found", vars: { count: d.leads.length } } : { key: "scanner.noneYet" });
     } finally { setBusy(false); }
   };
+
+  useEffect(() => {
+    // Search straight away (using ?q= when coming from the front page), so the page is never empty.
+    const q = new URLSearchParams(window.location.search).get("q");
+    if (q) setRole(q);
+    void search(q ?? undefined);
+  }, []);
 
   return (
     <section>
       <div style={styles.searchRow}>
-        <input style={styles.input} value={role} onChange={(e) => setRole(e.target.value)} placeholder="Role or skill — e.g. chef, PSW, cariste" />
-        <input style={styles.input} value={city} onChange={(e) => setCity(e.target.value)} placeholder="City (optional) — Montréal, Laval…" />
-        <button type="button" style={styles.cta} disabled={busy} onClick={() => void search()}>{busy ? "Searching…" : "Find jobs"}</button>
+        <input style={styles.input} value={role} onChange={(e) => setRole(e.target.value)} placeholder={t("scanner.rolePh")} />
+        <input style={styles.input} value={city} onChange={(e) => setCity(e.target.value)} placeholder={t("scanner.cityPh")} />
+        <button type="button" style={styles.cta} disabled={busy} onClick={() => void search()}>{busy ? t("scanner.searchingBtn") : t("scanner.find")}</button>
       </div>
-      {msg ? <p style={styles.msg}>{msg}</p> : null}
+      {msg ? <p style={styles.msg}>{t(msg.key, msg.vars)}</p> : null}
       {loaded && pro ? (
-        <p style={styles.proBanner}>⭐ Worker Pro — showing the best-paying and most urgent jobs first.</p>
+        <p style={styles.proBanner}>{t("scanner.proBanner")}</p>
       ) : loaded ? (
-        <p style={styles.upsell}>🔒 <strong>Worker Pro</strong> members see the best-paying and emergency jobs first. <a href="/cv-builder" style={styles.link}>Learn about Pro →</a></p>
+        <p style={styles.upsell}>{t("scanner.upsell")} <a href="/cv-builder" style={styles.link}>{t("scanner.learnPro")}</a></p>
       ) : null}
-      <p style={styles.note}>These are external job postings from partner sources. You apply on the source site. Want a CV first? <a href="/cv-builder" style={styles.link}>Build your CV →</a></p>
+      <p style={styles.note}>{t("scanner.note")} <a href="/cv-builder" style={styles.link}>{t("scanner.buildCv")}</a></p>
 
       {leads.map((l, i) => (
         <article key={l.id ?? i} style={styles.card}>
-          <strong style={styles.title}>{l.title}</strong>
+          <OutsideSiteBadge className="jsf-badge" />
+          <strong style={styles.title} dir="auto">{l.title}</strong>
           <div style={styles.meta}>
-            {l.employer ?? "—"} · {l.city}, {l.province}{money(l.salaryMaxMinor) ? ` · ${money(l.salaryMaxMinor)}` : ""}
-            {typeof l.score === "number" ? ` · match ${(l.score * 100).toFixed(0)}%` : ""}
+            {l.employer ?? "—"} · {l.province ? `${l.city}, ${l.province}` : l.city}{money(l.salaryMaxMinor, t, fmt) ? ` · ${money(l.salaryMaxMinor, t, fmt)}` : ""}
+            {typeof l.score === "number" ? ` · ${t("scanner.match", { pct: (l.score * 100).toFixed(0) })}` : ""}
           </div>
           <div style={styles.actions}>
-            <a style={styles.apply} href={l.url} target="_blank" rel="noreferrer">Apply on source ↗</a>
-            <a style={styles.ghost} href="/cv-builder">Tailor my CV</a>
+            {/* Outside listing: "Apply on <site>" opens the outside site in a new tab. */}
+            {outsideApplyUrl(l.url) ? (
+              <OutsideApplyLink url={l.url} source={l.source} />
+            ) : visitor ? (
+              <a style={styles.apply} href={accountHref("signup")}>{t("scanner.signupToApply")}</a>
+            ) : null}
+            <a style={styles.ghost} href="/cv-builder">{t("scanner.tailorCv")}</a>
+            {l.source === "adzuna" ? (
+              <a style={styles.adzuna} href="https://www.adzuna.ca" target="_blank" rel="noreferrer">Adzuna</a>
+            ) : null}
           </div>
         </article>
       ))}
-      {loaded && leads.length === 0 ? <p style={styles.msg}>Nothing yet — try a different role or remove the city.</p> : null}
+      {loaded && leads.length === 0 ? <p style={styles.msg}>{t("scanner.nothing")}</p> : null}
     </section>
   );
 }
 
+// Same dark look as the rest of joblop.com: black inputs with a gold border, dark cards, gold links,
+// black text on gold buttons.
 const styles = {
   searchRow: { display: "flex", flexWrap: "wrap" as const, gap: 10, margin: "12px 0" },
-  input: { border: "1px solid #c3d0e4", borderRadius: 8, flex: "1 1 220px", minHeight: 42, minWidth: 0, padding: "0 12px" },
-  cta: { background: "#0f7f78", border: "none", borderRadius: 8, color: "#fff", cursor: "pointer", fontWeight: 800, minHeight: 44, padding: "0 18px" },
-  msg: { color: "#0f7f78", fontSize: 14, fontWeight: 700 },
-  proBanner: { background: "#eafaf7", border: "1px solid #a9e3d8", borderRadius: 8, color: "#0b5c55", fontSize: 13, fontWeight: 700, margin: "4px 0", padding: "8px 12px" },
-  upsell: { background: "#fff6e6", border: "1px solid #f0d089", borderRadius: 8, color: "#8a5a00", fontSize: 13, margin: "4px 0", padding: "8px 12px" },
-  note: { color: "#5a6b85", fontSize: 13, margin: "4px 0 16px" },
-  link: { color: "#0f7f78", fontWeight: 700 },
-  card: { background: "#fff", border: "1px solid #dbe4f0", borderRadius: 12, marginBottom: 12, padding: 16 },
-  title: { color: "#061b41", fontSize: 16 },
-  meta: { color: "#5a6b85", fontSize: 13, margin: "4px 0 10px" },
-  actions: { alignItems: "center", display: "flex", gap: 14 },
-  apply: { color: "#b23b2e", fontSize: 14, fontWeight: 800, textDecoration: "none" },
-  ghost: { color: "#0f7f78", fontSize: 14, fontWeight: 700, textDecoration: "none" }
+  input: { background: "#000", border: "1px solid rgba(248, 184, 8, 0.6)", borderRadius: 8, color: "#f4efe4", flex: "1 1 220px", font: "inherit", minHeight: 44, minWidth: 0, padding: "0 12px" },
+  cta: { background: "#f8b808", border: "none", borderRadius: 8, color: "#000", cursor: "pointer", fontWeight: 800, minHeight: 44, padding: "0 18px" },
+  msg: { color: "#e8c46b", fontSize: 14, fontWeight: 700 },
+  proBanner: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.34)", borderRadius: 8, color: "#f4efe4", fontSize: 13, fontWeight: 700, margin: "4px 0", padding: "8px 12px" },
+  upsell: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.34)", borderRadius: 8, color: "#f4efe4", fontSize: 13, margin: "4px 0", padding: "8px 12px" },
+  note: { color: "#b3a894", fontSize: 13, margin: "4px 0 16px" },
+  link: { color: "#f8b808", fontWeight: 700 },
+  adzuna: { alignItems: "center", background: "#f3f0ea", borderRadius: 6, color: "#2b2b2b", display: "inline-flex", fontSize: 14, fontWeight: 700, justifyContent: "center", marginInlineStart: "auto", minHeight: 24, minWidth: 116, padding: "0 10px", textDecoration: "none" },
+  card: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 12, marginBottom: 12, padding: 16 },
+  title: { color: "#f4efe4", fontSize: 16, overflowWrap: "anywhere" as const },
+  meta: { color: "#b3a894", fontSize: 13, margin: "4px 0 10px" },
+  actions: { alignItems: "center", display: "flex", flexWrap: "wrap" as const, gap: "4px 14px" },
+  apply: { alignItems: "center", color: "#f8b808", display: "inline-flex", fontSize: 14, fontWeight: 800, minHeight: 44, textDecoration: "none" },
+  ghost: { alignItems: "center", color: "#f4efe4", display: "inline-flex", fontSize: 14, fontWeight: 700, minHeight: 44, textDecoration: "underline", textUnderlineOffset: 3 }
 } as const;

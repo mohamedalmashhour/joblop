@@ -5,7 +5,7 @@
 
 export const MINIMUM_SHIFT_HOURS = 6;
 export const MINIMUM_SHIFT_MINUTES = MINIMUM_SHIFT_HOURS * 60;
-export const MINIMUM_SHIFT_MESSAGE = "JobLop shifts have a minimum duration of 6 hours.";
+export const MINIMUM_SHIFT_MESSAGE = "Joblop shifts have a minimum duration of 6 hours.";
 
 // Whole/fractional shift duration in minutes between two ISO timestamps.
 // Returns 0 when the range is invalid or non-positive.

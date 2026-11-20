@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { useLocale } from "../i18n/LocaleProvider";
+import { SignedOut } from "../shared/SignedOut";
 
 type Lead = {
   id?: string;
@@ -27,6 +29,7 @@ const money = (minor: number | null) =>
   minor ? `~${(minor / 100).toLocaleString("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 })}/yr` : "";
 
 export function JobScannerPanel() {
+  const locale = useLocale();
   const [profile, setProfile] = useState({
     fullName: "Marie Tremblay",
     headline: "Chef de cuisine",
@@ -39,6 +42,7 @@ export function JobScannerPanel() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [cvByLead, setCvByLead] = useState<Record<string, GeneratedCv>>({});
   const [msg, setMsg] = useState("");
+  const [signedOut, setSignedOut] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const roleKeywords = () =>
@@ -50,7 +54,7 @@ export function JobScannerPanel() {
       const qs = new URLSearchParams({ province: "QC", limit: "50", roleKeywords: roleKeywords() });
       if (city.trim()) qs.set("city", city.trim());
       const res = await fetch(`/api/jobscanner/leads?${qs.toString()}`, { cache: "no-store" });
-      if (res.status === 401 || res.status === 403) { setMsg("Administrator access required."); return; }
+      if (res.status === 401 || res.status === 403) { setMsg(""); setSignedOut(true); return; }
       if (!res.ok) { setMsg("Could not load leads."); return; }
       const data = (await res.json()) as { leads: Lead[]; leadCount: number };
       setLeads(data.leads ?? []);
@@ -91,14 +95,17 @@ export function JobScannerPanel() {
         })
       });
       if (!res.ok) { setMsg("CV generation failed."); return; }
-      const d = (await res.json()) as { cv: GeneratedCv };
+      const d = (await res.json()) as { cv: GeneratedCv; fallback?: { message: { en: string; fr: string; ar: string } } | null };
       setCvByLead((m) => ({ ...m, [lead.id!]: d.cv }));
-      setMsg(`CV tailored to “${lead.title}”.`);
+      // Launch step 6: when the AI writer is unavailable the API sends a basic CV with a note.
+      const note = d.fallback?.message ? d.fallback.message[locale.startsWith("fr") ? "fr" : locale.startsWith("ar") ? "ar" : "en"] : "";
+      setMsg(note || `CV tailored to “${lead.title}”.`);
     } finally { setBusy(false); }
-  }, [profile]);
+  }, [profile, locale]);
 
   const set = (k: keyof typeof profile) => (v: string) => setProfile((p) => ({ ...p, [k]: v }));
 
+  if (signedOut) return <SignedOut compact />;
   return (
     <section style={styles.wrap}>
       <article style={styles.card}>
@@ -163,22 +170,22 @@ export function JobScannerPanel() {
 
 const styles = {
   wrap: { padding: "24px clamp(18px, 5vw, 64px)" },
-  card: { background: "#fff", border: "1px solid #dbe4f0", borderRadius: 14, boxShadow: "0 12px 30px rgba(6,27,65,.06)", marginBottom: 16, padding: 20 },
-  h2: { color: "#061b41", fontSize: 20, marginTop: 0 },
-  h3: { color: "#061b41", fontSize: 14, margin: "0 0 6px" },
+  card: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 14, boxShadow: "0 12px 30px rgba(0,0,0,.4)", marginBottom: 16, padding: 20 },
+  h2: { color: "#f4efe4", fontSize: 20, marginTop: 0 },
+  h3: { color: "#f4efe4", fontSize: 14, margin: "0 0 6px" },
   formRow: { alignItems: "flex-end", display: "flex", flexWrap: "wrap" as const, gap: 12, marginBottom: 10 },
-  label: { color: "#10233f", display: "flex", flexDirection: "column" as const, fontSize: 12, fontWeight: 700, gap: 4 },
-  input: { border: "1px solid #c3d0e4", borderRadius: 8, minHeight: 38, padding: "0 10px", minWidth: 160 },
-  button: { background: "#0f7f78", border: "none", borderRadius: 8, color: "#fff", cursor: "pointer", fontWeight: 800, minHeight: 40, padding: "0 14px" },
-  buttonGhost: { background: "#fff", border: "1px solid #0f7f78", borderRadius: 8, color: "#0f7f78", cursor: "pointer", fontWeight: 800, minHeight: 40, padding: "0 14px" },
-  notice: { color: "#0f7f78", fontSize: 13, fontWeight: 700, marginBottom: 0 },
+  label: { color: "#f4efe4", display: "flex", flexDirection: "column" as const, fontSize: 12, fontWeight: 700, gap: 4 },
+  input: { border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, minHeight: 38, padding: "0 10px", minWidth: 160 },
+  button: { background: "#171511", border: "none", borderRadius: 8, color: "#fff", cursor: "pointer", fontWeight: 800, minHeight: 40, padding: "0 14px" },
+  buttonGhost: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.3)", borderRadius: 8, color: "#f4efe4", cursor: "pointer", fontWeight: 800, minHeight: 40, padding: "0 14px" },
+  notice: { color: "#f4efe4", fontSize: 13, fontWeight: 700, marginBottom: 0 },
   leadHead: { alignItems: "flex-start", display: "flex", flexWrap: "wrap" as const, gap: 12, justifyContent: "space-between" },
-  leadTitle: { color: "#061b41", fontSize: 16 },
-  leadMeta: { color: "#5a6b85", fontSize: 13, marginTop: 4 },
+  leadTitle: { color: "#f4efe4", fontSize: 16 },
+  leadMeta: { color: "#f4efe4", fontSize: 13, marginTop: 4 },
   leadActions: { alignItems: "center", display: "flex", flexWrap: "wrap" as const, gap: 10 },
   applyLink: { color: "#b23b2e", fontSize: 13, fontWeight: 800, textDecoration: "none" },
-  cvWrap: { borderTop: "1px solid #eef3f9", marginTop: 14, paddingTop: 12 },
-  cvNote: { color: "#5a6b85", fontSize: 12, marginTop: 0 },
+  cvWrap: { borderTop: "1px solid rgba(248, 184, 8, 0.16)", marginTop: 14, paddingTop: 12 },
+  cvNote: { color: "#f4efe4", fontSize: 12, marginTop: 0 },
   cvGrid: { display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" },
-  pre: { background: "#f6f9fc", border: "1px solid #e3ecf5", borderRadius: 8, fontSize: 12, lineHeight: 1.5, margin: 0, overflowX: "auto" as const, padding: 12, whiteSpace: "pre-wrap" as const }
+  pre: { background: "#000000", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, fontSize: 12, lineHeight: 1.5, margin: 0, overflowX: "auto" as const, padding: 12, whiteSpace: "pre-wrap" as const }
 } as const;

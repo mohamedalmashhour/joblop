@@ -30,11 +30,13 @@ describe("authenticated calendar UI integration", () => {
     const admin = read("apps", "admin", "app", "calendar", "AdminCalendarPanel.tsx");
     for (const source of [employer, admin]) {
       expect(source).toContain('fetch("/api/calendar/requests"');
-      expect(source).toContain('fetch("/api/session/sign-in"');
       expect(source).toContain("clearWebCalendarSession(fetch)");
       expect(source).not.toMatch(/Bearer\s|authorization\s*:/iu);
       expect(source).not.toMatch(/localStorage|sessionStorage/u);
     }
+    // Staff pages use the one shared signed-out block (gold Sign in button with a return path).
+    expect(admin).toContain("<SignedOut");
+    expect(employer).toContain('href="/signin"');
   });
 
   it("routes persisted list records to the matching persisted detail", () => {
@@ -75,26 +77,27 @@ describe("authenticated calendar UI integration", () => {
       "request",
       "ClientRequestDetailPanel.tsx"
     );
+    // "Edit draft" reuses the full Request workers form, pre-filled with the saved draft.
+    const page = read("apps", "employer", "app", "employer", "calendar", "request", "edit", "page.tsx");
     const editor = read(
       "apps",
       "employer",
       "app",
       "employer",
       "calendar",
-      "request",
-      "edit",
-      "EditPersistedRequestPanel.tsx"
+      "create",
+      "CreatePersistedRequestPanel.tsx"
     );
     for (const source of [list, detail]) {
       expect(source).toContain('request.status === "draft"');
       expect(source).toContain("/employer/calendar/request/edit");
     }
-    expect(editor).toContain('status === "information_required"');
+    expect(page).toContain("<CreatePersistedRequestPanel editRequestId={id} />");
+    expect(editor).toContain('const EDITABLE_STATUSES = ["draft", "information_required"]');
     expect(editor).toContain('method: "PATCH"');
-    expect(editor).toContain("expectedVersion: snapshot.versionToken");
-    expect(editor).toContain("This draft changed after you opened it");
-    expect(editor).toContain("Load latest version");
-    expect(editor).toContain("Resubmit for admin review");
+    expect(editor).toContain("expectedVersion: current.versionToken");
+    expect(editor).toContain('t("create.msgDraftChanged")');
+    expect(editor).toContain('t("create.submitForReview")');
   });
 
   it("connects persisted admin intake actions without enabling downstream execution", () => {
@@ -109,11 +112,20 @@ describe("authenticated calendar UI integration", () => {
       "[action]",
       "route.ts"
     );
-    expect(review).toContain("Begin admin review");
-    expect(review).toContain("Request information");
-    expect(review).toContain("Approve for dispatch");
-    expect(review).toContain("expectedVersion: request.versionToken");
-    expect(review).toContain("does not publish, assign, notify");
+    const reviewCopy = read("apps", "admin", "app", "calendar", "reviewText.ts");
+    // No separate "Start review" button any more: approval is one step.
+    expect(reviewCopy).not.toContain("beginReview");
+    expect(review).not.toContain("t.beginReview");
+    expect(reviewCopy).toContain("Send question to employer");
+    expect(reviewCopy).toContain("Post on the job board (first qualified worker gets it)");
+    expect(reviewCopy).toContain("I'll choose the worker myself");
+    expect(reviewCopy).toContain("Question for the employer (only if you need more details)");
+    // One-step approval: a new request is moved to review with the existing begin-review action
+    // first (audit trail unchanged), then approved or questioned with the version it returned.
+    expect(review).toContain("let expectedVersion: number = request.versionToken");
+    expect(review).toContain('post("admin-review", expectedVersion)');
+    expect(review).toContain("expectedVersion = next");
+    expect(review).toContain("setConfirmAction(");
     expect(mutation).toContain("isSameOriginMutation(request)");
     expect(mutation).toContain("readAdminIntakeMutation");
     expect(mutation).toContain('"cache-control": "private, no-store"');
@@ -133,8 +145,10 @@ describe("authenticated calendar UI integration", () => {
     for (const source of [list, detail]) {
       expect(source).toContain('actionRequired === "information_required"');
       expect(source).toContain("actionRequiredReason");
-      expect(source).toContain("Provide requested information");
     }
+    // The calendar card and the request detail are translated (EN / FR / AR).
+    expect(detail).toContain('t("calendar.provideInfo")');
+    expect(list).toContain('t("calendar.provideInfo")');
   });
 
   it("never substitutes fixtures when authenticated data is denied, empty, or unavailable", () => {
@@ -200,13 +214,26 @@ describe("authenticated calendar UI integration", () => {
       "StaffingProgressPanel.tsx"
     );
     const adminAssignment = read("apps", "admin", "app", "calendar", "assignment", "page.tsx");
-    expect(employerAssignment).toContain("Staffing progress");
-    expect(employerStaffingPanel).toContain("No fixture status or worker identity is substituted");
-    expect(employerStaffingPanel).toContain("does not confirm accepted offers or assignments");
+    // The employer words live in staffingText.ts (en/fr/ar). They stay honest in plain language: a
+    // failed load changes nothing, and "zero places left" does not mean workers have confirmed.
+    const employerStaffingText = read(
+      "apps",
+      "employer",
+      "app",
+      "employer",
+      "calendar",
+      "assignment",
+      "staffingText.ts"
+    );
+    expect(employerAssignment).toContain("staffingText[await serverLang()]");
+    expect(employerStaffingText).toContain('pageTitle: "Staffing progress"');
+    expect(employerStaffingPanel).toContain("tx.zeroNote");
+    expect(employerStaffingText).toContain("Your request was not changed.");
+    expect(employerStaffingText).toContain("You will see them on Assigned workers once they confirm.");
+    expect(employerStaffingText).not.toMatch(/fixture|persisted|dispatch|authoritative/iu);
     expect(adminAssignment).toContain("No fixture assignment is substituted");
     expect(adminAssignment).toContain("Attendance");
     const adminReview = read("apps", "admin", "app", "calendar", "PersistedAdminReviewPanel.tsx");
-    expect(adminReview).toContain("Assignment records are not connected in this admin view");
     expect(adminReview).not.toContain("/calendar/assignment?request=");
     expect(`${employerAssignment}\n${employerStaffingPanel}\n${adminAssignment}`).not.toMatch(
       /executeAttendance|punchIn|punchOut/u
@@ -271,14 +298,15 @@ describe("authenticated calendar UI integration", () => {
     expect(createPanel).toContain('method: "PUT"');
     expect(createPanel).toContain('t("create.retryDetails")');
     expect(employerMessages).toContain('"create.retryDetails": "Retry staffing details"');
-    // Worker economics are governed by the approved contract/offer terms, never invented here.
+    // The rate note points at the approved contract and never mentions the worker's rate or a share.
     expect(createPanel).toContain('t("create.economicsNote")');
-    expect(employerMessages).toContain("governed by the approved contract and offer terms");
+    expect(employerMessages).toContain("follow your approved contract");
+    expect(employerMessages).not.toMatch(/worker's rate is set|worker's share|hourly share|platform margin/i);
     expect(createPanel).toContain("/submit");
     expect(createPanel).not.toContain("mode=fixture");
     expect(clientRequestPage).toContain('mode === "fixture" && !request');
     expect(adminRequestPage).toContain("request");
-    expect(adminRequestPage).toContain("Select a persisted request");
+    expect(adminRequestPage).toContain("Choose a request");
     expect(adminRequestPage).not.toContain("<AdminReviewPanel />");
     expect(adminCalendarPage).not.toContain("fixture review-controls preview");
     expect(workerPanel).toContain("Open isolated fixture workflow preview");

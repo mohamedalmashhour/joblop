@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import {
   AuthenticationError,
@@ -107,6 +107,7 @@ import {
   createPrismaCancellationJobRequestReader,
   createPrismaConfirmedAssignmentReader,
   createPrismaContractRateReader,
+  createPrismaRequestBillRateReader,
   createPrismaCancellationStore,
   CONFIRMED_ASSIGNMENT_STATUSES,
   EmployerCancellationError,
@@ -121,6 +122,7 @@ import {
   createWorkerOfferService,
   createWorkGroupService,
   createPrismaAssignmentRepository,
+  createPrismaHeldShiftOverlapFinder,
   createPrismaAttendanceRepository,
   createPrismaCalendarRequestProfileRepository,
   createPrismaConfirmedAssignmentCoverageReader,
@@ -138,7 +140,7 @@ import {
   createHttpCandidateSource,
   createLocalMarketplaceCandidateSource,
   createHttpWorkerOfferDeliveryProvider,
-  createResendWorkerOfferDeliveryProvider,
+  createBrevoWorkerOfferDeliveryProvider,
   passwordPolicyErrorCode,
   registrationUnavailableCode,
   toSafeAuthorizationResponse,
@@ -175,7 +177,7 @@ import {
 } from "@rwos/auth";
 import { normalizeEmail } from "@rwos/auth";
 import { getRuntimeConfig, type CountryAddressPort } from "@rwos/config";
-import { createPrismaClient } from "@rwos/database";
+import { createPrismaClient, type Prisma } from "@rwos/database";
 import { createLogger } from "@rwos/observability";
 import {
   createLocalFakePaymentProvider,
@@ -185,7 +187,6 @@ import {
   searchNearbyJobs,
   boundingBoxKm,
   geodesicDistanceKm,
-  isProvinceCode,
   isValidCoordinate,
   type RequestEditState,
   type GeocodingProvider,
@@ -204,8 +205,31 @@ import {
   rankLeadsForWorker,
   prioritizeProLeads,
   type WorkerMatchProfile,
-  type ExternalJobLead
+  type ExternalJobLead,
+  parseGradePostingRequest,
+  gradePostingFromRequest,
+  WIZARD_DEGREE_ANCHORS,
+  WIZARD_FACTOR_ORDER,
+  FACTOR_LABELS,
+  FAMILY_LABELS,
+  activeCountry,
+  upcomingHolidays
 } from "@rwos/shared";
+import {
+  sendGreeting,
+  issueCertificate,
+  searchRecipients,
+  listSentGreetings,
+  listIssuedCertificates,
+  listGreetingsForRecipient,
+  listCertificatesForRecipient,
+  markGreetingRead,
+  markCertificateRead,
+  isCertificateKind,
+  type AudienceScope,
+  type RecipientKind
+} from "./platformGreetings";
+import { getOrCreateReferralCode, referralStats, recordReferralSignup } from "./referrals";
 import {
   createTrustedServiceIdentityHeaders,
   type IdentityTokenProvider,
@@ -217,7 +241,23 @@ import { upsertLeads, queryStoredLeads } from "./jobScannerRepository";
 import { startJobScannerSchedule, type ScanQuery } from "./jobScannerScheduler";
 import { startPaymentSweepSchedule } from "./paymentSweepSchedule";
 import { type WorkerCvProfile, type TargetJob } from "./cvBuilder";
-import { getCvProvider } from "./cvBuilderClaude";
+import { generateCvSafely, getClaudeCvProvider } from "./cvBuilderClaude";
+import { outsideAiCallsEnabled } from "./outsideAi";
+import { AI_USAGE_FEATURES, createPrismaAiUsageStore, CV_STAFF_LIMITS, CV_WORKER_LIMITS } from "./outsideAiUsage";
+import { reviewDocumentAdvisory } from "./documentAiReview";
+import { presentableVerdict, readAcceptedLegalVersion, workerProfileRating } from "@rwos/shared";
+import { longTermJobRequestInput } from "./longTermJobRequestInput";
+import {
+  applyBlockingCertificates,
+  certificateGapForJob,
+  certificateGapForJobId,
+  certificateReasons,
+  offerCertificateRefusal,
+  readCertificateOverride,
+  recordCertificateOverride,
+  requiredCertificatesField
+} from "./requiredCertificateCheck";
+import { draftEditExtras, readDraftCertificatesUpdate } from "./draftEditExtras";
 import { createCvAsset, listCvAssets, deleteCvAsset } from "./cvAssetRepository";
 import { isPro, getActiveEntitlement, grantEntitlement, revokeEntitlement, startTrial, hasEverTrialed, TRIAL_DAYS, PRO_PLAN } from "./cvEntitlementRepository";
 import {
@@ -245,7 +285,6 @@ import {
   GoogleOAuthError
 } from "./googleOAuth";
 import { pushAssignmentToCalendar } from "./googleCalendarSync";
-import { createSyntheticCvProvider } from "./cvBuilder";
 import {
   activeMembershipRoleQuery,
   activePlatformGrantQuery,
@@ -257,7 +296,81 @@ import {
   emailVerificationFailure,
   type EmailVerificationService
 } from "./emailVerification";
+import {
+  addEmailInvalidMessage,
+  confirmEmailFailure,
+  createAddEmailService,
+  createPrismaAddEmailRepository,
+  emailInUseMessage,
+  resolveAddEmailLanguage,
+  type AddEmailService
+} from "./addEmail";
 import { createEmailSender, type EmailSender } from "./mailer/emailSender";
+import { createTwilioVerify } from "./mailer/twilioVerify";
+import { createSmsSender, type SmsSender } from "./mailer/smsSender";
+import { registerInstantContactRoutes } from "./instantContactRoutes";
+import { activeBonusByJob, coverageBonusSuggestion, latestBonusByJob, registerJobBonusRoutes } from "./jobBonusRoutes";
+import { registerCalendarHubRoutes } from "./calendarHubRoutes";
+import { registerEmployerPlanRoutes } from "./employerPlanRoutes";
+import { isListedForWorkers, listedJobWhere, listingVisibilitySelect } from "./jobListingVisibility";
+import { claimBlockReason, openJobWhere } from "./openJobs";
+import { employerCancelledBy, workerAttendanceView, workerCancelledBy } from "./workerCancelledBy";
+import { SHIFT_CONDITIONS_SELECT, parseShiftConditions, storedShiftConditions, workerShiftConditions } from "./shiftConditions";
+import { isSavedJobAvailable } from "./savedJobAvailability";
+import { sortDispatchesBySoonestShift } from "./dispatchListOrder";
+import { PUBLIC_CALENDAR_MAX_JOBS, publicCalendarJobView, publicCalendarRange } from "./publicJobsCalendar";
+import { defaultOfferCompensationLine } from "./offerPayLine";
+import {
+  hourlyPayLine,
+  intlLocale,
+  normalizeLanguagePreference,
+  resolveWorkerLanguage,
+  type WorkerLanguage
+} from "./notifications/workerLanguage";
+import { resolveSearchPlace, searchPlaceFailure } from "./searchPlace";
+import { matchingRoleIds } from "./roleSearch";
+import { WORKER_PAY_SELECT, isLongTermListingJob, longTermPaySentence, workerPay } from "./longTermWorkerPay";
+import { LONG_TERM_NO_TIMESHEETS_BODY, clockInFields, isLongTermAssignment, isLongTermAttendance } from "./longTermNoTimesheets";
+import { checkInTooEarly, checkInTooEarlyBody } from "./checkInWindow";
+import {
+  BOOKED_ASSIGNMENT_STATUSES,
+  CANCELLED_ASSIGNMENT_STATUSES,
+  cancelBookedShift,
+  cancelledShiftReason,
+  SHIFT_ALREADY_STARTED_BODY,
+  SHIFT_CANCELLED_BODY,
+  type BookedShiftCanceller
+} from "./cancelBookedShift";
+import { isEmployerPlansEnabled } from "./employerPlanRepository";
+import { createMarketingContactSync, type MarketingContactSync } from "./mailer/brevoContacts";
+import { runShiftReminderSweep } from "./shiftReminderSweep";
+import { searchDateBound } from "./localDay";
+import { registerBrainRoutes } from "./brain/brainRoutes";
+import { registerCrmRoutes } from "./crm/crmRoutes";
+import { hoursReportAvailability, hoursReportDeadline } from "./hoursReport";
+import { latestHoursReports, registerHoursReportRoutes } from "./hoursReportRoutes";
+import { createPrismaDeliveryFailureRecorder, purgeOldDeliveryBodies, withEmailFailureRecording, withSmsFailureRecording } from "./brain/deliveryFailures";
+import { createJoblopBrain } from "./brain/joblopBrain";
+import { createPrismaJoblopBrainData } from "./brain/joblopData";
+import { createPrismaJoblopCeoData } from "./brain/joblopCeoData";
+import { createJoblopCeoEffects } from "./brain/joblopCeoEffects";
+import { createJoblopBrainEffects, type JoblopBrainDomain } from "./brain/joblopEffects";
+import { createPrismaBrainStore } from "./brain/prismaBrainStore";
+import { assistantSwitchKeys, createAssistantService } from "./assistant/assistantService";
+import { createProposalSigner } from "./assistant/proposalToken";
+import { guideFor } from "./contactGuide";
+import { outsideAiApiKey } from "./outsideAi";
+import { listUnfilledShifts, runUnfilledShiftSweep } from "./unfilledShiftAlerts";
+import { runPlanReminderSweep } from "./planReminderSweep";
+import { createPushSender, isExpoPushToken, isPushPlatform, noopPushSender, type PushFetch } from "./notifications/pushSender";
+import {
+  ensureUnsubscribeToken,
+  generateUnsubscribeToken,
+  isUnsubscribeToken,
+  jobAlertConfirmationEmail,
+  runJobAlertSweep,
+  type AlertOpenJob
+} from "./jobAlerts";
 import {
   createPasswordResetService,
   passwordResetAccepted,
@@ -272,11 +385,33 @@ import {
   type DocumentUploadService
 } from "./documentUpload";
 import { createDocumentUploadContract } from "./documentUploadContract";
+import {
+  ALLOWED_HR_DOCUMENT_CONTENT_TYPES,
+  MAX_HR_DOCUMENT_BYTES,
+  createLocalHrDocumentStorageProvider,
+  detectViewableHrDocumentType,
+  sanitizeHrDocumentFileName
+} from "./hrDocumentStorageLocal";
 import { resolvePayrollPeriodTimezone } from "./payrollPeriodTimezone";
+import {
+  WorkerJobCategoryError,
+  jobCategoryDemand,
+  listWorkerJobCategories,
+  replaceWorkerJobCategories,
+  workersWantingCategory
+} from "./workerJobCategoryRepository";
 import { createPrismaDocumentMetadataRepository } from "./documentUploadRepository";
 import { registerDocumentRoutes } from "./documentRoutes";
 import { registerInvoiceRoutes } from "./invoiceRoutes";
 import { createPrismaRequestPricingSnapshotCapture } from "./requestPricingSnapshot";
+import { pendingRateEstimates } from "./coverageEstimate";
+import {
+  readAdminRequestCards,
+  readAdminRequestSummary,
+  type AdminRequestCard,
+  type AdminRequestSummary,
+  type AdminRequestSummaryPrisma
+} from "./adminRequestSummary";
 import { materializeAndListWorkerPayouts } from "./workerPayoutRepository";
 import { executeTestWorkerPayout, isPayoutTestExecutionEnabled } from "./workerPayoutExecution";
 import {
@@ -285,6 +420,7 @@ import {
   getActiveElection,
   type WorkerClassification
 } from "./workerClassificationElection";
+import { currentPayrollCalculations } from "./currentPayrollCalculations";
 import { buildRemittanceSummary } from "./taxRemittance";
 import { buildTaxSlips, type SlipCalcInput } from "./taxSlip";
 import { GST_RATE_PPM, QST_RATE_PPM } from "./payChannel";
@@ -300,11 +436,27 @@ import {
 import { isWorkerDisputeCategory, normalizeWorkerDisputeReason } from "@rwos/shared";
 import { normalizeEscalationReason } from "@rwos/shared";
 import { buildCalendarExport } from "@rwos/shared";
+import { matchingPlaceNames, postalAreaOf } from "@rwos/shared";
 import { deriveOrderLifecycle } from "@rwos/shared";
-import { deriveWorkerCancellationPenalty, WORKER_SUSPENSION_DAYS } from "@rwos/shared";
-import { notifyClient } from "./notifications/clientNotifications";
-import { notifyWorkerPayoutPaid, notifyWorkerPayoutRegistered, notifyWorkerAccountPenalty } from "./notifications/workerNotifications";
-import { raiseWorkerDispute, listWorkerDisputes, withdrawWorkerDispute } from "./workerDisputeRepository";
+import { MinimumWageError } from "@rwos/shared";
+import { parseRequiredCertificates, storedRequiredCertificates } from "@rwos/shared";
+import { shiftOverlapLanguageFromHeader, shiftOverlapResponseBody, type HeldShift } from "@rwos/shared";
+import { deriveWorkerCancellationPenalty, LATE_CANCELLATION_TIMESHEET_MARKER, WORKER_SUSPENSION_DAYS } from "@rwos/shared";
+import { notifyClient, notifyClientInvoiceSent } from "./notifications/clientNotifications";
+import { invoiceEmailAttachment } from "./invoicePdf";
+import { invoicePdfDetails } from "./invoicePdfDetails";
+import {
+  notifyWorkerPayoutPaid,
+  notifyWorkerAccountPenalty,
+  notifyWorkerAssigned,
+  notifyWorkersShiftCancelled,
+  notifyWorkersShiftChanged,
+  type ShiftChangeSummary,
+  type ShiftNoticeWorker
+} from "./notifications/workerNotifications";
+import { createWorkerPayoutProgressionRunner, startWorkerPayoutProgressionSchedule } from "./workerPayoutProgression";
+import { createPrismaJobGradingAuditStore, JOB_GRADING_ENGINE_VERSION, type JobGradingAuditStore } from "./jobGradingAuditRepository";
+import { raiseWorkerDispute, listWorkerDisputes, listWorkerDisputesForStaff, resolveWorkerDispute, withdrawWorkerDispute } from "./workerDisputeRepository";
 import { createEmployerOrderWithChildren, listEmployerOrders, getEmployerOrder, submitEmployerOrder, cancelEmployerOrder } from "./employerOrderRepository";
 import { listMarketWagesForResidence, listAllMarketWages, upsertMarketWage } from "./marketWageRepository";
 import { listPlatformOrdersInReview, getPlatformOrder } from "./adminOrderRepository";
@@ -312,6 +464,14 @@ import { raiseEscalation, listOpenEscalations, closeEscalation } from "./escalat
 import { workerAllowances } from "./workerAllowances";
 import { createPrismaInvoiceRepository, type InvoiceRepository } from "./invoiceRepository";
 import { autoGenerateInvoiceForLockedTimesheet } from "./invoiceFromTimesheet";
+import {
+  applyLateCancellationCharges,
+  listLateCancellationCharges,
+  previewLateCancellation,
+  readConfirmedAssignments,
+  type ConfirmedAssignment,
+  type LateCancellationSource
+} from "./lateCancellationCharges";
 import { createPrismaPayrollRepository, createPrismaPayrollRateResolver, createPrismaPayrollJurisdictionResolver, createPrismaPayrollClassificationResolver } from "./payrollRepository";
 import { registerPaymentRoutes } from "./paymentRoutes";
 import { registerStripeWebhookRoute, registerEmployerInvoiceWebhookRoute } from "./stripeWebhookRoute";
@@ -322,12 +482,25 @@ import { createEmployerInvoiceWebhook, type CheckoutSessionEventLike } from "./e
 import { createStripeTestClient, createStripeTestPaymentProvider } from "./stripeTestProvider";
 import { selectPaymentProvider, isStripeProviderConfigured } from "./paymentProviderSelection";
 import { stripeTestEnvFromProcess } from "./cvProStripeCheckout";
+import { claimOpenJob, ensureOpenClaimDispatch, placeClaimedShiftOnSchedule } from "./openClaim";
+import { isWorksiteAddressVisible, workerJobAddress, WORKSITE_ADDRESS_SELECT } from "./worksiteAddress";
+import { listEmployerApplicants, setEmployerFavorite, listLongTermApplicants } from "./employerApplicants";
+import { applyEmployerApplicantAction, isEmployerApplicantAction, notifyApplicationDecision } from "./longTermApplications";
+import { legalNameChangeBlocked } from "./organizationLegalName";
+import { normalizeStaffPhone, requestStaffPhoneCode, verifyStaffPhoneCode } from "./staffPhoneSignIn";
+import { listWorkerPayoutsForStaff } from "./workerPayoutStaffList";
+import { deriveAuthenticationRateLimitKeys } from "./authRateLimitKeys";
+import { createPostgresAuthenticationRateLimiter } from "./postgresAuthRateLimiter";
+import { resolveProductionFeatureFlags, isProductionBlockedOperation } from "./productionRoutePolicy";
 
 export interface BuildApiOptions {
   authService?: AuthenticationService;
   emailVerificationService?: EmailVerificationService;
+  addEmailService?: AddEmailService;
   passwordResetService?: PasswordResetService;
   emailSender?: EmailSender;
+  smsSender?: SmsSender;
+  marketingContactSync?: MarketingContactSync;
   authorizationService?: AuthorizationService;
   membershipService?: OrganizationMembershipService;
   organizationService?: EmployerOrganizationService;
@@ -340,6 +513,14 @@ export interface BuildApiOptions {
   attendanceService?: AttendanceService;
   timesheetService?: TimesheetService;
   calendarRequestService?: CalendarRequestService;
+  /**
+   * Staff-only extras for the platform calendar (company, location, role, prices). Injected in tests;
+   * defaults to Prisma reads. Only called after the platform calendar authorization passed.
+   */
+  adminRequestSummaryReader?: Readonly<{
+    cards(jobRequestIds: readonly string[]): Promise<Record<string, AdminRequestCard>>;
+    summary(jobRequestId: string): Promise<AdminRequestSummary | null>;
+  }>;
   geocodingProvider?: GeocodingProvider;
   travelTimeProvider?: TravelTimeProvider | null;
   workGroupService?: WorkGroupService;
@@ -350,6 +531,12 @@ export interface BuildApiOptions {
   ) => Promise<readonly AuthorizationRoleKey[]> | readonly AuthorizationRoleKey[];
   readinessProbe?: () => Promise<boolean>;
   authRateLimiter?: AuthenticationRateLimiter;
+  /**
+   * Defaults for the production feature flags (RWOS_JOB_FLOW_ENABLED, RWOS_PUBLIC_SIGNUP_ENABLED)
+   * when their env vars are unset, from the selected country profile. Only RWOS_ENV=production reads
+   * the flags; absent = both OFF (historical production behaviour). See productionRoutePolicy.ts.
+   */
+  productionFeatureDefaults?: Readonly<{ jobFlow: boolean; publicSignup: boolean }> | undefined;
   trustedServiceIdentity?: Readonly<{
     provider: IdentityTokenProvider;
     registry: TrustedAudienceRegistry;
@@ -357,6 +544,8 @@ export interface BuildApiOptions {
     releaseSha: string;
   }>;
   env?: NodeJS.ProcessEnv;
+  // Push notifications: inject the HTTP call to Expo's push service (tests); defaults to global fetch.
+  pushFetch?: PushFetch;
   documentService?: DocumentUploadService;
   documentUploadContract?: ReturnType<typeof createDocumentUploadContract>;
   invoiceRepository?: InvoiceRepository;
@@ -399,6 +588,10 @@ export interface BuildApiOptions {
   // stage); the composition root is responsible for fail-closing on a currency the money subsystem
   // cannot execute (see server.ts). Absent → no country currency asserted (local/test neutral fixture).
   countryCurrency?: string | undefined;
+  // ACR-0005: store for persisting advisory job-grading audits. Defaults to a prisma-backed store when
+  // a prisma client is available; injectable (and fakeable in tests). Absent → grading still returns,
+  // just not persisted (best-effort — the grade is advisory).
+  jobGradingAuditStore?: JobGradingAuditStore | undefined;
 }
 
 export type AuthenticationRateLimitDecision = Readonly<{
@@ -419,8 +612,8 @@ export interface AuthenticationRateLimiter {
 }
 
 // Formats a shift window for worker-facing offer emails (localized, Canada timezone).
-function formatOfferWindow(start: Date, end: Date, lang: "en" | "fr"): string {
-  const locale = lang === "fr" ? "fr-CA" : "en-CA";
+function formatOfferWindow(start: Date, end: Date, lang: WorkerLanguage): string {
+  const locale = intlLocale(lang);
   const tz = "America/Toronto";
   try {
     const day = new Intl.DateTimeFormat(locale, { weekday: "short", month: "short", day: "numeric", timeZone: tz }).format(start);
@@ -497,9 +690,30 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
   }
   const requestStartedAt = new WeakMap<object, bigint>();
+  const prisma = options.authService ? null : createPrismaClient(runtimeConfig.databaseUrl);
+  // Production feature flags (job flow, public sign-up). Read only when RWOS_ENV=production.
+  const productionFeatures = resolveProductionFeatureFlags(
+    { jobFlow: runtimeConfig.jobFlowFlag, publicSignup: runtimeConfig.publicSignupFlag },
+    options.productionFeatureDefaults
+  );
   const authRateLimiter =
     options.authRateLimiter ??
-    (runtimeConfig.rwosEnv === "production"
+    (runtimeConfig.authRateLimiterBackend === "postgres"
+      ? // Shared, restart-proof limiter in the API's own database (AUTH_RATE_LIMITER_BACKEND=postgres).
+        // Config validation guarantees DATABASE_URL and AUTH_RATE_LIMITER_KEY_SECRET. Fails closed:
+        // a database error refuses the sign-in (503), never allows it unchecked.
+        (() => {
+          const ownDb = prisma ? null : createPrismaClient(runtimeConfig.databaseUrl);
+          return createPostgresAuthenticationRateLimiter({
+            db: prisma ?? ownDb!,
+            keySecret: runtimeConfig.authRateLimiterKeySecret!,
+            namespace:
+              runtimeConfig.authRateLimiterNamespace ?? `rwos:authrl:${runtimeConfig.rwosEnv}:v1`,
+            ...(runtimeConfig.authRateLimiterKeyId ? { keyId: runtimeConfig.authRateLimiterKeyId } : {}),
+            ...(ownDb ? { close: () => ownDb.$disconnect() } : {})
+          });
+        })()
+      : runtimeConfig.rwosEnv === "production"
       ? createRemoteAuthenticationRateLimiter({
           origin: runtimeConfig.authRateLimiterOrigin!,
           token: runtimeConfig.authRateLimiterToken!,
@@ -523,14 +737,54 @@ export function buildApi(options: BuildApiOptions = {}) {
         // memory limiter (never lenient), so this can never weaken staging or production.
         ? createMemoryAuthenticationRateLimiter({ accountMaxAttempts: 100000, networkMaxAttempts: 100000, windowMs: 1, maxBuckets: 20000, keySecret: "rwos-local-e2e-auth-rate-limit" })
         : createMemoryAuthenticationRateLimiter());
-  const prisma = options.authService ? null : createPrismaClient(runtimeConfig.databaseUrl);
+  const jobGradingAuditStore: JobGradingAuditStore | null =
+    options.jobGradingAuditStore ?? (prisma ? createPrismaJobGradingAuditStore(prisma) : null);
   const authenticationRepository = prisma ? createPrismaAuthenticationRepository(prisma) : null;
-  const emailSender =
+  const rawEmailSender =
     options.emailSender ??
     createEmailSender({
       apiKey: runtimeConfig.emailApiKey,
-      from: runtimeConfig.emailFrom,
-      provider: runtimeConfig.emailProvider
+      from: runtimeConfig.emailFrom
+    });
+  // Transactional SMS twin of emailSender. Double-gated: no-op unless the Brevo key + sender are set
+  // AND SMS_ENABLED=enabled (SMS costs money per message). Threaded into notification sites alongside
+  // emailSender; today it is instantiated and gated OFF by default.
+  const rawSmsSender =
+    options.smsSender ??
+    createSmsSender({
+      apiKey: runtimeConfig.smsApiKey,
+      sender: runtimeConfig.smsSender,
+      enabled: runtimeConfig.smsEnabled,
+      twilio: { accountSid: runtimeConfig.twilioAccountSid, authToken: runtimeConfig.twilioAuthToken, from: runtimeConfig.twilioFrom }
+    });
+  // Brain: failed email/SMS sends are recorded (message_delivery_failures) so the brain can find and
+  // re-send them. Recording never changes a send's result and never throws.
+  const deliveryFailureRecorder = prisma ? createPrismaDeliveryFailureRecorder(prisma) : null;
+  const emailSender = deliveryFailureRecorder ? withEmailFailureRecording(rawEmailSender, deliveryFailureRecorder) : rawEmailSender;
+  const smsSender = deliveryFailureRecorder ? withSmsFailureRecording(rawSmsSender, deliveryFailureRecorder) : rawSmsSender;
+  const twilioVerify = createTwilioVerify({
+    accountSid: runtimeConfig.twilioAccountSid,
+    authToken: runtimeConfig.twilioAuthToken,
+    serviceSid: runtimeConfig.twilioVerifyServiceSid
+  });
+  // Push notifications to the phone app (Expo). Needs the database for device tokens; with none
+  // registered it sends nothing. EXPO_ACCESS_TOKEN is optional (only if the Expo project enforces it).
+  const expoAccessToken = environment.EXPO_ACCESS_TOKEN?.trim();
+  const pushSender = prisma
+    ? createPushSender({
+        prisma,
+        ...(expoAccessToken ? { accessToken: expoAccessToken } : {}),
+        ...(options.pushFetch ? { fetch: options.pushFetch } : {})
+      })
+    : noopPushSender;
+  // CASL step 2: sync opted-in workers to a Brevo marketing list. Gated OFF by default; never blocks
+  // a profile save, never affects transactional email/SMS.
+  const marketingContactSync =
+    options.marketingContactSync ??
+    createMarketingContactSync({
+      apiKey: runtimeConfig.smsApiKey,
+      listId: runtimeConfig.marketingListId,
+      enabled: runtimeConfig.marketingSyncEnabled
     });
   const authService =
     options.authService ??
@@ -541,13 +795,22 @@ export function buildApi(options: BuildApiOptions = {}) {
     options.emailVerificationService ??
     (authenticationRepository && hasEmailVerificationDelegate(prisma)
       ? createEmailVerificationService(authenticationRepository, emailSender, {
-          exposeLocalCode: runtimeConfig.rwosEnv !== "production" && !runtimeConfig.hasEmailDelivery
+          exposeLocalCode: runtimeConfig.rwosEnv !== "production" && !runtimeConfig.hasEmailDelivery,
+          smsSender
+        })
+      : null);
+  // "Add your email" (item 45): reuses the email-verification table, repository and sender above.
+  const addEmailService =
+    options.addEmailService ??
+    (authenticationRepository && hasEmailVerificationDelegate(prisma)
+      ? createAddEmailService(createPrismaAddEmailRepository(prisma, authenticationRepository), emailSender, {
+          exposeLocalLink: runtimeConfig.rwosEnv !== "production" && !runtimeConfig.hasEmailDelivery
         })
       : null);
   const passwordResetService =
     options.passwordResetService ??
     (prisma && "passwordResetToken" in prisma
-      ? createPasswordResetService(createPrismaPasswordResetRepository(prisma), emailSender)
+      ? createPasswordResetService(createPrismaPasswordResetRepository(prisma), emailSender, { smsSender })
       : null);
   const authorizationService = options.authorizationService ?? createAuthorizationService();
   const membershipService =
@@ -584,6 +847,8 @@ export function buildApi(options: BuildApiOptions = {}) {
     jobRequestReader: createPrismaCancellationJobRequestReader(prisma!),
     confirmedAssignmentReader: createPrismaConfirmedAssignmentReader(prisma!),
     contractRateReader: createPrismaContractRateReader(prisma!),
+    // The invoice bills the request's pricing snapshot, so the obligation uses the same rate.
+    billRateReader: createPrismaRequestBillRateReader(prisma!),
     store: createPrismaCancellationStore(prisma!),
     countryCurrency: options.countryCurrency, // Stage 2b.3b-2: no-rate preview label (fail-closed; never CAD default)
     assignmentCancelPort: {
@@ -683,7 +948,19 @@ export function buildApi(options: BuildApiOptions = {}) {
     identities: createPrismaInterestWorkerIdentityResolver(prisma!),
     jobs: createPrismaInterestJobReader(prisma!),
     engagement: createPrismaInterestEngagementReader(prisma!),
-    store: createPrismaInterestStore(prisma!)
+    store: createPrismaInterestStore(prisma!),
+    // Required certificates block applying too ("other" goes to a person instead; see
+    // applyBlockingCertificates). Without a database (test harness) there is nothing to check.
+    ...(prisma
+      ? {
+          certificates: {
+            async missingReasons({ workerIdentityId, jobRequestId }: { workerIdentityId: string; jobRequestId: string }) {
+              const gap = await certificateGapForJobId(prisma!, { workerIdentityId, jobRequestId });
+              return gap ? (certificateReasons(applyBlockingCertificates(gap.missing)) as `missing_certificate:${string}`[]) : [];
+            }
+          }
+        }
+      : {})
   });
   // Verification — provider-neutral trust states. Fixture providers by default (no vendor
   // lock, no network); production swaps real adapters behind the same interfaces. Callbacks
@@ -705,10 +982,22 @@ export function buildApi(options: BuildApiOptions = {}) {
   // HR-3 Documents & Compliance. Provider-neutral storage (fixture in dev); file contents
   // never touch core. Compliance evaluator is centralized + explainable; requirements are
   // jurisdiction/role data, not hard-coded rules.
+  const hrDocWorkerResolver = createPrismaHrDocWorkerResolver(prisma!);
+  // Real disk-backed HR-document storage when local upload is enabled (persistent disk), else the
+  // fixture placeholder. The fixture hands out an unreachable URL, so uploads only work once this is on.
+  const hrDocLocalStorage =
+    runtimeConfig.documentLocalUploadEnabled &&
+    runtimeConfig.documentReferenceSecret &&
+    runtimeConfig.documentLocalStorageRoot
+      ? createLocalHrDocumentStorageProvider({
+          store: createLocalPrivateFileObjectStore(`${runtimeConfig.documentLocalStorageRoot}/hr`),
+          secret: runtimeConfig.documentReferenceSecret
+        })
+      : null;
   const hrDocumentService = createHrDocumentService({
-    workers: createPrismaHrDocWorkerResolver(prisma!),
+    workers: hrDocWorkerResolver,
     store: createPrismaHrDocumentStore(prisma!),
-    storage: createFixtureDocumentStorageProvider()
+    storage: hrDocLocalStorage ?? createFixtureDocumentStorageProvider()
   });
   const complianceEvaluator = createComplianceEvaluator({
     requirements: createPrismaComplianceRequirementResolver(prisma!),
@@ -734,7 +1023,7 @@ export function buildApi(options: BuildApiOptions = {}) {
   const syntheticPayrollReviewProvider = options.payrollReviewProvider ?? createSyntheticPayrollReviewProvider();
   // HR-6.1 Chunk 3 capability gate: external egress is impossible unless BOTH the non-production
   // config flag is enabled AND an external provider is injected. Default → synthetic (offline).
-  const payrollReviewEgressMode = resolveEgressMode({ externalEnabled: runtimeConfig.payrollAiExternalEnabled, externalProvider: options.payrollExternalReviewProvider });
+  const payrollReviewEgressMode = resolveEgressMode({ externalEnabled: runtimeConfig.payrollAiExternalEnabled && outsideAiCallsEnabled(environment), externalProvider: options.payrollExternalReviewProvider });
   const payrollReviewProvider =
     payrollReviewEgressMode === "external"
       ? createEgressGatedProvider(
@@ -758,7 +1047,11 @@ export function buildApi(options: BuildApiOptions = {}) {
       ? createGoogleGeocodingProvider({ fetch, apiKey: mapsApiKey, countryAddress: options.countryAddress })
       : createFixtureGeocodingProvider({
       "H7V": { province: "QC", city: "Laval", latitude: 45.5701, longitude: -73.7527 },
-      "H2X": { province: "QC", city: "Montreal", latitude: 45.5088, longitude: -73.5678 },
+      "H2X": { province: "QC", city: "Montréal", latitude: 45.5088, longitude: -73.5678 },
+      "H3B": { province: "QC", city: "Montréal", latitude: 45.5005, longitude: -73.5685 },
+      "J4K": { province: "QC", city: "Longueuil", latitude: 45.5312, longitude: -73.5181 },
+      "G1R": { province: "QC", city: "Québec", latitude: 46.8123, longitude: -71.2145 },
+      "G6V": { province: "QC", city: "Lévis", latitude: 46.8033, longitude: -71.1779 },
       "M5V": { province: "ON", city: "Toronto", latitude: 43.6426, longitude: -79.3871 },
       "K1P": { province: "ON", city: "Ottawa", latitude: 45.4215, longitude: -75.6972 },
       "V6B": { province: "BC", city: "Vancouver", latitude: 49.2807, longitude: -123.1088 },
@@ -813,7 +1106,7 @@ export function buildApi(options: BuildApiOptions = {}) {
   // Candidate source selection is env-switched by configuration, not by RWOS_ENV: when an
   // external HTTPS candidate service is configured (CANDIDATE_SOURCE_ORIGIN + token), the
   // dispatch service below prefers it in every environment; otherwise dispatch falls back to
-  // this marketplace-interest source, backed by JobLop's own interested workers. A self-
+  // this marketplace-interest source, backed by Joblop's own interested workers. A self-
   // contained marketplace can launch with no external candidate API and swap one in later
   // purely via config, with no code change.
   const listInterestedWorkersForDispatch = async (jobRequestId: string) => {
@@ -864,14 +1157,82 @@ export function buildApi(options: BuildApiOptions = {}) {
             : localDispatchCandidateSource
         )
       : createUnavailableDispatchService());
-  // Worker-offer delivery channel. Prefer Resend email (free, reliable; reuses the email
-  // config already used for verification), then the external HTTP delivery service, else none.
+  // Worker-offer delivery channel. Prefer Brevo email (reuses the email config already used for
+  // verification), then the external HTTP delivery service, else none.
   // Fail-closed: with neither configured, offers simply aren't auto-delivered.
   const offerCtaOrigin = (options.publicWorkerWebOrigin ?? environment.WORKER_WEB_ORIGIN ?? "").trim() || null;
-  const resendOfferDeliveryProvider =
+  // Shift cancelled / changed notices to workers (text always + email). Best-effort: a failure is
+  // logged and never reaches the request that cancelled or changed the shift.
+  const tellWorkersShiftCancelled = async (input: {
+    jobRequestId: string;
+    workers: readonly ShiftNoticeWorker[];
+    cancelledBy: "employer" | "staff";
+  }): Promise<void> => {
+    if (!prisma || input.workers.length === 0) return;
+    const result = await notifyWorkersShiftCancelled(prisma, emailSender, smsSender, { ...input, workerWebOrigin: offerCtaOrigin }, pushSender).catch(() => null);
+    if (!result || result.failed > 0) logger.warn("worker.shift_cancelled_notice_failed", { jobRequestId: input.jobRequestId });
+  };
+  const tellWorkersShiftChanged = async (input: {
+    jobRequestId: string;
+    workers: readonly ShiftNoticeWorker[];
+    summary: ShiftChangeSummary;
+  }): Promise<void> => {
+    if (!prisma || input.workers.length === 0) return;
+    const result = await notifyWorkersShiftChanged(prisma, emailSender, smsSender, { ...input, workerWebOrigin: offerCtaOrigin }, pushSender).catch(() => null);
+    if (!result || result.failed > 0) logger.warn("worker.shift_changed_notice_failed", { jobRequestId: input.jobRequestId });
+  };
+  // A short, worker-facing account of a material edit, or null when nothing the worker agreed to
+  // (role, place, day, time) changed.
+  const describeMaterialEdit = async (
+    fields: readonly string[],
+    after: Readonly<{ roleDefinitionId: string; residenceId: string; startAt: string; endAt: string }>
+  ): Promise<ShiftChangeSummary | null> => {
+    if (!prisma) return null;
+    const touches = ["role", "work_location", "work_date", "schedule_time", "timezone"];
+    if (!fields.some((field) => touches.includes(field))) return null;
+    const startAt = new Date(after.startAt);
+    const endAt = new Date(after.endAt);
+    const timeChanged = fields.includes("work_date") || fields.includes("schedule_time") || fields.includes("timezone");
+    const [role, residence] = await Promise.all([
+      fields.includes("role")
+        ? prisma.roleDefinition.findUnique({ where: { id: after.roleDefinitionId }, select: { displayLabel: true } }).catch(() => null)
+        : null,
+      fields.includes("work_location")
+        ? prisma.residence.findUnique({ where: { id: after.residenceId }, select: { name: true, city: true } }).catch(() => null)
+        : null
+    ]);
+    const place = residence?.city?.trim() || residence?.name?.trim();
+    return {
+      ...(timeChanged && Number.isFinite(startAt.getTime()) && Number.isFinite(endAt.getTime())
+        ? { newStartAt: startAt, newEndAt: endAt, dateChanged: fields.includes("work_date") }
+        : {}),
+      ...(role?.displayLabel ? { newRole: role.displayLabel } : {}),
+      ...(place ? { newPlace: place } : {})
+    };
+  };
+  // Workers who were sent an offer that is still open (sent, delivered or viewed), by job. Read
+  // before an offer or dispatch cancel; a draft or approved offer never reached the worker.
+  const readSentOfferWorkers = async (where: { workerOfferId?: string; dispatchReviewId?: string }): Promise<Map<string, string[]>> => {
+    const byJob = new Map<string, string[]>();
+    if (!prisma || (!where.workerOfferId && !where.dispatchReviewId)) return byJob;
+    const offers = await prisma.workerOffer
+      .findMany({
+        where: {
+          ...(where.workerOfferId ? { id: where.workerOfferId } : {}),
+          ...(where.dispatchReviewId ? { dispatchReviewId: where.dispatchReviewId } : {}),
+          status: { in: ["sent", "delivered", "viewed"] },
+          sentAt: { not: null }
+        },
+        select: { jobRequestId: true, workerIdentity: { select: { userId: true } } }
+      })
+      .catch(() => []);
+    for (const offer of offers) byJob.set(offer.jobRequestId, [...(byJob.get(offer.jobRequestId) ?? []), offer.workerIdentity.userId]);
+    return byJob;
+  };
+  const emailOfferDeliveryProvider =
     prisma && runtimeConfig.hasEmailDelivery && runtimeConfig.emailFrom
-      ? createResendWorkerOfferDeliveryProvider({
-          apiKey: runtimeConfig.resendApiKey!,
+      ? createBrevoWorkerOfferDeliveryProvider({
+          apiKey: runtimeConfig.emailApiKey!,
           fromAddress: runtimeConfig.emailFrom,
           resolveRecipient: async ({ workerOfferId, organizationId }) => {
             const offer = await prisma.workerOffer.findFirst({
@@ -883,7 +1244,8 @@ export function buildApi(options: BuildApiOptions = {}) {
                     startAt: true,
                     endAt: true,
                     roleDefinition: { select: { displayLabel: true } },
-                    pricingSnapshot: { select: { workerHourlyRateMinor: true } }
+                    pricingSnapshot: { select: { workerHourlyRateMinor: true } },
+                    ...WORKER_PAY_SELECT
                   }
                 },
                 residence: { select: { city: true, province: true } },
@@ -891,26 +1253,26 @@ export function buildApi(options: BuildApiOptions = {}) {
                   select: {
                     displayName: true,
                     preferredLanguage: true,
-                    user: { select: { emailNormalized: true, displayName: true } }
+                    user: { select: { emailNormalized: true, displayName: true, primaryLanguage: true } }
                   }
                 }
               }
             });
             const email = offer?.workerIdentity?.user?.emailNormalized ?? null;
             if (!offer || !email) return null;
-            const language: "en" | "fr" = offer.workerIdentity.preferredLanguage === "fr" ? "fr" : "en";
+            // The worker's own language (EN / FR / AR), from what their account stores.
+            const language = resolveWorkerLanguage(offer.workerIdentity.preferredLanguage, offer.workerIdentity.user.primaryLanguage);
             const role = offer.jobRequest?.roleDefinition?.displayLabel ?? null;
-            const title = offer.jobRequest?.title ?? role ?? (language === "fr" ? "Quart" : "Shift");
+            const title = offer.jobRequest?.title ?? role ?? (language === "fr" ? "Quart" : language === "ar" ? "مناوبة" : "Shift");
             const city = offer.residence?.city ?? null;
             const province = offer.residence?.province ?? null;
             const areaLabel = city && province ? `${city}, ${province}` : province ?? city ?? null;
             const rateMinor = offer.jobRequest?.pricingSnapshot?.workerHourlyRateMinor ?? null;
-            const compensation =
-              rateMinor != null && options.countryCurrency
-                ? `${new Intl.NumberFormat(language === "fr" ? "fr-CA" : "en-CA", {
-                    style: "currency",
-                    currency: options.countryCurrency
-                  }).format(rateMinor / 100)}/h`
+            // Long-term listing (employer plans flag): the employer's own pay offer, never "$0/h".
+            const compensation = isLongTermListingJob(offer.jobRequest)
+              ? longTermPaySentence(offer.jobRequest!, language)
+              : rateMinor != null && options.countryCurrency
+                ? hourlyPayLine(rateMinor, options.countryCurrency, language)
                 : null;
             const whenLabel =
               offer.jobRequest?.startAt && offer.jobRequest?.endAt
@@ -931,7 +1293,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         })
       : null;
   const workerOfferDeliveryProvider =
-    resendOfferDeliveryProvider ??
+    emailOfferDeliveryProvider ??
     (runtimeConfig.hasOfferDelivery
       ? createHttpWorkerOfferDeliveryProvider({
           origin: runtimeConfig.offerDeliveryOrigin!,
@@ -951,7 +1313,11 @@ export function buildApi(options: BuildApiOptions = {}) {
           createPrismaDispatchRepository(prisma),
           createPrismaJobRequestRepository(prisma),
           authorizationService,
-          workerOfferDeliveryProvider ? { deliveryProvider: workerOfferDeliveryProvider } : {}
+          {
+            ...(workerOfferDeliveryProvider ? { deliveryProvider: workerOfferDeliveryProvider } : {}),
+            // A worker can never hold two shifts at the same time (RWOS_SHIFT_OVERLAP).
+            findHeldShiftOverlap: createPrismaHeldShiftOverlapFinder(prisma)
+          }
         )
       : createUnavailableWorkerOfferService());
   const assignmentService =
@@ -996,6 +1362,41 @@ export function buildApi(options: BuildApiOptions = {}) {
           assignmentCoverage: createPrismaConfirmedAssignmentCoverageReader(prisma)
         })
       : createUnavailableCalendarRequestService());
+  // Staff-only calendar extras (see adminRequestSummary.ts). Never throws into a request: a failed
+  // read returns empty cards / a null summary so the calendar keeps working.
+  const adminRequestSummaryReader =
+    options.adminRequestSummaryReader ??
+    (prisma
+      ? {
+          cards: (ids: readonly string[]) =>
+            readAdminRequestCards(prisma as unknown as AdminRequestSummaryPrisma, ids),
+          summary: (jobRequestId: string) =>
+            readAdminRequestSummary(
+              prisma as unknown as AdminRequestSummaryPrisma,
+              createPrismaRequestPricingSnapshotCapture(prisma),
+              jobRequestId,
+              { workerWebOrigin: offerCtaOrigin }
+            )
+        }
+      : null);
+  const readStaffRequestCards = async (ids: readonly string[]) => {
+    if (!adminRequestSummaryReader) return {};
+    try {
+      return await adminRequestSummaryReader.cards(ids);
+    } catch (error) {
+      logger.warn("api.admin_calendar.cards_failed", { reason: error instanceof Error ? error.message : "unknown" });
+      return {};
+    }
+  };
+  const readStaffRequestSummary = async (jobRequestId: string) => {
+    if (!adminRequestSummaryReader) return null;
+    try {
+      return await adminRequestSummaryReader.summary(jobRequestId);
+    } catch (error) {
+      logger.warn("api.admin_calendar.summary_failed", { reason: error instanceof Error ? error.message : "unknown" });
+      return null;
+    }
+  };
   const resolveAuthorizationRoles =
     options.resolveAuthorizationRoles ??
     (prisma
@@ -1072,6 +1473,13 @@ export function buildApi(options: BuildApiOptions = {}) {
   if (invoiceRepository) {
     registerInvoiceRoutes(app, {
       repository: invoiceRepository,
+      notifyInvoiceSent: async (invoice) =>
+        notifyClientInvoiceSent(prisma!, emailSender, {
+          invoiceId: invoice.id,
+          organizationId: invoice.organizationId,
+          pdf: invoiceEmailAttachment(invoice, await invoicePdfDetails(prisma!, invoice))
+        }),
+      describeInvoice: (invoice) => invoicePdfDetails(prisma!, invoice),
       authorize: async (request, organizationId) => {
         const session = await authService.validateSession(
           readBearerToken(request.headers.authorization)
@@ -1258,7 +1666,12 @@ export function buildApi(options: BuildApiOptions = {}) {
     );
     if (
       runtimeConfig.rwosEnv === "production" &&
-      isProductionDisabledOperation(request.method, request.url)
+      isProductionBlockedOperation(
+        request.method,
+        request.url,
+        request.routeOptions.url,
+        productionFeatures
+      )
     ) {
       return reply.code(404).send({
         error: "RWOS_RESOURCE_UNAVAILABLE",
@@ -1299,6 +1712,16 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
 
     if (error instanceof EmployerOrganizationError) {
+      // Failing to create a company answers like any refusal, so record the cause for operators.
+      // Only our own coded reasons are logged: a raw database message could hold submitted names.
+      if (error.decision.status === "bootstrap_failed" || error.decision.status === "duplicate_organization") {
+        const reason = error.decision.internalReason ?? "";
+        logger.warn("api.organization.create_failed", {
+          requestId: request.id,
+          status: error.decision.status,
+          reason: reason.startsWith("RWOS_") ? reason : "unexpected"
+        });
+      }
       return sendOrganizationDenied(reply);
     }
 
@@ -1322,15 +1745,27 @@ export function buildApi(options: BuildApiOptions = {}) {
       return sendJobRequestFailure(reply, error);
     }
 
+    // A short-term job that would pay the worker less than the Québec minimum wage (approve, submit,
+    // the Brain's approval and the staff rate card all refuse it with this one clear message).
+    if (error instanceof MinimumWageError) {
+      return reply.code(422).send({ error: error.code, message: error.message, minimumHourlyMinor: error.minimumHourlyMinor });
+    }
+
     if (error instanceof DispatchError) {
       return sendDispatchFailure(reply, error);
     }
 
     if (error instanceof WorkerOfferError) {
+      if (error.decision.status === "shift_overlap" && error.decision.heldShift) {
+        return sendShiftOverlap(reply, request.headers["accept-language"], error.decision.heldShift);
+      }
       return sendWorkerOfferFailure(reply, error);
     }
 
     if (error instanceof AssignmentError) {
+      if (error.decision.status === "conflict_detected" && error.decision.heldShift) {
+        return sendShiftOverlap(reply, request.headers["accept-language"], error.decision.heldShift);
+      }
       return sendAssignmentFailure(reply, error);
     }
 
@@ -1378,6 +1813,159 @@ export function buildApi(options: BuildApiOptions = {}) {
     };
   });
 
+  // Pre-shift reminder sweep trigger. Called by a scheduled cron with the shared-secret header.
+  // Fail-closed: disabled (404) unless SHIFT_REMINDER_SWEEP_TOKEN is configured; 401 on token mismatch.
+  // Runs ONE bounded sweep and returns metrics. SMS stays money-gated inside the sender.
+  app.post("/internal/shift-reminders/sweep", async (request, reply) => {
+    const expected = runtimeConfig.shiftReminderSweepToken;
+    if (!expected) {
+      return reply.code(404).send({ error: "RWOS_NOT_FOUND", message: "Not found." });
+    }
+    const provided = request.headers["x-sweep-token"];
+    if (typeof provided !== "string" || provided !== expected) {
+      return reply.code(401).send({ error: "RWOS_SWEEP_DENIED", message: "Sweep token required." });
+    }
+    if (!prisma) {
+      return reply.code(503).send({ error: "RWOS_SWEEP_UNAVAILABLE", message: "Database unavailable." });
+    }
+    const metrics = await runShiftReminderSweep({ prisma, emailSender, smsSender, pushSender, workerWebOrigin: offerCtaOrigin });
+    logger.info("api.shift_reminder.sweep", { ...metrics });
+    // Same hourly run: warn staff about approved short-term shifts still unfilled under 24 h and under
+    // 4 h before the start (once per threshold). A failure here never fails the reminder sweep.
+    let unfilled: Awaited<ReturnType<typeof runUnfilledShiftSweep>> | null = null;
+    try {
+      unfilled = await runUnfilledShiftSweep({
+        prisma,
+        emailSender,
+        remaining: (jobs) => remainingOpenings(prisma!, jobs),
+        staffEmail: staffAlertEmail
+      });
+      logger.info("api.unfilled_shift.sweep", { ...unfilled });
+    } catch (error) {
+      logger.warn("api.unfilled_shift.sweep_failed", { error: error instanceof Error ? error.message : "unknown" });
+    }
+    return reply.code(200).send({ status: "completed", ...metrics, ...(unfilled ? { unfilledShifts: unfilled } : {}) });
+  });
+
+  // Where staff warnings go (unfilled shifts): STAFF_ALERT_EMAIL, else the contact-desk admin inbox.
+  const staffAlertEmail = (environment.STAFF_ALERT_EMAIL ?? "").trim() || (environment.CONTACT_ADMIN_EMAIL ?? "").trim() || null;
+
+  // Staff dashboard: approved short-term shifts starting within 24 h that still have open places,
+  // with the warnings already sent for each. Platform administrators only.
+  app.get("/platform/unfilled-shifts", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return reply.code(401).send({ error: "RWOS_DENIED", message: "Authentication is required." });
+    const roles = await resolveAuthorizationRoles(session.user.id);
+    if (!roles.includes("PLATFORM_ADMINISTRATOR")) return reply.code(403).send({ error: "RWOS_DENIED", message: "Platform authority is required." });
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+    const shifts = await listUnfilledShifts(prisma, (jobs) => remainingOpenings(prisma!, jobs));
+    const alerts = shifts.length
+      ? await prisma.unfilledShiftAlert.findMany({
+          where: { jobRequestId: { in: shifts.map((s) => s.jobRequestId) } },
+          select: { jobRequestId: true, thresholdHours: true, startAt: true, createdAt: true, emailedAt: true }
+        })
+      : [];
+    return reply
+      .code(200)
+      .header("cache-control", "no-store")
+      .send({
+        shifts: shifts.map((shift) => ({
+          ...shift,
+          startAt: shift.startAt.toISOString(),
+          warnings: alerts
+            .filter((a) => a.jobRequestId === shift.jobRequestId && a.startAt.getTime() === shift.startAt.getTime())
+            .map((a) => ({ thresholdHours: a.thresholdHours, warnedAt: a.createdAt.toISOString(), emailed: a.emailedAt !== null }))
+        }))
+      });
+  });
+
+  // Paid plan / listing renewal reminders (7 days and 1 day before the paid period ends). Same
+  // fail-closed shape: disabled (404) unless PLAN_REMINDER_SWEEP_TOKEN is configured (16+ characters);
+  // 401 on token mismatch. Idempotent: each reminder is sent once per paid-until date. Meant to be
+  // called by a scheduled job (for example every hour) with the x-sweep-token header.
+  const planReminderSweepToken = (environment.PLAN_REMINDER_SWEEP_TOKEN ?? "").trim();
+  app.post("/internal/plan-reminders/sweep", async (request, reply) => {
+    if (planReminderSweepToken.length < 16) {
+      return reply.code(404).send({ error: "RWOS_NOT_FOUND", message: "Not found." });
+    }
+    const provided = request.headers["x-sweep-token"];
+    if (typeof provided !== "string" || provided !== planReminderSweepToken) {
+      return reply.code(401).send({ error: "RWOS_SWEEP_DENIED", message: "Sweep token required." });
+    }
+    if (!prisma) {
+      return reply.code(503).send({ error: "RWOS_SWEEP_UNAVAILABLE", message: "Database unavailable." });
+    }
+    const metrics = await runPlanReminderSweep({ prisma, emailSender, smsSender });
+    logger.info("api.plan_reminder.sweep", { ...metrics });
+    return reply.code(200).send({ status: "completed", ...metrics });
+  });
+
+  // Job-alert digest sweep. Same fail-closed shape as the shift-reminder sweep: disabled (404) unless
+  // JOB_ALERT_SWEEP_TOKEN is configured (16+ characters); 401 on token mismatch. One bounded run: at
+  // most 500 subscriptions, at most one digest per subscription per ~20 h. Returns { checked, sent }.
+  const jobAlertSweepToken = (environment.JOB_ALERT_SWEEP_TOKEN ?? "").trim();
+  const jobAlertMailingAddress = (environment.JOBLOP_MAILING_ADDRESS ?? "").trim() || null;
+  // Joblop open jobs for alerts: the same rules as GET /marketplace/open-jobs (approved, open to
+  // claim, priced, upcoming, active site, places left). "New" = last updated since the previous digest.
+  const loadAlertOpenJobs = async (now: Date): Promise<AlertOpenJob[]> => {
+    if (!prisma) return [];
+    const rows = await prisma.jobRequest.findMany({
+      where: openJobWhere({ now }),
+      select: {
+        id: true,
+        title: true,
+        numberOfWorkers: true,
+        startAt: true,
+        updatedAt: true,
+        roleDefinition: { select: { displayLabel: true } },
+        residence: { select: { city: true, province: true } },
+        pricingSnapshot: { select: { workerHourlyRateMinor: true } },
+        ...WORKER_PAY_SELECT
+      },
+      orderBy: [{ updatedAt: "desc" }],
+      take: 500
+    });
+    const left = await remainingOpenings(prisma, rows);
+    return rows
+      .filter((r) => (left.get(r.id) ?? r.numberOfWorkers) > 0)
+      .map((r) => {
+        const pay = workerPay(r, r.pricingSnapshot?.workerHourlyRateMinor ?? null);
+        return {
+          jobRequestId: r.id,
+          role: r.roleDefinition?.displayLabel ?? r.title,
+          title: r.title,
+          city: r.residence?.city ?? null,
+          province: r.residence?.province ?? null,
+          startAt: r.startAt,
+          workerRateMinor: pay.rateMinor,
+          ...pay.extra,
+          freshAt: r.updatedAt
+        };
+      });
+  };
+  app.post("/internal/job-alerts/sweep", async (request, reply) => {
+    if (jobAlertSweepToken.length < 16) {
+      return reply.code(404).send({ error: "RWOS_NOT_FOUND", message: "Not found." });
+    }
+    const provided = request.headers["x-sweep-token"];
+    if (typeof provided !== "string" || provided !== jobAlertSweepToken) {
+      return reply.code(401).send({ error: "RWOS_SWEEP_DENIED", message: "Sweep token required." });
+    }
+    if (!prisma) {
+      return reply.code(503).send({ error: "RWOS_SWEEP_UNAVAILABLE", message: "Database unavailable." });
+    }
+    const result = await runJobAlertSweep({
+      prisma,
+      emailSender,
+      workerWebOrigin: offerCtaOrigin,
+      loadOpenJobs: loadAlertOpenJobs,
+      mailingAddress: jobAlertMailingAddress
+    });
+    if (!offerCtaOrigin) logger.warn("api.job_alert.sweep_no_worker_origin", {});
+    logger.info("api.job_alert.sweep", { ...result });
+    return reply.code(200).send(result);
+  });
+
   app.get("/ready", async (_request, reply) => {
     reply.header("cache-control", "no-store");
     try {
@@ -1415,7 +2003,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.post("/auth/register", async (request, reply) => {
-    if (runtimeConfig.rwosEnv === "production") {
+    // Public sign-up in production is governed by RWOS_PUBLIC_SIGNUP_ENABLED (default from the
+    // country profile; Canada/Québec: ON). Every other environment keeps it open, as before.
+    if (runtimeConfig.rwosEnv === "production" && !productionFeatures.publicSignupEnabled) {
       return reply.code(404).send({
         error: "RWOS_RESOURCE_UNAVAILABLE",
         message: "Resource unavailable."
@@ -1423,8 +2013,20 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
     const body = asRecord(request.body);
     const email = readRequiredString(body, "email");
-    const password = readRequiredString(body, "password");
     const displayName = readOptionalString(body, "displayName");
+    // Optional mobile number (seeded #1). Never required; bounded. Null when absent/blank.
+    const phoneRaw = readOptionalString(body, "phone");
+    // Stored in one standard form so the same number finds this account at phone sign-in.
+    const phone = phoneRaw && phoneRaw.trim() ? (normalizeStaffPhone(phoneRaw) ?? phoneRaw.trim().slice(0, 32)) : null;
+    // Accounts that sign in by texted code need no password. When a valid mobile number is given and
+    // no password, the account gets a long random one that nobody knows, so password sign-in is shut.
+    const password =
+      readRequiredString(body, "password") ??
+      (phone && normalizeStaffPhone(phone) ? `${randomBytes(32).toString("base64url")}a1` : null);
+    // Invite-a-friend: optional referral code captured from ?ref= at signup. Attribution is best-effort.
+    const referralCode = readOptionalString(body, "referralCode");
+    // The Terms/Privacy version the person accepted (sites and app send LEGAL_DOCUMENTS_VERSION).
+    const acceptedLegalVersion = readAcceptedLegalVersion(body.acceptedLegalVersion);
 
     if (!email || !password) {
       return reply.code(400).send({
@@ -1448,16 +2050,73 @@ export function buildApi(options: BuildApiOptions = {}) {
         email,
         password,
         displayName,
+        phone,
+        acceptedLegalVersion,
         source: "api",
         ipAddress: request.ip,
         userAgent: request.headers["user-agent"] ?? null
       });
+
+      // Best-effort referral attribution — never let it fail the registration.
+      if (referralCode && prisma && result.user?.id) {
+        try {
+          await recordReferralSignup(prisma, referralCode, result.user.id, email);
+        } catch (referralErr) {
+          app.log.warn({ err: referralErr }, "referral attribution failed");
+        }
+      }
 
       return reply.code(201).send(serializeAuthenticationResult(result));
     } catch (error) {
       return sendAuthenticationError(reply, error);
     }
   });
+
+  // Phone sign-in. The answer is the same whether or not the number has an account, so this never
+  // reveals which numbers can sign in.
+  for (const [path, audience] of [
+    ["staff-phone", "staff"],
+    ["employer-phone", "employer"],
+    ["worker-phone", "worker"]
+  ] as const) {
+    app.post(`/auth/${path}/request`, async (request, reply) => {
+      const phone = normalizeStaffPhone(asRecord(request.body).phone);
+      if (!phone || !prisma) return reply.code(202).send({ status: "code_requested" });
+      const rateLimit = await consumeAuthenticationRateLimit(authRateLimiter, { action: "sign_in", ip: request.ip, email: phone });
+      if (!rateLimit) return sendAuthenticationUnavailable(reply);
+      if (!rateLimit.allowed) return sendAuthenticationRateLimited(reply, rateLimit.retryAfterSeconds);
+      const outcome = await requestStaffPhoneCode(prisma, smsSender, {
+        phone,
+        now: new Date(),
+        audience,
+        storeReview: runtimeConfig.storeReviewSignIn,
+        email: emailSender,
+        twilio: twilioVerify
+      }).catch(() => "not_sent" as const);
+      if (outcome === "not_sent") logger.error("api.staff_phone.text_not_sent", { requestId: request.id, audience });
+      return reply.code(202).send({ status: "code_requested" });
+    });
+
+    app.post(`/auth/${path}/verify`, async (request, reply) => {
+      const body = asRecord(request.body);
+      const phone = normalizeStaffPhone(body.phone);
+      const code = readRequiredString(body, "code");
+      const denied = () => reply.code(401).send({ error: authenticationErrorCode, message: authenticationErrorMessage });
+      if (!phone || !code || !/^\d{6}$/.test(code) || !prisma) return denied();
+      const rateLimit = await consumeAuthenticationRateLimit(authRateLimiter, { action: "sign_in", ip: request.ip, email: phone });
+      if (!rateLimit) return sendAuthenticationUnavailable(reply);
+      if (!rateLimit.allowed) return sendAuthenticationRateLimited(reply, rateLimit.retryAfterSeconds);
+      const verified = await verifyStaffPhoneCode(prisma, { phone, code, now: new Date(), audience, twilio: twilioVerify });
+      if (!verified) return denied();
+      const result = await authService.signInWithVerifiedStaffPhone({
+        emailNormalized: verified.emailNormalized,
+        source: "api",
+        ipAddress: request.ip,
+        userAgent: request.headers["user-agent"] ?? null
+      });
+      return reply.code(200).send(serializeAuthenticationResult(result));
+    });
+  }
 
   app.post("/auth/sign-in", async (request, reply) => {
     const body = asRecord(request.body);
@@ -1586,9 +2245,15 @@ export function buildApi(options: BuildApiOptions = {}) {
       return sendAuthenticationRateLimited(reply, rateLimit.retryAfterSeconds);
     }
 
+    // Look up the account's phone so the verification code can also be texted (SMS is money-gated).
+    const phoneRow = prisma
+      ? await prisma.user.findUnique({ where: { id: session.user.id }, select: { phone: true, primaryLanguage: true } }).catch(() => null)
+      : null;
     const result = await emailVerificationService.issue({
       userId: session.user.id,
-      emailNormalized: session.user.emailNormalized
+      emailNormalized: session.user.emailNormalized,
+      recipientPhone: phoneRow?.phone ?? null,
+      language: phoneRow?.primaryLanguage ?? null
     });
     return reply.code(202).send(result);
   });
@@ -1614,6 +2279,63 @@ export function buildApi(options: BuildApiOptions = {}) {
       code
     });
     return reply.code(result.status === "verified" ? 200 : 400).send(result);
+  });
+
+  // Add (or replace, while not yet confirmed) the signed-in account's email and send a confirmation
+  // link. Sign-in stays by texted code; this only makes sure invoices and notices can reach the
+  // person by email. The link opens /confirm-email on the public site (WORKER_WEB_ORIGIN).
+  app.post("/auth/email/add", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: authenticationRequiredCode, message: "Authentication required." });
+    }
+    const confirmBaseUrl = offerCtaOrigin ?? runtimeConfig.passwordResetPublicOrigin ?? null;
+    if (!addEmailService || !confirmBaseUrl) return sendAuthenticationUnavailable(reply);
+    const email = readRequiredString(asRecord(request.body), "email");
+    if (!email) return reply.code(400).send({ error: "RWOS_INVALID_EMAIL", message: addEmailInvalidMessage });
+
+    const rateLimit = await consumeAuthenticationRateLimit(authRateLimiter, {
+      action: "email_verify_send",
+      ip: request.ip,
+      email: `add-email:${session.user.id}`
+    });
+    if (!rateLimit) return sendAuthenticationUnavailable(reply);
+    if (!rateLimit.allowed) return sendAuthenticationRateLimited(reply, rateLimit.retryAfterSeconds);
+
+    const languageRow = prisma
+      ? await prisma.user
+          .findUnique({ where: { id: session.user.id }, select: { primaryLanguage: true } })
+          .catch(() => null)
+      : null;
+    try {
+      const result = await addEmailService.add({
+        userId: session.user.id,
+        email,
+        alreadyConfirmed: session.user.emailVerified === true,
+        confirmBaseUrl,
+        language: resolveAddEmailLanguage(languageRow?.primaryLanguage)
+      });
+      if (result.status === "invalid_email") {
+        return reply.code(400).send({ error: "RWOS_INVALID_EMAIL", message: addEmailInvalidMessage });
+      }
+      if (result.status === "in_use") {
+        return reply.code(409).send({ error: "RWOS_EMAIL_IN_USE", message: emailInUseMessage });
+      }
+      if (result.status === "already_confirmed") return reply.code(200).send(result);
+      return reply.code(202).send(result);
+    } catch {
+      logger.error("api.add_email.failed", { requestId: request.id });
+      return sendAuthenticationUnavailable(reply);
+    }
+  });
+
+  // Public: the emailed link opens /confirm-email, whose Confirm button posts the token here.
+  app.post("/auth/email/confirm", async (request, reply) => {
+    if (!addEmailService) return sendAuthenticationUnavailable(reply);
+    const token = readRequiredString(asRecord(request.body), "token");
+    if (!token) return reply.code(400).send(confirmEmailFailure);
+    const result = await addEmailService.confirm({ token });
+    return reply.code(result.status === "confirmed" ? 200 : 400).send(result);
   });
 
   app.post("/auth/sign-out", async (request, reply) => {
@@ -2373,9 +3095,26 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
 
     const body = asRecord(request.body);
+    const organizationId = readRouteParam(request.params, "organizationId");
+    const requestedLegalName = readOptionalString(body, "legalName");
+    if (requestedLegalName !== null) {
+      const current = await organizationService.getOrganization({ actorUserId: session.user.id, organizationId });
+      const blocked = legalNameChangeBlocked({
+        currentLegalName: current.legalName,
+        requestedLegalName,
+        verified: await verificationService.isEmployerVerified(organizationId),
+        platformAdmin: (await resolveAuthorizationRoles(session.user.id)).includes("PLATFORM_ADMINISTRATOR")
+      });
+      if (blocked) {
+        return reply.code(409).send({
+          error: "RWOS_ORGANIZATION_LEGAL_NAME_LOCKED",
+          message: "A verified company's legal name can only be changed by Joblop."
+        });
+      }
+    }
     const organization = await organizationService.updateOrganization({
       actorUserId: session.user.id,
-      organizationId: readRouteParam(request.params, "organizationId"),
+      organizationId,
       expectedVersion: readRequiredString(body, "expectedVersion") ?? "",
       legalName: readOptionalString(body, "legalName"),
       displayName: readOptionalString(body, "displayName")
@@ -2453,6 +3192,27 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   });
 
+  app.get("/platform/organizations/:organizationId/contract", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendContractDenied(reply);
+    try {
+      const contract = await employerContractService.getActiveContractForPlatform({
+        actorUserId: session.user.id,
+        organizationId: readRouteParam(request.params, "organizationId")
+      });
+      // The general catalogue route is scoped to company roles, so staff get the groups here. The
+      // service call above has already confirmed this is a platform administrator.
+      const workGroups = await prisma!.workGroup.findMany({
+        where: { status: "active" },
+        orderBy: { displayOrder: "asc" },
+        select: { id: true, displayLabel: true }
+      });
+      return reply.code(200).send({ contract, workGroups });
+    } catch (error) {
+      return sendContractError(reply, error);
+    }
+  });
+
   // Publish/replace the governed rate card. PLATFORM-ADMIN ONLY — the service
   // (signContract → assertPlatformAdmin) denies any organization owner/administrator,
   // so an employer cannot create, publish, modify, or override governed rates even by
@@ -2500,6 +3260,111 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   });
 
+  // Employer applicants: who is interested in this employer's job, with limited details. Only the
+  // company's owners and administrators may see them or mark a favourite for Joblop staff.
+  const requireApplicantAccess = async (request: FastifyRequest, reply: FastifyReply) => {
+    const denied = () => {
+      void reply.code(403).send({ error: "RWOS_AUTHORIZATION_DENIED", message: "Access denied." });
+      return null;
+    };
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user || !prisma) return denied();
+    const organizationId = readRouteParam(request.params, "organizationId");
+    const jobRequestId = readRouteParam(request.params, "jobRequestId");
+    if (!isCanonicalUuid(organizationId) || !isCanonicalUuid(jobRequestId)) return denied();
+    const roles = await resolveAuthorizationRoles(session.user.id);
+    if (!roles.includes("ORGANIZATION_OWNER") && !roles.includes("ORGANIZATION_ADMINISTRATOR")) return denied();
+    try {
+      await organizationService.getOrganization({ actorUserId: session.user.id, organizationId });
+    } catch {
+      return denied();
+    }
+    return { actorUserId: session.user.id, organizationId, jobRequestId, prisma };
+  };
+
+  app.get("/organizations/:organizationId/job-requests/:jobRequestId/applicants", async (request, reply) => {
+    const access = await requireApplicantAccess(request, reply);
+    if (!access) return;
+    // Long-term listing: the employer chooses, so they get the fuller applicant view (contact details
+    // only after Contact / Hire). Short-term jobs keep the limited view; Joblop staff dispatch them.
+    const job = await access.prisma.jobRequest.findFirst({
+      where: { id: access.jobRequestId, organizationId: access.organizationId },
+      select: { jobLength: true }
+    });
+    if (job && isLongTermListingJob(job)) {
+      return reply.code(200).send({ longTerm: true, applicants: await listLongTermApplicants(access.prisma, access) });
+    }
+    const applicants = await listEmployerApplicants(access.prisma, access);
+    return reply.code(200).send({ applicants });
+  });
+
+  // Long-term listing: the employer's choice on one applicant (contact, shortlist, hire, not selected).
+  // The worker is told in their language. Contact details are revealed by Contact or Hire only.
+  app.post(
+    "/organizations/:organizationId/job-requests/:jobRequestId/applicants/:interestId/decision",
+    async (request, reply) => {
+      const access = await requireApplicantAccess(request, reply);
+      if (!access) return;
+      const interestId = readRouteParam(request.params, "interestId");
+      const action = asRecord(request.body).action;
+      if (!isCanonicalUuid(interestId) || !isEmployerApplicantAction(action)) {
+        return reply.code(400).send({ error: "RWOS_INVALID_APPLICANT_DECISION", message: "Choose contact, shortlist, hire or not selected." });
+      }
+      if (!isEmployerPlansEnabled()) {
+        return reply.code(409).send({ error: "RWOS_APPLICANT_NOT_LONG_TERM", message: "Only long-term jobs are chosen by the employer." });
+      }
+      const result = await applyEmployerApplicantAction(access.prisma, { ...access, interestId, action });
+      if (result.status === "not_found") return reply.code(404).send({ error: "RWOS_INTEREST_NOT_FOUND", message: "That applicant is not available." });
+      if (result.status === "not_long_term") {
+        return reply.code(409).send({ error: "RWOS_APPLICANT_NOT_LONG_TERM", message: "Only long-term jobs are chosen by the employer." });
+      }
+      if (result.notify) {
+        await notifyApplicationDecision(access.prisma, emailSender, { workerUserId: result.workerUserId, jobRequestId: result.jobRequestId, decision: result.notify });
+      }
+      const applicants = await listLongTermApplicants(access.prisma, access);
+      return reply.code(200).send({ applicant: applicants.find((a) => a.interestId === interestId) ?? null });
+    }
+  );
+
+  app.post(
+    "/organizations/:organizationId/job-requests/:jobRequestId/applicants/:interestId/favorite",
+    async (request, reply) => {
+      const access = await requireApplicantAccess(request, reply);
+      if (!access) return;
+      const interestId = readRouteParam(request.params, "interestId");
+      const favorite = asRecord(request.body).favorite;
+      if (!isCanonicalUuid(interestId) || typeof favorite !== "boolean") {
+        return reply.code(400).send({ error: "RWOS_INVALID_FAVORITE", message: "Invalid favourite request." });
+      }
+      const saved = await setEmployerFavorite(access.prisma, { ...access, interestId, favorite });
+      if (!saved) return reply.code(404).send({ error: "RWOS_INTEREST_NOT_FOUND", message: "That applicant is not available." });
+      return reply.code(200).send({ favorite });
+    }
+  );
+
+  // The one cancel-a-booked-shift path (cancelBookedShift.ts) against the real database.
+  const bookedShiftDeps = () => ({
+    assignmentRepository: createPrismaAssignmentRepository(prisma!),
+    attendanceRepository: createPrismaAttendanceRepository(prisma!)
+  });
+  // Cancellation port for a whole request: release every still-booked worker (assignment + attendance).
+  // A worker who has already checked in is not released here; that counts as a failure, which leaves
+  // the cancellation in requires_reconciliation for staff.
+  const releaseBookedShiftsPort = (actorUserId: string, by: BookedShiftCanceller): AssignmentCancelPort => ({
+    async cancelConfirmedAssignments({ organizationId, jobRequestId, reason }) {
+      const rows = await prisma!.assignment.findMany({
+        where: { organizationId, jobRequestId, status: { in: [...BOOKED_ASSIGNMENT_STATUSES] } },
+        select: { id: true }
+      });
+      let cancelled = 0;
+      for (const row of rows) {
+        const released = await cancelBookedShift(bookedShiftDeps(), { assignmentId: row.id, by, actorUserId, reason, now: new Date() }).catch(() => null);
+        if (released?.status === "cancelled") cancelled += 1;
+      }
+      return { attempted: rows.length, cancelled, failed: rows.length - cancelled };
+    }
+  });
+
   // Employer: read-only authoritative cancellation consequence. No amount/rate/count
   // from the browser — everything is derived server-side.
   app.post(
@@ -2515,7 +3380,7 @@ export function buildApi(options: BuildApiOptions = {}) {
           organizationId: readRouteParam(request.params, "organizationId"),
           jobRequestId: readRouteParam(request.params, "jobRequestId")
         });
-        return reply.code(200).send({ preview });
+        return reply.code(200).send({ preview: employerSafePreview(preview) });
       } catch (error) {
         return sendCancellationError(reply, error);
       }
@@ -2533,14 +3398,65 @@ export function buildApi(options: BuildApiOptions = {}) {
       if (!session.authenticated || !session.user) return sendCancellationDenied(reply);
       const body = asRecord(request.body);
       const idempotencyKey = readRequiredString(body, "idempotencyKey") ?? "";
+      const organizationId = readRouteParam(request.params, "organizationId");
+      const jobRequestId = readRouteParam(request.params, "jobRequestId");
       try {
+        // Who holds the shift, read before the cancel. A job that already has a cancellation on
+        // record is a replay: its workers were told the first time.
+        const alreadyCancelled = prisma
+          ? await prisma.employerRequestCancellation
+              .findFirst({ where: { jobRequestId, organizationId }, select: { id: true } })
+              .then((row) => row !== null)
+              .catch(() => true)
+          : true;
+        const holders = prisma && !alreadyCancelled
+          ? await readShiftHolders(prisma, { jobRequestIds: [jobRequestId] }).catch(() => [])
+          : [];
+        // Workers confirmed at the moment the employer cancels (unfilled places are never charged).
+        const cancelledAt = new Date();
+        const confirmed = prisma
+          ? await readConfirmedAssignments(prisma, organizationId, [jobRequestId]).catch(() => [] as ConfirmedAssignment[])
+          : [];
         const result = await employerCancellationService.confirmCancellation({
           actorUserId: session.user.id,
-          organizationId: readRouteParam(request.params, "organizationId"),
-          jobRequestId: readRouteParam(request.params, "jobRequestId"),
+          organizationId,
+          jobRequestId,
           idempotencyKey
         });
-        return reply.code(200).send(result);
+        // Bill the late cancellation only when this cancellation recorded the obligation (less than
+        // 24 h before the start, at the time it was first made). A replay re-applies nothing: each
+        // worker's charge is unique.
+        if (result.cancellation.obligation) {
+          await chargeLateCancellation({
+            organizationId,
+            jobRequestId,
+            actorUserId: session.user.id,
+            cancelledAt,
+            source: "employer_cancel_confirm",
+            cancellationId: result.cancellation.id,
+            confirmed
+          });
+        }
+        // Release the booked workers now through the one cancel-a-booked-shift path: each assignment and
+        // its attendance record are cancelled (the shift leaves the worker's schedule), then the request
+        // itself is cancelled. A worker already checked in stays for staff (requires_reconciliation).
+        let cancellation = result.cancellation;
+        if (prisma && cancellation.status === "assignment_cancellation_pending") {
+          const handed = await employerCancellationService.completeHandoff({
+            cancellationId: cancellation.id,
+            assignmentCancelPort: releaseBookedShiftsPort(session.user.id, "employer")
+          });
+          cancellation = handed.cancellation;
+        }
+        // The workers are told now, when the employer cancels. Staff completing the assignment
+        // handoff later does not tell them again. The notice never promises cancellation pay (owner
+        // decision 2026-11-09: Joblop reviews each case with the worker).
+        await tellWorkersShiftCancelled({
+          jobRequestId: result.cancellation.jobRequestId,
+          cancelledBy: "employer",
+          workers: holders.map((holder) => ({ userId: holder.userId }))
+        });
+        return reply.code(200).send({ ...result, cancellation, preview: employerSafePreview(result.preview) });
       } catch (error) {
         return sendCancellationError(reply, error);
       }
@@ -2563,38 +3479,10 @@ export function buildApi(options: BuildApiOptions = {}) {
           .code(403)
           .send({ error: "RWOS_CANCELLATION_DENIED", message: "Platform authority is required." });
       }
-      // Port bound to THIS platform actor: list still-confirmed assignments for the
-      // request and cancel each via the governed path. Idempotent — already-cancelled
-      // assignments drop out of the active-status list, so re-runs converge.
-      const port: AssignmentCancelPort = {
-        async cancelConfirmedAssignments({ organizationId, jobRequestId, reason }) {
-          const assignments = await assignmentService.listAssignments({
-            session,
-            roles,
-            organizationId,
-            jobRequestId,
-            statuses: [...CONFIRMED_ASSIGNMENT_STATUSES] as AssignmentStatus[]
-          });
-          let cancelled = 0;
-          let failed = 0;
-          for (const assignment of assignments) {
-            try {
-              await assignmentService.cancel({
-                session,
-                roles,
-                assignmentId: assignment.id,
-                expectedVersion: assignment.versionToken,
-                reason,
-                status: "employer_cancelled"
-              });
-              cancelled += 1;
-            } catch {
-              failed += 1;
-            }
-          }
-          return { attempted: assignments.length, cancelled, failed };
-        }
-      };
+      // Port bound to THIS platform actor: release every still-booked worker on the request through
+      // the one cancel-a-booked-shift path (assignment + attendance). Idempotent — released workers
+      // drop out of the booked list, so re-runs converge.
+      const port = releaseBookedShiftsPort(session.user.id, "employer");
       try {
         const result = await employerCancellationService.completeHandoff({
           cancellationId: readRouteParam(request.params, "cancellationId"),
@@ -2626,6 +3514,48 @@ export function buildApi(options: BuildApiOptions = {}) {
     const cancellations = await employerCancellationService.listReconciliation({ statuses: [...statuses] });
     return reply.code(200).send({ cancellations });
   });
+
+  // Platform-only: every late employer cancellation charge, one row per confirmed worker affected,
+  // so staff can follow up with each worker case by case (owner decision 2026-11-09: no automatic
+  // worker pay). Read-only.
+  app.get("/platform/late-cancellation-charges", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendCancellationDenied(reply);
+    const roles = await resolveAuthorizationRoles(session.user.id);
+    if (!roles.includes("PLATFORM_ADMINISTRATOR")) {
+      return reply.code(403).send({ error: "RWOS_CANCELLATION_DENIED", message: "Platform authority is required." });
+    }
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "The charge list is unavailable." });
+    const limit = parseQueryInt(readOptionalString(asRecord(request.query), "limit")) ?? 100;
+    const charges = await listLateCancellationCharges(prisma, limit);
+    return reply.code(200).send({ charges });
+  });
+
+  // Employer late-cancellation charge. Best-effort: a failure is logged for staff and never undoes
+  // or blocks the cancellation the employer asked for.
+  async function chargeLateCancellation(input: {
+    organizationId: string;
+    jobRequestId: string;
+    actorUserId: string;
+    cancelledAt: Date;
+    source: LateCancellationSource;
+    cancellationId?: string;
+    confirmed: readonly ConfirmedAssignment[];
+  }) {
+    if (!prisma) return;
+    try {
+      const outcome = await applyLateCancellationCharges(prisma, invoiceRepository, input);
+      if (outcome.charged.length > 0 || outcome.skipped.length > 0) {
+        logger.info("employer.late_cancellation_charged", {
+          jobRequestId: input.jobRequestId,
+          charged: outcome.charged.length,
+          skipped: outcome.skipped.length
+        });
+      }
+    } catch {
+      logger.warn("employer.late_cancellation_charge_failed", { jobRequestId: input.jobRequestId });
+    }
+  }
 
   app.get("/organizations/:organizationId/residences/:residenceId", async (request, reply) => {
     const session = await authService.validateSession(
@@ -2865,6 +3795,28 @@ export function buildApi(options: BuildApiOptions = {}) {
       });
     }
 
+    // Employer-chosen job length (short_term | long_term). Only recorded while EMPLOYER_PLANS_ENABLED
+    // is on; otherwise every job keeps the column default (short_term) and today's pricing. A long-term
+    // job is a paid listing: it needs no contract rate, but it must state the pay the employer offers
+    // (shown to workers as paid directly by the employer).
+    const longTerm = longTermJobRequestInput(body, isEmployerPlansEnabled());
+    if (longTerm.status === "invalid_pay_offered") {
+      return reply.code(400).send({
+        error: "RWOS_INVALID_PAY_OFFERED",
+        message: "A long-term job must state the pay offered (an amount or a range, per hour or per year)."
+      });
+    }
+
+    // Certificates the employer requires (short-term and long-term). An unknown key, a duplicate or an
+    // "other" without text is refused, so a requirement is never dropped silently.
+    const requiredCertificates = parseRequiredCertificates(body.requiredCertificates, body.requiredCertificateOther);
+    if (!requiredCertificates) {
+      return reply.code(400).send({
+        error: "RWOS_INVALID_REQUIRED_CERTIFICATES",
+        message: "Choose required certificates from the list; describe an \"other\" certificate in 120 characters or less."
+      });
+    }
+
     const jobRequest = await jobRequestService.createDraft({
       actorUserId: session.user.id,
       organizationId: readRouteParam(request.params, "organizationId"),
@@ -2889,7 +3841,18 @@ export function buildApi(options: BuildApiOptions = {}) {
       await prisma!.jobRequest.update({ where: { id: jobRequest.id }, data: { worksiteDistanceKm } });
     }
 
-    return reply.code(201).send({ jobRequest: serializeJobRequest(jobRequest) });
+    if (longTerm.status === "long_term") {
+      await prisma!.jobRequest.update({ where: { id: jobRequest.id }, data: longTerm.data });
+    }
+
+    if (requiredCertificates.keys.length > 0) {
+      await prisma!.jobRequest.update({
+        where: { id: jobRequest.id },
+        data: { requiredCertificates: [...requiredCertificates.keys], requiredCertificateOther: requiredCertificates.other }
+      });
+    }
+
+    return reply.code(201).send({ jobRequest: await serializeEmployerJobRequest(jobRequest) });
   });
 
   // Create a multi-role order: one submission grouping several role lines (role + quantity +
@@ -2967,10 +3930,30 @@ export function buildApi(options: BuildApiOptions = {}) {
       now: new Date()
     });
     if (!result.ok) {
+      if (result.reason === "below_minimum_wage") {
+        return reply.code(422).send({ error: "RWOS_BELOW_MINIMUM_WAGE", message: result.message });
+      }
       const code = result.reason === "not_found" ? 404 : 422;
       return reply.code(code).send({ error: `RWOS_ORDER_${result.reason.toUpperCase()}`, message: "The order could not be submitted." });
     }
     return reply.code(200).send({ order: result.order });
+  });
+
+  // Read-only: what canceling the whole order now would bill (late-cancellation warning). Only the
+  // number of confirmed workers and a pre-tax estimate are returned — never a rate or Joblop's share.
+  app.post("/organizations/:organizationId/orders/:orderId/cancel/preview", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+    const organizationId = readRouteParam(request.params, "organizationId");
+    if (!(await userHasOrganizationAccess(session.user.id, organizationId))) return sendJobRequestDenied(reply);
+    const orderId = readRouteParam(request.params, "orderId");
+    const order = await prisma!.employerOrder.findFirst({ where: { id: orderId, organizationId }, select: { id: true } });
+    if (!order) return reply.code(404).send({ error: "RWOS_ORDER_NOT_FOUND", message: "The order was not found." });
+    const openJobIds = await prisma!.jobRequest
+      .findMany({ where: { orderId, organizationId, status: { not: "cancelled" } }, select: { id: true } })
+      .then((rows) => rows.map((row) => row.id));
+    const lateCancellation = await previewLateCancellation(prisma!, { organizationId, jobRequestIds: openJobIds, now: new Date() });
+    return reply.code(200).send({ lateCancellation });
   });
 
   // Cancel the whole order (every still-cancellable child role line). A reason is required.
@@ -2981,16 +3964,56 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!(await userHasOrganizationAccess(session.user.id, organizationId))) return sendJobRequestDenied(reply);
     const reason = readRequiredString(asRecord(request.body), "reason");
     if (!reason) return reply.code(400).send({ error: "RWOS_ORDER_REASON_REQUIRED", message: "A cancellation reason is required." });
+    const orderId = readRouteParam(request.params, "orderId");
+    // Who holds a shift on the order's still-open jobs, read before anything is cancelled.
+    const openJobIds = await prisma!.jobRequest
+      .findMany({ where: { orderId, organizationId, status: { not: "cancelled" } }, select: { id: true } })
+      .then((rows) => rows.map((row) => row.id))
+      .catch(() => [] as string[]);
+    const holders = await readShiftHolders(prisma!, { jobRequestIds: openJobIds }).catch(() => [] as ShiftHolder[]);
+    const orderCancelledAt = new Date();
+    const orderConfirmed = await readConfirmedAssignments(prisma!, organizationId, openJobIds).catch(() => [] as ConfirmedAssignment[]);
     const result = await cancelEmployerOrder(prisma!, jobRequestService, {
       actorUserId: session.user.id,
       organizationId,
-      orderId: readRouteParam(request.params, "orderId"),
+      orderId,
       reason,
       now: new Date()
     });
     if (!result.ok) {
       const code = result.reason === "not_found" ? 404 : 422;
       return reply.code(code).send({ error: `RWOS_ORDER_${result.reason.toUpperCase()}`, message: "The order could not be cancelled." });
+    }
+    // Late-cancellation charge for each job this cancel actually moved to cancelled.
+    const confirmedJobIds = [...new Set(orderConfirmed.map((a) => a.jobRequestId))];
+    if (confirmedJobIds.length > 0) {
+      const cancelledNow = await prisma!.jobRequest
+        .findMany({ where: { id: { in: confirmedJobIds }, status: "cancelled" }, select: { id: true } })
+        .then((rows) => rows.map((row) => row.id))
+        .catch(() => [] as string[]);
+      for (const jobId of cancelledNow) {
+        await chargeLateCancellation({
+          organizationId,
+          jobRequestId: jobId,
+          actorUserId: session.user.id,
+          cancelledAt: orderCancelledAt,
+          source: "employer_order_cancel",
+          confirmed: orderConfirmed
+        });
+      }
+    }
+    // Tell the workers on each job this cancel actually moved to cancelled.
+    if (holders.length > 0) {
+      const nowCancelled = new Set(
+        await prisma!.jobRequest
+          .findMany({ where: { id: { in: [...new Set(holders.map((h) => h.jobRequestId))] }, status: "cancelled" }, select: { id: true } })
+          .then((rows) => rows.map((row) => row.id))
+          .catch(() => [] as string[])
+      );
+      for (const [jobRequestId, onJob] of groupShiftHoldersByJob(holders)) {
+        if (!nowCancelled.has(jobRequestId)) continue;
+        await tellWorkersShiftCancelled({ jobRequestId, cancelledBy: "employer", workers: onJob.map((h) => ({ userId: h.userId })) });
+      }
     }
     return reply.code(200).send({ order: result.order });
   });
@@ -3060,9 +4083,9 @@ export function buildApi(options: BuildApiOptions = {}) {
           startAt: source.startAt,
           endAt: source.endAt
         });
-        // Copy the duties / qualifications / arrival notes (best-effort).
+        // Copy the duties / qualifications / arrival notes and shift conditions (best-effort).
         try {
-          await calendarRequestService.upsertClientProfile({
+          const copied = await calendarRequestService.upsertClientProfile({
             actorUserId,
             organizationId,
             jobRequestId: draft.id,
@@ -3072,11 +4095,17 @@ export function buildApi(options: BuildApiOptions = {}) {
             specialInstructions: sourceProfile.specialInstructions,
             expectedVersion: null
           });
+          const sourceConditions = prisma
+            ? await prisma.staffingRequestCalendarProfile.findUnique({ where: { jobRequestId: source.id }, select: SHIFT_CONDITIONS_SELECT })
+            : null;
+          if (prisma && sourceConditions) {
+            await prisma.staffingRequestCalendarProfile.update({ where: { id: copied.id }, data: storedShiftConditions(sourceConditions) });
+          }
         } catch {
           // The draft still exists; the employer can fill duties/qualifications.
         }
         return reply.code(201).send({
-          jobRequest: serializeJobRequest(draft),
+          jobRequest: await serializeEmployerJobRequest(draft),
           duplicatedFromRequestNumber: source.jobRequestNumber,
           repricedFrom: "current_active_contract"
         });
@@ -3191,87 +4220,317 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
   });
 
-  // PUBLIC job board — no sign-in. Anyone can browse JobLop's open job offers across all of Canada
-  // and filter by location (province) or search text (city / role). Privacy-safe: only area-level
-  // fields (city + province), role, headcount, date and urgency — NEVER exact address/coords, client
-  // identity, or pay rates. Read-only; a funnel to bring workers onto the platform.
+  // PUBLIC job board — no sign-in. Anyone can browse Joblop's open job offers across all of Canada
+  // and filter by "What" (q: role, title or city) and "Where" (city: a city name or a postal code).
+  // Place and role names match without accents or case ("Montreal" finds "Montréal"). The jobs are
+  // the same set as the signed-in calendar and search (openJobWhere). Privacy-safe: only area-level
+  // fields (city + province), role, headcount, date, urgency and the WORKER's own pay (hourly pay for
+  // short-term jobs, the employer's pay offer for long-term listings) — NEVER the exact address or
+  // coordinates, the client identity, the employer rate or Joblop's share. Read-only.
   app.get("/public/jobs", async (request, reply) => {
     if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
     const query = asRecord(request.query);
     const provinceRaw = readOptionalString(query, "province");
     const province = provinceRaw && /^[A-Za-z]{2}$/.test(provinceRaw) ? provinceRaw.toUpperCase() : null;
     const q = (readOptionalString(query, "q") ?? "").trim().slice(0, 80);
+    const where = (readOptionalString(query, "city") ?? readOptionalString(query, "where") ?? "").trim().slice(0, 80);
     const limitRaw = readOptionalNumber(query, "limit");
     const limit = Math.min(Math.max(limitRaw ? Math.floor(limitRaw) : 30, 1), 60);
     const cursorRaw = readOptionalNumber(query, "cursor");
     const offset = cursorRaw && cursorRaw > 0 ? Math.floor(cursorRaw) : 0;
+    const now = new Date();
+    const emptyPage = () =>
+      reply.code(200).header("cache-control", "public, max-age=60").send({ jobs: [], nextCursor: null, province, q, city: where || null });
+
+    // City names are folded in code (Postgres `contains` keeps accents), over the distinct cities of
+    // active sites, then matched exactly. Read once and only when a word was typed.
+    let cityNames: string[] | null = null;
+    const activeCities = async () => {
+      if (cityNames === null) {
+        const rows = await prisma.residence.findMany({
+          where: { status: "active", city: { not: null } },
+          distinct: ["city"],
+          select: { city: true },
+          take: 5000
+        });
+        cityNames = rows.map((r) => r.city).filter((c): c is string => !!c);
+      }
+      return cityNames;
+    };
+
+    // Where: a postal code narrows to its area (first three characters); a city name to its sites.
+    let residence: Prisma.ResidenceWhereInput = province ? { province } : {};
+    if (where) {
+      const area = postalAreaOf(where);
+      if (area) {
+        residence = { ...residence, postalCode: { startsWith: area, mode: "insensitive" } };
+      } else {
+        const matched = matchingPlaceNames(await activeCities(), where);
+        if (matched.length === 0) return emptyPage();
+        residence = { ...residence, city: { in: matched } };
+      }
+    }
+
+    // What: matches EITHER the city, the role, or the title (not ANDed with location).
+    let whatOr: Prisma.JobRequestWhereInput[] | null = null;
+    if (q) {
+      const [cities, roles] = await Promise.all([
+        activeCities(),
+        prisma.roleDefinition.findMany({ select: { id: true, key: true, displayLabel: true } })
+      ]);
+      const matchedCities = matchingPlaceNames(cities, q);
+      const roleIds = matchingRoleIds(roles, q);
+      whatOr = [
+        ...(matchedCities.length > 0 ? [{ residence: { city: { in: matchedCities } } }] : []),
+        ...(roleIds.length > 0 ? [{ roleDefinitionId: { in: roleIds } }] : []),
+        { title: { contains: q, mode: "insensitive" as const } }
+      ];
+    }
 
     const rows = await prisma.jobRequest.findMany({
-      where: {
-        status: "approved_for_dispatch", // open to workers
-        startAt: { gte: new Date() }, // upcoming shifts only
-        residence: {
-          status: "active",
-          ...(province ? { province } : {})
-        },
-        // Free-text search matches EITHER the city, the role, or the title (not ANDed with location).
-        ...(q
-          ? {
-              OR: [
-                { residence: { city: { contains: q, mode: "insensitive" } } },
-                { roleDefinition: { displayLabel: { contains: q, mode: "insensitive" } } },
-                { title: { contains: q, mode: "insensitive" } }
-              ]
-            }
-          : {})
-      },
+      where: openJobWhere({ now, residence, ...(whatOr ? { extra: { OR: whatOr } } : {}) }),
       select: {
+        id: true,
         jobRequestNumber: true,
         title: true,
         numberOfWorkers: true,
         startAt: true,
         urgency: true,
         roleDefinition: { select: { displayLabel: true } },
-        residence: { select: { city: true, province: true } }
+        residence: { select: { city: true, province: true } },
+        pricingSnapshot: { select: { workerHourlyRateMinor: true } },
+        ...WORKER_PAY_SELECT
       },
       orderBy: [{ urgency: "desc" }, { startAt: "asc" }],
       skip: offset,
       take: limit + 1
     });
     const hasMore = rows.length > limit;
-    const page = rows.slice(0, limit);
+    const openingsLeft = await remainingOpenings(prisma, rows);
+    // Full jobs drop off the board; pages may then show fewer than `limit`.
+    const page = rows.slice(0, limit).filter((r) => (openingsLeft.get(r.id) ?? r.numberOfWorkers) > 0);
     const jobs = page.map((r) => {
       const city = r.residence?.city ?? null;
       const prov = r.residence?.province ?? null;
+      const pay = workerPay(r, r.pricingSnapshot?.workerHourlyRateMinor ?? null);
       return {
         jobCode: r.jobRequestNumber,
         role: r.roleDefinition?.displayLabel ?? r.title,
         city,
         province: prov,
         areaLabel: city && prov ? `${city}, ${prov}` : (prov ?? "Canada"),
-        openings: r.numberOfWorkers,
+        openings: openingsLeft.get(r.id) ?? r.numberOfWorkers,
         startAt: r.startAt.toISOString(),
-        urgency: r.urgency
+        urgency: r.urgency,
+        // The worker's own hourly pay (never the employer rate or Joblop's share).
+        workerRateMinor: pay.rateMinor,
+        currency: options.countryCurrency ?? null,
+        ...pay.extra
       };
     });
     return reply
       .code(200)
       .header("cache-control", "public, max-age=60")
-      .send({ jobs, nextCursor: hasMore ? offset + limit : null, province, q });
+      .send({ jobs, nextCursor: hasMore ? offset + limit : null, province, q, city: where || null });
+  });
+
+  // PUBLIC jobs calendar — no sign-in. The signed-out front door (website and app) shows a month
+  // calendar of Joblop's open jobs: each day's count, and each job's role, city and province, time,
+  // places left and the WORKER's own pay. Same jobs as every other worker list (openJobWhere); full
+  // jobs drop off. Never the address, coordinates, the employer, the employer rate, Joblop's share or
+  // the internal job id (publicCalendarJobView is a field whitelist). Read-only, cacheable.
+  app.get("/public/jobs/calendar", async (request, reply) => {
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+    const query = asRecord(request.query);
+    const now = new Date();
+    const { from, to } = publicCalendarRange(readOptionalString(query, "from"), readOptionalString(query, "to"), now);
+    const rows = await prisma.jobRequest.findMany({
+      where: openJobWhere({ now, startFrom: from, startTo: to }),
+      select: {
+        id: true,
+        jobRequestNumber: true,
+        title: true,
+        numberOfWorkers: true,
+        startAt: true,
+        endAt: true,
+        timezone: true,
+        roleDefinition: { select: { displayLabel: true } },
+        residence: { select: { city: true, province: true } },
+        pricingSnapshot: { select: { workerHourlyRateMinor: true } },
+        ...WORKER_PAY_SELECT
+      },
+      orderBy: [{ startAt: "asc" }],
+      take: PUBLIC_CALENDAR_MAX_JOBS
+    });
+    const left = await remainingOpenings(prisma, rows);
+    const jobs = rows
+      .map((r) => ({ row: r, placesLeft: left.get(r.id) ?? r.numberOfWorkers }))
+      .filter((j) => j.placesLeft > 0)
+      .map((j) => publicCalendarJobView(j.row, j.placesLeft, options.countryCurrency ?? null));
+    return reply
+      .code(200)
+      .header("cache-control", "public, max-age=60")
+      .send({ jobs, from: from.toISOString(), to: to.toISOString() });
+  });
+
+  // PUBLIC job details — no sign-in. One open Joblop job by its public job code (the same code the
+  // public board shows), so a visitor can see what it is before creating an account. Same privacy
+  // rules as the board: what (the role), where (city and province only, never the address or
+  // coordinates), when, places left and the WORKER's own pay. Never the employer, the employer rate
+  // or Joblop's share. Only jobs on the open board (openJobWhere) with places left; anything else 404s.
+  app.get("/public/jobs/:jobCode", async (request, reply) => {
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+    const jobCode = readRouteParam(request.params, "jobCode");
+    const notFound = () =>
+      reply.code(404).header("cache-control", "public, max-age=60").send({ error: "RWOS_PUBLIC_JOB_NOT_FOUND", message: "That job is not available." });
+    if (!isPublicJobCode(jobCode)) return notFound();
+    const now = new Date();
+    const row = await prisma.jobRequest.findFirst({
+      where: openJobWhere({ now, extra: { jobRequestNumber: jobCode } }),
+      select: {
+        id: true,
+        jobRequestNumber: true,
+        title: true,
+        numberOfWorkers: true,
+        startAt: true,
+        endAt: true,
+        timezone: true,
+        urgency: true,
+        roleDefinition: { select: { displayLabel: true } },
+        residence: { select: { city: true, province: true } },
+        pricingSnapshot: { select: { workerHourlyRateMinor: true } },
+        ...WORKER_PAY_SELECT
+      }
+    });
+    if (!row) return notFound();
+    const openings = (await remainingOpenings(prisma, [row])).get(row.id) ?? row.numberOfWorkers;
+    if (openings <= 0) return notFound();
+    const city = row.residence?.city ?? null;
+    const prov = row.residence?.province ?? null;
+    const pay = workerPay(row, row.pricingSnapshot?.workerHourlyRateMinor ?? null);
+    return reply
+      .code(200)
+      .header("cache-control", "public, max-age=60")
+      .send({
+        job: {
+          jobCode: row.jobRequestNumber,
+          role: row.roleDefinition?.displayLabel ?? row.title,
+          city,
+          province: prov,
+          areaLabel: city && prov ? `${city}, ${prov}` : (prov ?? "Canada"),
+          startAt: row.startAt.toISOString(),
+          endAt: row.endAt.toISOString(),
+          timezone: row.timezone,
+          urgency: row.urgency,
+          openings,
+          // The worker's own pay (never the employer rate or Joblop's share).
+          workerRateMinor: pay.rateMinor,
+          currency: options.countryCurrency ?? null,
+          ...pay.extra
+        }
+      });
+  });
+
+  // Signed-in worker: turn a public job code into the job's id, so a visitor who opened a public job
+  // and then signed up lands on the real job page where they can take it. Same visibility rule as the
+  // public page (open board only); anything else 404s.
+  app.get("/marketplace/job-codes/:jobCode", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_MARKETPLACE_DENIED", message: "Authentication is required." });
+    }
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+    const jobCode = readRouteParam(request.params, "jobCode");
+    const row = isPublicJobCode(jobCode)
+      ? await prisma.jobRequest.findFirst({ where: openJobWhere({ now: new Date(), extra: { jobRequestNumber: jobCode } }), select: { id: true } })
+      : null;
+    if (!row) return reply.code(404).send({ error: "RWOS_PUBLIC_JOB_NOT_FOUND", message: "That job is not available." });
+    return reply.code(200).header("cache-control", "no-store").send({ jobRequestId: row.id });
+  });
+
+  // SHARED JOBS CALENDAR (signed-in workers). Every approved, open job with places left, by date, so a
+  // worker can pick a day and accept. A job drops off for everyone the moment its last place is taken
+  // (places are counted live from the assignments that hold one). Worker pay only; employer rate never shown.
+  app.get("/marketplace/open-jobs", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_MARKETPLACE_DENIED", message: "Authentication is required." });
+    }
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+    const query = asRecord(request.query);
+    const now = new Date();
+    const fromRaw = readOptionalString(query, "from");
+    const toRaw = readOptionalString(query, "to");
+    const from = fromRaw && !Number.isNaN(Date.parse(fromRaw)) ? new Date(fromRaw) : now;
+    const to = toRaw && !Number.isNaN(Date.parse(toRaw)) ? new Date(toRaw) : new Date(from.getTime() + 45 * 86_400_000);
+    // At most ~3 months per request.
+    const until = new Date(Math.min(to.getTime(), from.getTime() + 93 * 86_400_000));
+    const rows = await prisma.jobRequest.findMany({
+      where: openJobWhere({ now, startFrom: from, startTo: until }),
+      select: {
+        id: true,
+        title: true,
+        numberOfWorkers: true,
+        startAt: true,
+        endAt: true,
+        urgency: true,
+        requiredCertificates: true,
+        requiredCertificateOther: true,
+        roleDefinition: { select: { displayLabel: true } },
+        residence: { select: { city: true, province: true } },
+        pricingSnapshot: { select: { workerHourlyRateMinor: true } },
+        ...WORKER_PAY_SELECT
+      },
+      orderBy: [{ startAt: "asc" }],
+      take: 500
+    });
+    const left = await remainingOpenings(prisma, rows);
+    const openBonus = await activeBonusByJob(prisma, rows.map((r) => r.id));
+    const jobs = rows
+      .filter((r) => (left.get(r.id) ?? r.numberOfWorkers) > 0)
+      .map((r) => {
+        const city = r.residence?.city ?? null;
+        const prov = r.residence?.province ?? null;
+        // Long-term listing (flag on): rate null + the employer's pay offer; otherwise unchanged.
+        const pay = workerPay(r, r.pricingSnapshot?.workerHourlyRateMinor ?? null);
+        return {
+          jobRequestId: r.id,
+          role: r.roleDefinition?.displayLabel ?? r.title,
+          areaLabel: city && prov ? `${city}, ${prov}` : (prov ?? "Canada"),
+          startAt: r.startAt.toISOString(),
+          endAt: r.endAt.toISOString(),
+          urgency: r.urgency,
+          placesLeft: left.get(r.id) ?? r.numberOfWorkers,
+          workerRateMinor: pay.rateMinor,
+          ...pay.extra,
+          // The job's active bonus (kind + amount only; who pays it is never shown to workers).
+          bonus: openBonus.get(r.id) ?? null,
+          // Certificates the employer requires (only when there are some).
+          ...requiredCertificatesField(r)
+        };
+      });
+    return reply.code(200).header("cache-control", "no-store").send({ jobs, from: from.toISOString(), to: until.toISOString() });
   });
 
   // PUBLIC JobScanner teaser — a small, cached preview of external market leads for anonymous visitors
   // (the landing-page "magnet"). Reads ONLY stored leads from prior scans: zero live Adzuna calls per
   // request, so it never consumes the source budget and can't be abused to drain it. External leads are
-  // a hand-off to the source, never JobLop governed jobs; sanitized to public-safe fields (no coords, no
+  // a hand-off to the source, never Joblop governed jobs; sanitized to public-safe fields (no coords, no
   // internal id). Empty until a live scan has populated the store — nothing synthetic is served here.
   app.get("/public/jobscanner/leads", async (request, reply) => {
     if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
     const query = asRecord(request.query);
     const provinceRaw = readOptionalString(query, "province");
-    const province = provinceRaw && /^[A-Za-z]{2}$/.test(provinceRaw) ? provinceRaw.toUpperCase() : undefined;
+    let province = provinceRaw && /^[A-Za-z]{2}$/.test(provinceRaw) ? provinceRaw.toUpperCase() : undefined;
     const cityRaw = (readOptionalString(query, "city") ?? "").trim().slice(0, 60);
-    const city = cityRaw.length > 0 ? cityRaw : undefined;
+    // City names match without accents or case. Leads carry no postal code, so a postal code typed in
+    // "Where" narrows to its province instead.
+    const postalArea = postalAreaOf(cityRaw);
+    const leadAddress = options.countryAddress;
+    const asPostal =
+      postalArea && leadAddress ? (leadAddress.normalizePostalCode(cityRaw) ?? leadAddress.normalizePostalCode(`${postalArea}0A0`)) : null;
+    if (asPostal && leadAddress) province = province ?? leadAddress.regionHintFromPostalCode(asPostal) ?? undefined;
+    const city = cityRaw.length > 0 && !postalArea ? cityRaw : undefined;
     // Small teaser only — the full, ranked feed is a signed-in worker benefit.
     const limitRaw = readOptionalNumber(query, "limit");
     const limit = Math.min(Math.max(limitRaw ? Math.floor(limitRaw) : 8, 1), 12);
@@ -3279,17 +4538,14 @@ export function buildApi(options: BuildApiOptions = {}) {
       .trim()
       .slice(0, 80);
 
-    const stored = await queryStoredLeads(prisma, {
+    // The search word narrows in the database across ALL stored leads (with French/English job-title
+    // equivalents), not just the newest slice — otherwise most trades were never found.
+    const filtered = await queryStoredLeads(prisma, {
       ...(province ? { province } : {}),
       ...(city ? { city } : {}),
-      limit: 60
+      ...(roleRaw ? { query: roleRaw } : {}),
+      limit: 500
     });
-    // Optional free-text narrowing on title/employer/category, in-memory over the already-fetched slice
-    // (no extra query, no live call).
-    const needle = roleRaw.toLowerCase();
-    const filtered = needle
-      ? stored.filter((l) => [l.title, l.employer, l.category].some((f) => (f ?? "").toLowerCase().includes(needle)))
-      : stored;
     const leads = filtered.slice(0, limit).map((l) => {
       const area = l.city && l.province ? `${l.city}, ${l.province}` : (l.locationLabel ?? l.province ?? "Canada");
       return {
@@ -3317,7 +4573,7 @@ export function buildApi(options: BuildApiOptions = {}) {
 
   // PUBLIC JobScanner stats — the TRUE totals for the landing magnet ("X jobs waiting"), so the number
   // reflects the whole store, not the small teaser slice. Pure COUNT queries (prisma.count / distinct)
-  // over already-stored data: zero live Adzuna calls, cacheable, honest. Counts JobLop's own open public
+  // over already-stored data: zero live Adzuna calls, cacheable, honest. Counts Joblop's own open public
   // jobs + external scanned leads, and the distinct provinces they span. Optional ?province filter.
   app.get("/public/jobscanner/stats", async (request, reply) => {
     if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
@@ -3327,11 +4583,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const [externalLeadCount, openJobCount, leadProvinces] = await Promise.all([
       prisma.externalJobLead.count({ where: { ...(province ? { province } : {}) } }),
       prisma.jobRequest.count({
-        where: {
-          status: "approved_for_dispatch",
-          startAt: { gte: new Date() },
-          residence: { status: "active", ...(province ? { province } : {}) }
-        }
+        where: openJobWhere({ now: new Date(), residence: province ? { province } : {} })
       }),
       prisma.externalJobLead.findMany({ distinct: ["province"], select: { province: true } })
     ]);
@@ -3344,14 +4596,14 @@ export function buildApi(options: BuildApiOptions = {}) {
         externalLeadCount,
         openJobCount,
         provinceCount,
-        note: "Totals across JobLop open jobs and scanned external leads. External leads are a hand-off to the source."
+        note: "Totals across Joblop open jobs and scanned external leads. External leads are a hand-off to the source."
       });
   });
 
   // PUBLIC job-alert capture — the landing magnet's email box. A visitor leaves their email (optionally
-  // a role/province) so JobLop, not the external source, owns the lead. No auth, no account, no money.
-  // Upsert by email so re-submitting just refreshes the role/province. Delivery of alerts is a separate
-  // governed step (scheduler stays OFF) — this only records the subscription, honestly.
+  // a role/province) so Joblop, not the external source, owns the lead. No auth, no account, no money.
+  // Upsert by email so re-submitting just refreshes the role/province. Digests are sent by the
+  // token-guarded POST /internal/job-alerts/sweep; every email carries a one-click unsubscribe link.
   app.post("/public/jobscanner/alerts", async (request, reply) => {
     if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
     const body = asRecord(request.body);
@@ -3367,16 +4619,168 @@ export function buildApi(options: BuildApiOptions = {}) {
     const provinceRaw = readOptionalString(body, "province");
     const province = provinceRaw && /^[A-Za-z]{2}$/.test(provinceRaw) ? provinceRaw.toUpperCase() : null;
     const localeRaw = (readOptionalString(body, "locale") ?? "").trim().toLowerCase();
-    const locale = localeRaw === "fr" || localeRaw === "en" ? localeRaw : null;
-    await prisma.jobAlertSubscription.upsert({
+    const locale = localeRaw === "fr" || localeRaw === "en" || localeRaw === "ar" ? localeRaw : null;
+    const existing = await prisma.jobAlertSubscription.findUnique({
       where: { email: emailRaw },
-      update: { roleKeywords, province, locale },
-      create: { email: emailRaw, roleKeywords, province, locale, source: "public_landing" }
+      select: { id: true, unsubscribedAt: true }
     });
+    // Re-submitting refreshes the role/province and turns a stopped alert back on.
+    const saved = await prisma.jobAlertSubscription.upsert({
+      where: { email: emailRaw },
+      update: { roleKeywords, province, locale, unsubscribedAt: null },
+      create: { email: emailRaw, roleKeywords, province, locale, source: "public_landing", unsubscribeToken: generateUnsubscribeToken() },
+      select: { id: true, unsubscribeToken: true }
+    });
+    // Confirm only when the alert just started (new, or back on), so the box cannot be used to
+    // flood someone's inbox. The email says who we are and how to unsubscribe (CASL). Best-effort.
+    if ((!existing || existing.unsubscribedAt) && offerCtaOrigin) {
+      try {
+        const token = await ensureUnsubscribeToken(prisma, saved);
+        await emailSender.send(
+          jobAlertConfirmationEmail({
+            to: emailRaw,
+            language: locale === "en" || locale === "ar" ? locale : "fr",
+            criteria: { roleKeywords, province },
+            workerWebOrigin: offerCtaOrigin,
+            unsubscribeToken: token,
+            mailingAddress: jobAlertMailingAddress
+          })
+        );
+      } catch {
+        logger.warn("api.job_alert.confirmation_failed", {});
+      }
+    }
     return reply.code(200).send({
       status: "subscribed",
-      note: "You're on JobLop's job-alert list. We'll notify you as alerts roll out — no spam, unsubscribe anytime."
+      note: "You're on Joblop's job-alert list. We'll notify you as alerts roll out — no spam, unsubscribe anytime."
     });
+  });
+
+  // One-click unsubscribe from job-alert emails (the link in every alert email). Idempotent: an
+  // unknown or already-used token still answers ok, so the link never leaks whether an email is listed.
+  app.get("/public/job-alerts/unsubscribe", async (request, reply) => {
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+    const token = readOptionalString(asRecord(request.query), "token");
+    if (!isUnsubscribeToken(token)) {
+      return reply.code(400).send({ error: "RWOS_ALERT_TOKEN_INVALID", message: "A valid unsubscribe link is required." });
+    }
+    await prisma.jobAlertSubscription.updateMany({
+      where: { unsubscribeToken: token, unsubscribedAt: null },
+      data: { unsubscribedAt: new Date() }
+    });
+    return reply.code(200).header("cache-control", "no-store").send({ ok: true });
+  });
+
+  // Signed-in worker's own job alert. The email is always the account's email, never from the body.
+  const requireAlertWorker = async (request: FastifyRequest, reply: FastifyReply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      reply.code(401).send({ error: "RWOS_JOB_ALERT_DENIED", message: "Authentication is required." });
+      return null;
+    }
+    if (!prisma) {
+      reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+      return null;
+    }
+    return session.user;
+  };
+  const alertView = (row: { roleKeywords: string | null; province: string | null; unsubscribedAt: Date | null }) => ({
+    roleKeywords: row.roleKeywords,
+    province: row.province,
+    active: row.unsubscribedAt === null
+  });
+  const alertSelect = { roleKeywords: true, province: true, unsubscribedAt: true } as const;
+
+  app.get("/worker/job-alerts", async (request, reply) => {
+    const user = await requireAlertWorker(request, reply);
+    if (!user) return;
+    const row = await prisma!.jobAlertSubscription.findUnique({ where: { email: user.emailNormalized }, select: alertSelect });
+    return reply.code(200).header("cache-control", "no-store").send({ subscription: row ? alertView(row) : null });
+  });
+
+  app.post("/worker/job-alerts", async (request, reply) => {
+    const user = await requireAlertWorker(request, reply);
+    if (!user) return;
+    const body = asRecord(request.body);
+    const roleRaw = (readOptionalString(body, "roleKeywords") ?? "").trim().slice(0, 120);
+    const roleKeywords = roleRaw.length > 0 ? roleRaw : null;
+    const provinceRaw = (readOptionalString(body, "province") ?? "").trim();
+    if (provinceRaw && !/^[A-Za-z]{2}$/.test(provinceRaw)) {
+      return reply.code(400).send({ error: "RWOS_JOB_ALERT_INVALID", message: "Province must be a two-letter code." });
+    }
+    const province = provinceRaw ? provinceRaw.toUpperCase() : null;
+    const row = await prisma!.jobAlertSubscription.upsert({
+      where: { email: user.emailNormalized },
+      update: { roleKeywords, province, userId: user.id, unsubscribedAt: null },
+      create: {
+        email: user.emailNormalized,
+        roleKeywords,
+        province,
+        // No fixed locale: the digest follows the account's language.
+        userId: user.id,
+        source: "worker_account",
+        confirmedAt: new Date(),
+        unsubscribeToken: generateUnsubscribeToken()
+      },
+      select: { id: true, unsubscribeToken: true, ...alertSelect }
+    });
+    await ensureUnsubscribeToken(prisma!, row);
+    return reply.code(200).send({ subscription: alertView(row) });
+  });
+
+  app.delete("/worker/job-alerts", async (request, reply) => {
+    const user = await requireAlertWorker(request, reply);
+    if (!user) return;
+    await prisma!.jobAlertSubscription.updateMany({
+      where: { OR: [{ email: user.emailNormalized }, { userId: user.id }], unsubscribedAt: null },
+      data: { unsubscribedAt: new Date() }
+    });
+    return reply.code(200).send({ ok: true });
+  });
+
+  // The signed-in worker's language (EN / FR / AR), saved when they switch language on the website or
+  // in the app, so job offers, texts, emails and push notices reach them in that language.
+  app.put("/worker/language", async (request, reply) => {
+    const user = await requireAlertWorker(request, reply);
+    if (!user) return;
+    const language = normalizeLanguagePreference(readOptionalString(asRecord(request.body), "language"));
+    if (!language) {
+      return reply.code(400).send({ error: "RWOS_LANGUAGE_INVALID", message: "Language must be en, fr or ar." });
+    }
+    await prisma!.user.update({ where: { id: user.id }, data: { primaryLanguage: language } });
+    await prisma!.workerIdentity.updateMany({ where: { userId: user.id }, data: { preferredLanguage: language } });
+    return reply.code(200).header("cache-control", "no-store").send({ language });
+  });
+
+  // Phone-app push tokens (Expo). Registering an existing token moves it to this user (a phone that
+  // changed hands) and turns it back on; removing only touches the caller's own token.
+  app.post("/worker/push-tokens", async (request, reply) => {
+    const user = await requireAlertWorker(request, reply);
+    if (!user) return;
+    const body = asRecord(request.body);
+    const token = readOptionalString(body, "token")?.trim();
+    const platform = readOptionalString(body, "platform");
+    if (!isExpoPushToken(token) || !isPushPlatform(platform)) {
+      return reply.code(400).send({ error: "RWOS_PUSH_TOKEN_INVALID", message: "A valid Expo push token and platform (ios, android, web) are required." });
+    }
+    const now = new Date();
+    await prisma!.pushToken.upsert({
+      where: { token },
+      update: { userId: user.id, platform, lastSeenAt: now, revokedAt: null },
+      create: { token, userId: user.id, platform, lastSeenAt: now }
+    });
+    return reply.code(200).send({ ok: true });
+  });
+
+  app.delete("/worker/push-tokens", async (request, reply) => {
+    const user = await requireAlertWorker(request, reply);
+    if (!user) return;
+    const token = readOptionalString(asRecord(request.body), "token")?.trim();
+    if (!isExpoPushToken(token)) {
+      return reply.code(400).send({ error: "RWOS_PUSH_TOKEN_INVALID", message: "A valid Expo push token is required." });
+    }
+    await prisma!.pushToken.updateMany({ where: { token, userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } });
+    return reply.code(200).send({ ok: true });
   });
 
   // Worker marketplace job search. Cross-org, privacy-safe. Worker origin is a Canadian
@@ -3389,28 +4793,35 @@ export function buildApi(options: BuildApiOptions = {}) {
       return reply.code(401).send({ error: "RWOS_MARKETPLACE_DENIED", message: "Authentication is required." });
     }
     const body = asRecord(request.body);
-    const postalCode = readOptionalString(body, "postalCode");
     const countryAddress = options.countryAddress;
     if (!countryAddress) {
       return reply.code(400).send({ error: "RWOS_COUNTRY_ADDRESS_UNAVAILABLE", message: "Address resolution is not configured for the selected country." });
     }
     // Stage 2b.3b-1: the (display-only, decorative) result currency is driven by the selected country's
     // currency, never a hard-coded "CAD". Absent → fail closed, never silently substitute CAD. Byte-
-    // identical for Canada (countryCurrency === "CAD"). workerRateMinor stays null (policy-gated).
+    // identical for Canada (countryCurrency === "CAD").
     const countryCurrency = options.countryCurrency;
     if (!countryCurrency) {
       return reply.code(400).send({ error: "RWOS_COUNTRY_CURRENCY_UNAVAILABLE", message: "Currency is not configured for the selected country." });
     }
-    const normalizedPostal = postalCode ? countryAddress.normalizePostalCode(postalCode) : null;
-    if (!normalizedPostal) {
-      return reply.code(400).send({ error: "RWOS_INVALID_POSTAL", message: "A valid Canadian postal code is required." });
+    // "Where?": a city name (any accents/case) or a postal code. `postalCode` is still accepted from
+    // older clients. An unknown place is a friendly 400, never a 500.
+    const placeInput = readOptionalString(body, "place") ?? readOptionalString(body, "postalCode");
+    const resolved = await resolveSearchPlace(placeInput, { countryAddress, geocoder: geocodingProvider });
+    if (resolved.status !== "ok") {
+      const failure = searchPlaceFailure(resolved.status);
+      return reply.code(failure.code).send(failure.body);
     }
+    const origin = resolved.place;
     const radiusRaw = readOptionalNumber(body, "radiusKm");
-    const radiusKm = radiusRaw && radiusRaw > 0 ? radiusRaw : undefined; // omit → any distance
-    const roleFilter = readOptionalString(body, "role");
+    const radiusKm = radiusRaw && radiusRaw > 0 ? Math.min(radiusRaw, 500) : undefined; // omit → any distance
+    const roleFilter = (readOptionalString(body, "role") ?? "").trim().slice(0, 80);
     // Additional server-authoritative filters. All optional; the browser can only NARROW.
-    const dateFrom = parseIsoDate(readOptionalString(body, "dateFrom"));
-    const dateTo = parseIsoDate(readOptionalString(body, "dateTo"));
+    // Plain days are local days where the jobs are (America/Toronto for Canada), the last day included:
+    // "2027-01-22" to "2027-01-22" is all of that day, not midnight UTC (19:00 the evening before).
+    const searchZone = options.countryTimezone ?? "America/Toronto";
+    const dateFrom = searchDateBound(readOptionalString(body, "dateFrom"), "from", searchZone);
+    const dateTo = searchDateBound(readOptionalString(body, "dateTo"), "to", searchZone);
     const minOpeningsRaw = readOptionalNumber(body, "minOpenings");
     const minOpenings = minOpeningsRaw && minOpeningsRaw > 0 ? Math.floor(minOpeningsRaw) : undefined;
     const verifiedOnly = body.verifiedOnly === true;
@@ -3422,37 +4833,51 @@ export function buildApi(options: BuildApiOptions = {}) {
     const cursorRaw = readOptionalNumber(body, "cursor");
     const offset = cursorRaw && cursorRaw > 0 ? Math.floor(cursorRaw) : 0;
 
-    const origin = await geocodingProvider.geocode({ countryRestriction: countryAddress.geocodeCountryRestriction, postalCode: normalizedPostal });
-    if (origin.status !== "ok") {
-      return reply.code(422).send({ error: "RWOS_ORIGIN_UNRESOLVED", status: origin.status, message: "Your search location could not be resolved." });
+    // Role: matched against the role key and label, ignoring accents and case. A role that matches
+    // nothing gives an empty result (the filter is never dropped).
+    let roleIds: string[] | null = null;
+    if (roleFilter) {
+      const roles = await prisma!.roleDefinition.findMany({ select: { id: true, key: true, displayLabel: true } });
+      roleIds = matchingRoleIds(roles, roleFilter);
     }
-    const box = boundingBoxKm({ latitude: origin.location.latitude, longitude: origin.location.longitude }, radiusKm ?? 500);
-    const rows = await prisma!.jobRequest.findMany({
-      where: {
-        status: { in: ["submitted", "approved_for_dispatch"] },
-        ...(roleFilter ? { roleDefinition: { key: roleFilter } } : {}),
-        ...(minOpenings ? { numberOfWorkers: { gte: minOpenings } } : {}),
-        ...(dateFrom || dateTo ? { startAt: { ...(dateFrom ? { gte: dateFrom } : {}), ...(dateTo ? { lte: dateTo } : {}) } } : {}),
+
+    const box = boundingBoxKm({ latitude: origin.latitude, longitude: origin.longitude }, radiusKm ?? 500);
+    const now = new Date();
+    // The same open-jobs rule as the jobs calendar (openJobWhere), so both views show the same jobs.
+    const rows = roleIds !== null && roleIds.length === 0 ? [] : await prisma!.jobRequest.findMany({
+      where: openJobWhere({
+        now,
+        startFrom: dateFrom,
+        startTo: dateTo,
         residence: {
-          status: "active",
           latitude: { gte: box.minLat, lte: box.maxLat },
           longitude: { gte: box.minLng, lte: box.maxLng }
+        },
+        extra: {
+          ...(roleIds ? { roleDefinitionId: { in: roleIds } } : {}),
+          ...(minOpenings ? { numberOfWorkers: { gte: minOpenings } } : {})
         }
-      },
+      }),
       select: {
         id: true,
         numberOfWorkers: true,
         startAt: true,
         endAt: true,
-        roleDefinition: { select: { displayLabel: true } },
+        requiredCertificates: true,
+        requiredCertificateOther: true,
+        roleDefinition: { select: { displayLabel: true, workGroup: { select: { key: true } } } },
         organization: { select: { id: true, displayName: true } },
         residence: { select: { city: true, province: true, latitude: true, longitude: true } },
-        pricingSnapshot: { select: { workerHourlyRateMinor: true } }
+        pricingSnapshot: { select: { workerHourlyRateMinor: true } },
+        ...WORKER_PAY_SELECT
       },
+      // Soonest first in the database, BEFORE the cap: past the cap the latest jobs drop out, never
+      // the soonest ones. (The sort the worker picks is applied to these candidates afterwards.)
+      orderBy: [{ startAt: "asc" }, { id: "asc" }],
       take: MARKETPLACE_CANDIDATE_CAP
     });
     if (rows.length === MARKETPLACE_CANDIDATE_CAP) {
-      logger.warn("marketplace.search.candidate_cap_hit", { cap: MARKETPLACE_CANDIDATE_CAP, postalCode: normalizedPostal });
+      logger.warn("marketplace.search.candidate_cap_hit", { cap: MARKETPLACE_CANDIDATE_CAP });
     }
     // Authoritative Verified-Employer state for the orgs on this result set. Read from the
     // employer_verifications record only (business_verified + not expired). Never inferred.
@@ -3465,12 +4890,17 @@ export function buildApi(options: BuildApiOptions = {}) {
       });
       for (const v of verifiedRows) verifiedOrgIds.add(v.organizationId);
     }
+    const openingsLeft = await remainingOpenings(prisma!, rows);
     const candidates: MarketplaceJobCandidate[] = [];
     for (const r of rows) {
+      const left = openingsLeft.get(r.id) ?? r.numberOfWorkers;
+      if (left <= 0) continue; // every place is taken
+      if (minOpenings && left < minOpenings) continue; // places still open, not places asked
       const province = r.residence.province;
-      if (!isProvinceCode(province) || r.residence.latitude === null || r.residence.longitude === null) continue;
+      if (!options.countryAddress?.isRegionCode(province) || r.residence.latitude === null || r.residence.longitude === null) continue;
       const isVerifiedEmployer = verifiedOrgIds.has(r.organization.id);
       if (verifiedOnly && !isVerifiedEmployer) continue; // verified-only narrows to real verified orgs
+      const pay = workerPay(r, r.pricingSnapshot?.workerHourlyRateMinor ?? null);
       candidates.push({
         jobRequestId: r.id,
         role: r.roleDefinition.displayLabel,
@@ -3482,14 +4912,15 @@ export function buildApi(options: BuildApiOptions = {}) {
         longitude: r.residence.longitude,
         startAt: r.startAt.toISOString(),
         endAt: r.endAt.toISOString(),
-        openings: r.numberOfWorkers,
-        workerRateMinor: r.pricingSnapshot?.workerHourlyRateMinor ?? null, // W from the immutable approval snapshot (null until approved); the employer rate E is never exposed here
-        currency: countryCurrency // display-only; driven by the selected country (CAD for Canada)
+        openings: left,
+        workerRateMinor: pay.rateMinor, // W from the immutable approval snapshot (null until approved); the employer rate E is never exposed here
+        currency: countryCurrency, // display-only; driven by the selected country (CAD for Canada)
+        ...pay.extra // long-term listing (flag on): the employer's own pay offer
       });
     }
     // Distance ranking is authoritative + always computed first (radius applied here).
     const ranked = searchNearbyJobs({
-      origin: { latitude: origin.location.latitude, longitude: origin.location.longitude },
+      origin: { latitude: origin.latitude, longitude: origin.longitude },
       ...(radiusKm !== undefined ? { radiusKm } : {}),
       candidates,
       regionNames: countryAddress // display-name capability from the selected country (already guarded above)
@@ -3500,8 +4931,20 @@ export function buildApi(options: BuildApiOptions = {}) {
     else if (sort === "highest_rate") sorted.sort((a, b) => (b.workerRateMinor ?? -1) - (a.workerRateMinor ?? -1));
     // else "nearest" — already distance-ordered.
 
-    const total = sorted.length;
-    const page = sorted.slice(offset, offset + limit);
+    // A more complete profile shows more jobs. Search only: the worker is never blocked from a job.
+    // Someone without a worker record yet rates as an empty profile.
+    const documents = await hrDocumentService.myDocumentStatuses({ userId: session.user.id }).catch(() => []);
+    const rating = workerProfileRating(documents);
+    // Jobs in the categories the worker chose come first, keeping the chosen sort within each group.
+    const categories = await listWorkerJobCategories(prisma!, session.user.id).catch(() => []);
+    const wanted = new Set(categories.filter((c) => c.selected).map((c) => c.key));
+    const categoryByJob = new Map(rows.map((r) => [r.id, r.roleDefinition.workGroup?.key]));
+    const isWanted = (job: (typeof sorted)[number]) => (wanted.has(categoryByJob.get(job.jobRequestId) ?? "") ? 0 : 1);
+    sorted.sort((a, b) => isWanted(a) - isWanted(b));
+    const visible = rating.jobLimit === null ? sorted : sorted.slice(0, rating.jobLimit);
+
+    const total = visible.length;
+    const page = visible.slice(offset, offset + limit);
     const nextCursor = offset + limit < total ? offset + limit : null;
 
     // Hydrate saved-state for THIS page (best-effort; non-workers get no flags).
@@ -3515,13 +4958,18 @@ export function buildApi(options: BuildApiOptions = {}) {
       savedIds = []; // not a worker → no saved flags; never fail the search
     }
     const savedSet = new Set(savedIds);
-    const jobs = page.map((r) => ({ ...r, saved: savedSet.has(r.jobRequestId) }));
+    const rowById = new Map(rows.map((r) => [r.id, r]));
+    const jobs = page.map((r) => {
+      const row = rowById.get(r.jobRequestId);
+      return { ...r, saved: savedSet.has(r.jobRequestId), ...(row ? requiredCertificatesField(row) : {}) };
+    });
     return reply.code(200).send({
-      origin: { province: origin.location.province, city: origin.location.city, postalCode: normalizedPostal },
+      origin: { province: origin.province, city: origin.city, postalCode: origin.postalCode, place: origin.label },
       count: jobs.length,
       total,
       nextCursor,
-      jobs
+      jobs,
+      profile: { score: rating.score, tier: rating.tier, hiddenJobs: sorted.length - visible.length }
     });
   });
 
@@ -3590,17 +5038,27 @@ export function buildApi(options: BuildApiOptions = {}) {
               endAt: true,
               roleDefinition: { select: { displayLabel: true } },
               organization: { select: { id: true, displayName: true } },
-              residence: { select: { city: true, province: true, status: true } }
+              residence: { select: { city: true, province: true, status: true } },
+              ...listingVisibilitySelect()
             }
           })
         : [];
       const byId = new Map(rows.map((r) => [r.id, r]));
+      const visibleAt = new Date();
+      // Places left, counted the same way as every other list (not the total headcount).
+      const placesLeftById = rows.length
+        ? await remainingOpenings(prisma!, rows.map((r) => ({ id: r.id, numberOfWorkers: r.numberOfWorkers }))).catch(() => new Map<string, number>())
+        : new Map<string, number>();
       const saved = savedRecords.map((rec) => {
         const r = byId.get(rec.jobRequestId);
-        const available =
-          !!r &&
-          (r.status === "submitted" || r.status === "approved_for_dispatch") &&
-          r.residence.status === "active";
+        const placesLeft = r ? (placesLeftById.get(r.id) ?? r.numberOfWorkers) : 0;
+        // Unavailable when not approved, cancelled/finished, started, full, its site closed, or (long-term,
+        // employer plans flag) no longer listed.
+        const available = isSavedJobAvailable(r, {
+          placesLeft,
+          listed: !!r && isListedForWorkers(r as Parameters<typeof isListedForWorkers>[0], visibleAt),
+          now: visibleAt
+        });
         return {
           jobRequestId: rec.jobRequestId,
           savedAt: rec.savedAt,
@@ -3611,12 +5069,12 @@ export function buildApi(options: BuildApiOptions = {}) {
                 title: r.title,
                 employer: { id: r.organization.id, name: r.organization.displayName, verified: false },
                 areaLabel:
-                  r.residence.city && isProvinceCode(r.residence.province)
+                  r.residence.city && options.countryAddress?.isRegionCode(r.residence.province)
                     ? `${r.residence.city}, ${r.residence.province}`
                     : null,
                 startAt: r.startAt.toISOString(),
                 endAt: r.endAt.toISOString(),
-                openings: r.numberOfWorkers
+                openings: placesLeft
               }
             : null
         };
@@ -3673,7 +5131,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     // Privacy parity with the detail endpoint: a non-visible (hidden/cancelled/expired or
     // inactive-residence) job must 404, never reveal itself via an eligibility reason.
     const visible = await prisma!.jobRequest.findFirst({
-      where: { id: jobRequestId, status: { in: ["submitted", "approved_for_dispatch"] }, residence: { status: "active" } },
+      where: listedJobWhere({ id: jobRequestId, status: { in: ["submitted", "approved_for_dispatch"] }, residence: { status: "active" } }),
       select: { id: true }
     });
     if (!visible) {
@@ -3718,17 +5176,115 @@ export function buildApi(options: BuildApiOptions = {}) {
       return reply.code(404).send({ error: "RWOS_INTEREST_NOT_FOUND", message: "That job is not available." });
     }
     try {
-      const [active, eligibility] = await Promise.all([
+      const [active, eligibility, latest] = await Promise.all([
         workerJobInterestService.getActive({ userId: session.user.id, jobRequestId }),
-        workerJobInterestService.checkEligibility({ userId: session.user.id, jobRequestId })
+        workerJobInterestService.checkEligibility({ userId: session.user.id, jobRequestId }),
+        // Long-term jobs: the employer's latest choice on this worker's application (also after a
+        // "not selected", which ends the active application).
+        prisma
+          ? prisma.workerJobInterest
+              .findFirst({
+                where: { jobRequestId, worker: { userId: session.user.id }, status: { not: "withdrawn" } },
+                orderBy: { createdAt: "desc" },
+                select: { employerDecision: true }
+              })
+              .catch(() => null)
+          : Promise.resolve(null)
       ]);
       return reply.code(200).send({
-        interest: active ? { status: active.status } : null,
+        interest: active ? { status: active.status, employerDecision: latest?.employerDecision ?? null } : null,
+        lastEmployerDecision: latest?.employerDecision ?? null,
         eligibility
       });
     } catch (error) {
       return sendInterestError(reply, error);
     }
+  });
+
+  // ── Hybrid auto-offer: direct worker CLAIM (open-claim jobs only) ──
+  // The first eligible worker to claim a slot is assigned INSTANTLY. Contention + capacity are
+  // decided by the existing first-come assignment arbiter; when all slots are filled, further
+  // claims get 409 job_capacity_reached ("full"). Non-open jobs keep the express-interest path.
+  app.post("/marketplace/jobs/:jobRequestId/claim", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_MARKETPLACE_DENIED", message: "Authentication is required." });
+    }
+    if (!prisma) {
+      return reply.code(503).send({ error: "RWOS_CLAIM_UNAVAILABLE", message: "Claiming is unavailable." });
+    }
+    const jobRequestId = readRouteParam(request.params, "jobRequestId");
+    if (!isCanonicalUuid(jobRequestId)) {
+      return reply.code(404).send({ error: "RWOS_CLAIM_NOT_FOUND", message: "That job is not available." });
+    }
+
+    // Privacy parity with the interest/detail endpoints: a non-visible job must 404, never reveal
+    // its open-claim state. Only marketplace-visible jobs with an active residence proceed.
+    const visible = await prisma.jobRequest.findFirst({
+      where: listedJobWhere({ id: jobRequestId, status: { in: ["submitted", "approved_for_dispatch"] }, residence: { status: "active" } }),
+      select: { id: true }
+    });
+    if (!visible) {
+      return reply.code(404).send({ error: "RWOS_CLAIM_NOT_FOUND", message: "That job is not available." });
+    }
+
+    // Keep the pay-channel classification-election gate on the claim path, exactly as the offer
+    // accept endpoint does. A worker must have a signed election before taking any work.
+    const electIdentity = await prisma.workerIdentity.findFirst({ where: { userId: session.user.id }, select: { id: true } });
+    const activeElection = electIdentity ? await getActiveElection(prisma, electIdentity.id) : null;
+    if (!activeElection) {
+      return reply.code(409).send({
+        error: "RWOS_CLASSIFICATION_ELECTION_REQUIRED",
+        message: "Choose and sign your pay channel (employee or independent) before claiming work.",
+        agreementVersions: WORKER_AGREEMENT_VERSIONS
+      });
+    }
+
+    const result = await claimOpenJob(
+      {
+        prisma,
+        assignmentRepository: createPrismaAssignmentRepository(prisma),
+        workerOfferRepository: createPrismaWorkerOfferRepository(prisma)
+      },
+      { userId: session.user.id, jobRequestId }
+    );
+
+    if (result.status === "assigned") {
+      // Put the shift on the worker's schedule, as staff assignment does. Without it there is no
+      // attendance record, so the worker could not see the shift or check in. A failure here must
+      // not undo the claim; it is logged for staff instead.
+      try {
+        await placeClaimedShiftOnSchedule(
+          { assignmentRepository: createPrismaAssignmentRepository(prisma), attendanceRepository: createPrismaAttendanceRepository(prisma) },
+          { assignmentId: result.assignmentId, actorUserId: session.user.id }
+        );
+      } catch (error) {
+        logger.warn("assignment.schedule_handoff_failed", { assignmentId: result.assignmentId, error: error instanceof Error ? error.message : "unknown" });
+      }
+      // Mirror the manual accept path's side effects (best-effort, never block the assign).
+      await notifyClient(prisma, emailSender, { jobRequestId, kind: "worker_accepted" }).catch(() => {});
+      // "You got the job!" — confirm the worker by email (+ SMS when enabled).
+      await notifyWorkerAssigned(prisma, emailSender, smsSender, { userId: session.user.id, jobRequestId, workerWebOrigin: offerCtaOrigin }, pushSender).catch(() => {});
+      await workerJobInterestService.markOfferAcceptedByOffer(result.workerOfferId).catch(() => {});
+      void pushAssignmentToCalendar(
+        { prisma, config: googleOAuthConfigFromEnv(), countryTimezone: options.countryTimezone },
+        { userId: session.user.id, jobRequestId }
+      );
+      return reply.code(201).send({ status: "assigned", assignmentId: result.assignmentId });
+    }
+    if (result.status === "full") {
+      return reply.code(409).send({ status: "full", error: "RWOS_CLAIM_FULL", message: "This job is already full." });
+    }
+    if (result.status === "shift_overlap") {
+      return sendShiftOverlap(reply, request.headers["accept-language"], result.heldShift);
+    }
+    if (result.status === "not_found") {
+      return reply.code(404).send({ error: "RWOS_CLAIM_NOT_FOUND", message: "That job is not available." });
+    }
+    if (result.status === "not_open") {
+      return reply.code(409).send({ status: "not_open", error: "RWOS_CLAIM_NOT_OPEN", message: "This job is not open for direct claim." });
+    }
+    return reply.code(422).send({ status: "ineligible", error: "RWOS_CLAIM_INELIGIBLE", message: "You can't claim this job right now.", reasons: result.reasons });
   });
 
   // The worker's applications ("My Interests"), enriched with a privacy-safe job summary +
@@ -3775,7 +5331,7 @@ export function buildApi(options: BuildApiOptions = {}) {
                 role: j.roleDefinition.displayLabel,
                 title: j.title,
                 employer: { id: j.organization.id, name: j.organization.displayName },
-                areaLabel: j.residence.city && isProvinceCode(j.residence.province) ? `${j.residence.city}, ${j.residence.province}` : null,
+                areaLabel: j.residence.city && options.countryAddress?.isRegionCode(j.residence.province) ? `${j.residence.city}, ${j.residence.province}` : null,
                 startAt: j.startAt.toISOString(),
                 endAt: j.endAt.toISOString()
               }
@@ -3822,6 +5378,11 @@ export function buildApi(options: BuildApiOptions = {}) {
       ? await prisma!.workerIdentity.findMany({ where: { id: { in: workerIds } }, select: { id: true, displayName: true } })
       : [];
     const nameById = new Map(workers.map((w) => [w.id, w.displayName]));
+    const favorites = await prisma!.workerJobInterest.findMany({
+      where: { jobRequestId, employerFavoritedAt: { not: null } },
+      select: { id: true }
+    });
+    const favoriteIds = new Set(favorites.map((favorite) => favorite.id));
     return reply.code(200).send({
       count: interests.length,
       interested: interests.map((i) => ({
@@ -3831,6 +5392,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         status: i.status,
         distanceKmAtInterest: i.distanceKmAtInterest,
         workerOfferId: i.workerOfferId,
+        employerFavorite: favoriteIds.has(i.id),
         createdAt: i.createdAt
       }))
     });
@@ -3923,7 +5485,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const worksite = {
       label: job.residence.name,
       city: job.residence.city,
-      province: isProvinceCode(job.residence.province) ? job.residence.province : null,
+      province: options.countryAddress?.isRegionCode(job.residence.province) ? job.residence.province : null,
       addressLine1: job.residence.addressLine1, // exact — admin-authoritative view only
       latitude: job.residence.latitude,
       longitude: job.residence.longitude
@@ -4039,6 +5601,67 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ status: record.status });
   });
 
+  // Employer: ADVISORY job grading (ACR-0005). Computes a pay-equity-defensible tier + market band
+  // from the structured wizard input, with a gender-neutral CNESST audit trail. ADVISORY ONLY — it
+  // never sets binding pay, moves no money, and (this phase) does not persist (audit persistence is a
+  // separate, gated follow-up). Owner/administrator of the URL org only. Input is fail-closed via
+  // parseGradePostingRequest; the engine is the library's deterministic gradePosting composition.
+  app.post("/organizations/:organizationId/job-grading/evaluate", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_JOBGRADE_DENIED", message: "Authentication is required." });
+    }
+    const organizationId = readRouteParam(request.params, "organizationId");
+    if (!isCanonicalUuid(organizationId) || !(await requireActiveOrgMembership(session.user.id, organizationId, ["ORGANIZATION_OWNER", "ORGANIZATION_ADMINISTRATOR"]))) {
+      return reply.code(403).send({ error: "RWOS_JOBGRADE_DENIED", message: "Organization owner or administrator authority is required." });
+    }
+    const parsed = parseGradePostingRequest(request.body);
+    if ("status" in parsed) {
+      return reply.code(400).send({ error: parsed.reason, message: "The grading request is invalid." });
+    }
+    const result = gradePostingFromRequest(parsed);
+    if (result.status !== "graded") {
+      return reply.code(422).send({ error: result.reason, message: "The posting could not be graded." });
+    }
+    // Persist the advisory pay-equity audit (best-effort — the grade is advisory and still returned if
+    // the store is absent or the write fails). jobRequestId is optional: a grade may be computed while
+    // the posting is still a draft.
+    let persistedAuditId: string | null = null;
+    const rawJobRequestId = asRecord(request.body).jobRequestId;
+    const jobRequestId = typeof rawJobRequestId === "string" && isCanonicalUuid(rawJobRequestId) ? rawJobRequestId : null;
+    if (jobGradingAuditStore) {
+      try {
+        const stored = await jobGradingAuditStore.record({
+          organizationId,
+          createdByUserId: session.user.id,
+          jobRequestId,
+          request: parsed,
+          graded: result,
+          evaluatedBy: `engine:structured:${JOB_GRADING_ENGINE_VERSION}`
+        });
+        persistedAuditId = stored.id;
+      } catch {
+        persistedAuditId = null;
+      }
+    }
+    return reply.code(200).send({ ...result, persistedAuditId });
+  });
+
+  // Employer: the bilingual wizard content (statutory factors, degree anchors, labels) for the grading
+  // wizard UI. Any authenticated user; static content only, no org data.
+  app.get("/job-grading/anchors", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_JOBGRADE_DENIED", message: "Authentication is required." });
+    }
+    return reply.code(200).send({
+      factors: WIZARD_FACTOR_ORDER,
+      factorLabels: FACTOR_LABELS,
+      familyLabels: FAMILY_LABELS,
+      anchors: WIZARD_DEGREE_ANCHORS
+    });
+  });
+
   // Provider callback / webhook — HMAC-verified, idempotent, normalized. Never trusts an
   // unsigned/unverifiable callback. Routes to worker or employer by provider reference.
   app.post("/verification/callback", async (request, reply) => {
@@ -4128,6 +5751,134 @@ export function buildApi(options: BuildApiOptions = {}) {
     return session.user.id;
   };
 
+  // JOB BONUS: staff offer a bonus to the employer or approve one paid by Joblop; the employer
+  // accepts/declines its offer. Employer = active owner/administrator of the job's organization.
+  if (prisma) {
+    registerJobBonusRoutes(app, {
+      prisma,
+      emailSender,
+      requireStaff: requireHrAuthority,
+      requireUser: async (request, reply) => {
+        const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+        if (!session.authenticated || !session.user) {
+          reply.code(401).send({ error: "RWOS_BONUS_DENIED", message: "Authentication is required." });
+          return null;
+        }
+        return session.user.id;
+      },
+      isOrganizationManager: async (userId, organizationId) =>
+        (await requireActiveOrgMembership(userId, organizationId, ["ORGANIZATION_OWNER", "ORGANIZATION_ADMINISTRATOR"])) !== null
+    });
+    // CALENDAR HUB: worker / employer / staff calendar with a "today" list (read-only).
+    registerCalendarHubRoutes(app, {
+      prisma,
+      requireStaff: requireHrAuthority,
+      requireUser: async (request, reply) => {
+        const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+        if (!session.authenticated || !session.user) {
+          reply.code(401).send({ error: "RWOS_CALENDAR_HUB_DENIED", message: "Authentication is required." });
+          return null;
+        }
+        return session.user.id;
+      },
+      listActiveOrganizationIds: async (userId) =>
+        (await membershipService.listMemberships(userId)).filter((m) => m.status === "active").map((m) => m.organizationId),
+      placeHoldingStatuses: PLACE_HOLDING_ASSIGNMENT_STATUSES,
+      remainingOpenings,
+      timezone: options.countryTimezone
+    });
+  }
+
+  // STAFF CALENDAR COVERAGE. For each job in the window: status, places asked / taken / left, and the
+  // workers who accepted, so staff can see open, partly filled and full jobs and act (e.g. a bonus).
+  app.get("/platform/calendar/coverage", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+    const query = asRecord(request.query);
+    const fromRaw = readOptionalString(query, "from");
+    const toRaw = readOptionalString(query, "to");
+    const from = fromRaw && !Number.isNaN(Date.parse(fromRaw)) ? new Date(fromRaw) : new Date(Date.now() - 7 * 86_400_000);
+    const to = toRaw && !Number.isNaN(Date.parse(toRaw)) ? new Date(toRaw) : new Date(from.getTime() + 45 * 86_400_000);
+    const until = new Date(Math.min(to.getTime(), from.getTime() + 93 * 86_400_000));
+    const rows = await prisma.jobRequest.findMany({
+      where: {
+        startAt: { gte: from, lte: until },
+        status: { in: ["submitted", "admin_review", "information_required", "approved_for_dispatch"] }
+      },
+      select: {
+        id: true,
+        jobRequestNumber: true,
+        title: true,
+        status: true,
+        openClaim: true,
+        numberOfWorkers: true,
+        startAt: true,
+        endAt: true,
+        urgency: true,
+        roleDefinition: { select: { displayLabel: true } },
+        residence: { select: { city: true, province: true } },
+        organization: { select: { displayName: true } },
+        pricingSnapshot: { select: { workerHourlyRateMinor: true, employerHourlyRateMinor: true, platformHourlyMarginMinor: true } }
+      },
+      orderBy: [{ startAt: "asc" }],
+      take: 500
+    });
+    const latestBonus = await latestBonusByJob(prisma, rows.map((r) => r.id));
+    // Requests not yet approved have no saved price: add the contract estimate (read-only, staff only).
+    const estimates = await pendingRateEstimates(rows, createPrismaRequestPricingSnapshotCapture(prisma));
+    const coverageNow = new Date();
+    const assignments = rows.length
+      ? await prisma.assignment.findMany({
+          where: { jobRequestId: { in: rows.map((r) => r.id) }, status: { in: [...PLACE_HOLDING_ASSIGNMENT_STATUSES] } },
+          select: {
+            jobRequestId: true,
+            status: true,
+            workerIdentity: { select: { displayName: true, user: { select: { displayName: true } } } }
+          }
+        })
+      : [];
+    const byJob = new Map<string, { name: string; status: string }[]>();
+    for (const a of assignments) {
+      const name = a.workerIdentity?.displayName ?? a.workerIdentity?.user?.displayName ?? "Worker";
+      const list = byJob.get(a.jobRequestId) ?? [];
+      list.push({ name, status: a.status });
+      byJob.set(a.jobRequestId, list);
+    }
+    const jobs = rows.map((r) => {
+      const workers = byJob.get(r.id) ?? [];
+      const placesLeft = Math.max(0, r.numberOfWorkers - workers.length);
+      const city = r.residence?.city ?? null;
+      const prov = r.residence?.province ?? null;
+      return {
+        jobRequestId: r.id,
+        jobCode: r.jobRequestNumber,
+        role: r.roleDefinition?.displayLabel ?? r.title,
+        employer: r.organization?.displayName ?? null,
+        areaLabel: city && prov ? `${city}, ${prov}` : (prov ?? ""),
+        status: r.status,
+        openClaim: r.openClaim,
+        startAt: r.startAt.toISOString(),
+        endAt: r.endAt.toISOString(),
+        urgency: r.urgency,
+        placesAsked: r.numberOfWorkers,
+        placesTaken: workers.length,
+        placesLeft,
+        coverage: r.status !== "approved_for_dispatch" ? "not_open" : placesLeft === 0 ? "full" : workers.length > 0 ? "partly_filled" : "open",
+        workers,
+        workerRateMinor: r.pricingSnapshot?.workerHourlyRateMinor ?? estimates.get(r.id)?.workerRateMinor ?? null,
+        employerRateMinor: r.pricingSnapshot?.employerHourlyRateMinor ?? estimates.get(r.id)?.employerRateMinor ?? null,
+        // True when the two rates above are the contract estimate (set for real on approval).
+        rateIsEstimate: !r.pricingSnapshot && estimates.has(r.id),
+        // Latest non-cancelled bonus, and a system suggestion for approved jobs with places left that
+        // start within 48 hours (null otherwise).
+        bonus: latestBonus.get(r.id) ?? null,
+        bonusSuggestion: coverageBonusSuggestion(r, placesLeft, coverageNow)
+      };
+    });
+    return reply.code(200).header("cache-control", "no-store").send({ jobs, from: from.toISOString(), to: until.toISOString() });
+  });
+
   // HR-5: payroll governed decisions require the distinct PAYROLL authority (or platform admin).
   // Payroll authority is NOT implied by generic platform admin alone in spirit, but PLATFORM_ADMIN
   // remains a superuser; a worker or employer can never make payroll decisions here.
@@ -4154,6 +5905,31 @@ export function buildApi(options: BuildApiOptions = {}) {
     try {
       const view = await hrService.getWorkerSelfView({ userId: session.user.id });
       return reply.code(200).send(view);
+    } catch (error) {
+      return sendHrError(reply, error);
+    }
+  });
+
+  // Worker: edit my own HR intake (personal + driving licence + vehicle/transport). Worker-scoped;
+  // standing/credentials/cases are never writable here. All fields optional + validated server-side.
+  app.put("/hr/worker", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_HR_DENIED", message: "Authentication is required." });
+    }
+    try {
+      const body = (request.body ?? {}) as Record<string, unknown>;
+      const intake = await hrService.upsertWorkerIntake({ userId: session.user.id, input: body });
+      // CASL step 2: when the worker changed their marketing consent, reflect it in the Brevo list
+      // (best-effort, gated, fail-soft — never blocks the save, never touches transactional sending).
+      if ("marketingEmailOptIn" in body && session.user.emailNormalized) {
+        const email = session.user.emailNormalized;
+        void (intake.marketingEmailOptIn
+          ? marketingContactSync.optIn({ email })
+          : marketingContactSync.optOut({ email })
+        ).catch(() => undefined);
+      }
+      return reply.code(200).send(intake);
     } catch (error) {
       return sendHrError(reply, error);
     }
@@ -4247,7 +6023,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     return session.user.id;
   };
 
-  // Worker: request a storage upload reference (they upload to the provider, not to JobLop).
+  // Worker: request a storage upload reference (they upload to the provider, not to Joblop).
   app.post("/hr/documents/upload-reference", async (request, reply) => {
     const userId = await requireWorkerSession(request, reply);
     if (!userId) return;
@@ -4255,6 +6031,71 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!documentType) return reply.code(400).send({ error: "RWOS_HR_DOC_INVALID", message: "A documentType is required." });
     try {
       return reply.code(200).send(await hrDocumentService.requestUploadReference({ userId, documentType }));
+    } catch (error) {
+      return sendHrDocError(reply, error);
+    }
+  });
+
+  // Worker: receive the document bytes for a signed upload reference and write them to the private
+  // object store. The browser PUTs the file to the worker BFF (same-origin), which base64-forwards it
+  // here. Guards: worker session, HMAC-signed reference, reference owned by this worker, content-type
+  // allowlist, and a size cap. Only available when disk-backed local storage is enabled.
+  app.post("/hr/documents/blob", { bodyLimit: Math.ceil(MAX_HR_DOCUMENT_BYTES * 1.4) + 4096 }, async (request, reply) => {
+    const userId = await requireWorkerSession(request, reply);
+    if (!userId) return;
+    if (!hrDocLocalStorage) {
+      return reply.code(503).send({ error: "RWOS_HR_DOC_STORAGE_OFF", message: "Document storage is not enabled." });
+    }
+    const body = asRecord(request.body);
+    const ref = readOptionalString(body, "ref");
+    const sig = readOptionalString(body, "sig");
+    const dataBase64 = readOptionalString(body, "dataBase64");
+    const contentType = readOptionalString(body, "contentType") ?? "application/octet-stream";
+    if (!ref || !sig || !dataBase64) {
+      return reply.code(400).send({ error: "RWOS_HR_DOC_INVALID", message: "ref, sig and dataBase64 are required." });
+    }
+    if (!hrDocLocalStorage.verifyUploadSignature(ref, sig)) {
+      return reply.code(403).send({ error: "RWOS_HR_DOC_DENIED", message: "Invalid upload reference." });
+    }
+    const worker = await hrDocWorkerResolver.resolveByUserId(userId);
+    if (!worker || !ref.startsWith(`${worker.workerIdentityId}/`)) {
+      return reply.code(403).send({ error: "RWOS_HR_DOC_DENIED", message: "That upload reference is not yours." });
+    }
+    if (!ALLOWED_HR_DOCUMENT_CONTENT_TYPES.has(contentType)) {
+      return reply.code(415).send({ error: "RWOS_HR_DOC_TYPE", message: "That file type is not accepted." });
+    }
+    const bytes = Buffer.from(dataBase64, "base64");
+    if (bytes.length === 0) {
+      return reply.code(400).send({ error: "RWOS_HR_DOC_INVALID", message: "The file is empty." });
+    }
+    if (bytes.length > MAX_HR_DOCUMENT_BYTES) {
+      return reply.code(413).send({ error: "RWOS_HR_DOC_TOO_LARGE", message: "That file is too large (max 10 MB)." });
+    }
+    await hrDocLocalStorage.store.put({ key: hrDocLocalStorage.objectKey(ref), bytes: new Uint8Array(bytes) });
+    await hrDocLocalStorage.saveFileInfo(ref, { fileName: sanitizeHrDocumentFileName(readOptionalString(body, "fileName")), contentType });
+    return reply.code(200).send({ ok: true });
+  });
+
+  // Worker: open or save ONE of their OWN current documents. `mode=view` opens in the browser only
+  // when the bytes really are a PDF or image; anything else is always a download.
+  app.get("/hr/documents/:documentId/file", async (request, reply) => {
+    const userId = await requireWorkerSession(request, reply);
+    if (!userId) return;
+    const documentId = readRouteParam(request.params, "documentId");
+    if (!isCanonicalUuid(documentId) || !hrDocLocalStorage) return reply.code(404).send({ error: "RWOS_HR_DOC_NOT_FOUND", message: "That document was not found." });
+    try {
+      const found = await hrDocumentService.getMyDocumentFile({ userId, documentId });
+      const bytes = found ? await hrDocLocalStorage.store.get(hrDocLocalStorage.objectKey(found.storageReference)) : null;
+      if (!found || !bytes) return reply.code(404).send({ error: "RWOS_HR_DOC_NOT_FOUND", message: "That document was not found." });
+      const info = await hrDocLocalStorage.describe?.({ storageReference: found.storageReference });
+      const viewable = detectViewableHrDocumentType(bytes);
+      const inline = readOptionalString(asRecord(request.query), "mode") === "view" && viewable !== null;
+      const fileName = info?.fileName ?? found.documentType;
+      return reply
+        .header("content-type", inline ? viewable : "application/octet-stream")
+        .header("content-disposition", `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(fileName)}`)
+        .header("cache-control", "private, no-store")
+        .send(Buffer.from(bytes));
     } catch (error) {
       return sendHrDocError(reply, error);
     }
@@ -4295,6 +6136,42 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   });
 
+  // Worker: the job categories I want. The worker record is resolved from the session, never the request.
+  app.get("/worker/job-categories", async (request, reply) => {
+    const userId = await requireWorkerSession(request, reply);
+    if (!userId) return;
+    return reply.code(200).send({ categories: await listWorkerJobCategories(prisma!, userId) });
+  });
+
+  app.put("/worker/job-categories", async (request, reply) => {
+    const userId = await requireWorkerSession(request, reply);
+    if (!userId) return;
+    const keys = asRecord(request.body).keys;
+    if (!Array.isArray(keys) || keys.length > 50 || keys.some((key) => typeof key !== "string")) {
+      return reply.code(400).send({ error: "RWOS_JOB_CATEGORY_INVALID", message: "Choose from the listed job categories." });
+    }
+    try {
+      await replaceWorkerJobCategories(prisma!, userId, keys as string[]);
+      return reply.code(200).send({ categories: await listWorkerJobCategories(prisma!, userId) });
+    } catch (error) {
+      if (!(error instanceof WorkerJobCategoryError)) throw error;
+      return reply.code(error.code === "needs_worker" ? 409 : 400).send({ error: `RWOS_JOB_CATEGORY_${error.code.toUpperCase()}`, message: error.message });
+    }
+  });
+
+  // HR authority: how many workers want each category, and who they are.
+  app.get("/platform/hr/job-categories", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    return reply.code(200).send({ categories: await jobCategoryDemand(prisma!) });
+  });
+
+  app.get("/platform/hr/job-categories/:key/workers", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    return reply.code(200).send({ workers: await workersWantingCategory(prisma!, readRouteParam(request.params, "key"), 100) });
+  });
+
   // Worker: my documents (no internal review notes / storage references).
   app.get("/hr/documents", async (request, reply) => {
     const userId = await requireWorkerSession(request, reply);
@@ -4302,6 +6179,38 @@ export function buildApi(options: BuildApiOptions = {}) {
     try {
       const documents = await hrDocumentService.listMyDocuments({ userId });
       return reply.code(200).send({ documents });
+    } catch (error) {
+      return sendHrDocError(reply, error);
+    }
+  });
+
+  // Worker: advisory pre-check of their OWN uploaded document. ADVISORY ONLY — never a legal
+  // verification; a platform HR admin still accepts/rejects. Launch step 6: no document, photo or scan
+  // is ever sent to an outside AI. The check uses our own record (type, expiry) and never opens the
+  // file; anything not expired goes to a person.
+  app.post("/hr/documents/:documentId/ai-review", async (request, reply) => {
+    const userId = await requireWorkerSession(request, reply);
+    if (!userId) return;
+    try {
+      const documentId = (request.params as { documentId?: string }).documentId ?? "";
+      const resolved = await hrDocumentService.resolveMyDocumentForReview({ userId, documentId });
+      if (!resolved) return reply.code(404).send({ error: "RWOS_HR_DOC_NOT_FOUND", message: "Document not found." });
+      const verdict = reviewDocumentAdvisory({ documentType: resolved.documentType, expired: resolved.expired });
+      return reply.code(200).send({ verdict: presentableVerdict(verdict) });
+    } catch (error) {
+      return sendHrDocError(reply, error);
+    }
+  });
+
+  // Worker: remove (revoke) ONE of their OWN documents. Ownership enforced in the service; keeps the
+  // audit trail. The worker can then re-upload. Cannot affect another worker's document.
+  app.post("/hr/documents/:documentId/remove", async (request, reply) => {
+    const userId = await requireWorkerSession(request, reply);
+    if (!userId) return;
+    try {
+      const documentId = (request.params as { documentId?: string }).documentId ?? "";
+      const document = await hrDocumentService.removeMyDocument({ userId, documentId });
+      return reply.code(200).send({ document });
     } catch (error) {
       return sendHrDocError(reply, error);
     }
@@ -4329,7 +6238,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const workerIdentityId = readRouteParam(request.params, "workerIdentityId");
     if (!isCanonicalUuid(workerIdentityId)) return reply.code(404).send({ error: "RWOS_HR_DOC_NOT_FOUND", message: "That worker was not found." });
     const documents = await hrDocumentService.listWorkerDocuments(workerIdentityId);
-    return reply.code(200).send({ documents: documents.map((d) => ({ id: d.id, documentType: d.documentType, jurisdiction: d.jurisdiction, expiresAt: d.expiresAt, effectiveStatus: d.effectiveStatus, reviewReason: d.reviewReason, supersededById: d.supersededById })) });
+    return reply.code(200).send({ documents: documents.map((d) => ({ id: d.id, documentType: d.documentType, jurisdiction: d.jurisdiction, expiresAt: d.expiresAt, effectiveStatus: d.effectiveStatus, reviewReason: d.reviewReason, supersededById: d.supersededById, verifiedCertificateKey: d.verifiedCertificateKey ?? null })) });
   });
 
   // HR authority: resolve a short-lived download URL (delegated to the storage provider).
@@ -4341,6 +6250,20 @@ export function buildApi(options: BuildApiOptions = {}) {
     const url = await hrDocumentService.resolveDownloadUrl(documentId);
     if (!url) return reply.code(404).send({ error: "RWOS_HR_DOC_NOT_FOUND", message: "That document has no downloadable reference." });
     return reply.code(200).send(url);
+  });
+
+  // AI Control Center — Documents: admin-scoped advisory review of ANY worker's document. ADVISORY
+  // only (the admin still accepts/rejects). Launch step 6: no file is ever sent to an outside AI; the
+  // verdict comes from our own record (type, expiry), so the reviewer opens the file themselves.
+  app.post("/platform/hr/documents/:documentId/ai-review", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const documentId = readRouteParam(request.params, "documentId");
+    if (!isCanonicalUuid(documentId)) return reply.code(404).send({ error: "RWOS_HR_DOC_NOT_FOUND", message: "That document was not found." });
+    const doc = await hrDocumentService.getDocument(documentId);
+    if (!doc) return reply.code(404).send({ error: "RWOS_HR_DOC_NOT_FOUND", message: "That document was not found." });
+    const verdict = reviewDocumentAdvisory({ documentType: doc.documentType, expired: doc.effectiveStatus === "expired" });
+    return reply.code(200).send({ verdict: presentableVerdict(verdict) });
   });
 
   const hrDocDecision = (path: string, apply: (actor: string, id: string, body: Record<string, unknown>) => Promise<{ status: HrDocumentStatus }>) =>
@@ -4357,7 +6280,16 @@ export function buildApi(options: BuildApiOptions = {}) {
       }
     });
 
-  hrDocDecision("/platform/hr/documents/:documentId/accept", (actor, id) => hrDocumentService.accept({ actorUserId: actor, documentId: id }));
+  // Verify: optional expiresAt (ISO date) and certificateKey (the required certificate a generic
+  // upload proves). A verified, unexpired document is what satisfies a job's required certificates.
+  hrDocDecision("/platform/hr/documents/:documentId/accept", (actor, id, body) =>
+    hrDocumentService.accept({
+      actorUserId: actor,
+      documentId: id,
+      expiresAt: readOptionalString(body, "expiresAt"),
+      certificateKey: readOptionalString(body, "certificateKey")
+    })
+  );
   hrDocDecision("/platform/hr/documents/:documentId/reject", (actor, id, body) => hrDocumentService.reject({ actorUserId: actor, documentId: id, reason: readOptionalString(body, "reason") ?? "" }));
   hrDocDecision("/platform/hr/documents/:documentId/revoke", (actor, id, body) => hrDocumentService.revoke({ actorUserId: actor, documentId: id, reason: readOptionalString(body, "reason") }));
 
@@ -4543,24 +6475,47 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!isCanonicalUuid(jobRequestId)) {
       return reply.code(404).send({ error: "RWOS_MARKETPLACE_JOB_NOT_FOUND", message: "That job is not available." });
     }
-    const postalCode = readOptionalString(asRecord(request.query), "postalCode");
+    const detailQuery = asRecord(request.query);
+    // The worker's search place (a city or a postal code) for the distance line; optional.
+    const placeInput = readOptionalString(detailQuery, "place") ?? readOptionalString(detailQuery, "postalCode");
     const countryAddress = options.countryAddress;
     const countryCurrency = options.countryCurrency; // Stage 2b.3b-1: display-only result currency
-    const normalizedPostal = postalCode && countryAddress ? countryAddress.normalizePostalCode(postalCode) : null;
+
+    // A worker booked on this job (claimed, or assigned and not cancelled) can always open it: it is
+    // their shift page (details, address, Check in / Check out), even once it is full, started or no
+    // longer listed on the job board.
+    const bookedViewer = await prisma!.workerIdentity
+      .findUnique({ where: { userId: session.user.id }, select: { id: true } })
+      .then((identity) =>
+        identity
+          ? prisma!.assignment.findFirst({
+              where: { jobRequestId, workerIdentityId: identity.id, status: { notIn: ["worker_withdrawn", "employer_cancelled", "platform_cancelled"] } },
+              select: { id: true }
+            })
+          : null
+      )
+      .catch(() => null);
+    const booked = bookedViewer !== null;
 
     const row = await prisma!.jobRequest.findFirst({
-      where: {
-        id: jobRequestId,
-        status: { in: ["submitted", "approved_for_dispatch"] },
-        residence: { status: "active" }
-      },
+      where: booked
+        ? { id: jobRequestId, status: { notIn: ["draft", "cancelled"] } }
+        : listedJobWhere({
+            id: jobRequestId,
+            status: { in: ["submitted", "approved_for_dispatch"] },
+            residence: { status: "active" }
+          }),
       select: {
         id: true,
         title: true,
         description: true,
         numberOfWorkers: true,
+        openClaim: true,
+        status: true,
         startAt: true,
         endAt: true,
+        requiredCertificates: true,
+        requiredCertificateOther: true,
         roleDefinition: { select: { displayLabel: true } },
         organization: { select: { id: true, displayName: true } },
         residence: { select: { city: true, province: true, latitude: true, longitude: true } },
@@ -4568,6 +6523,7 @@ export function buildApi(options: BuildApiOptions = {}) {
           select: {
             dutiesSummary: true,
             qualifications: true,
+            specialInstructions: true,
             transportProvision: true,
             transportAmountMinor: true,
             transportNote: true,
@@ -4576,22 +6532,26 @@ export function buildApi(options: BuildApiOptions = {}) {
             mealNote: true,
             lodgingProvision: true,
             lodgingAmountMinor: true,
-            lodgingNote: true
+            lodgingNote: true,
+            ...SHIFT_CONDITIONS_SELECT
           }
         },
         pricingSnapshot: {
           select: {
             workerHourlyRateMinor: true,
+            currency: true,
+            employerPlanCode: true,
             transportWorkerMinor: true,
             mealWorkerMinor: true,
             lodgingWorkerMinor: true
           }
-        }
+        },
+        ...WORKER_PAY_SELECT
       }
     });
     if (
       !row ||
-      !isProvinceCode(row.residence.province) ||
+      !options.countryAddress?.isRegionCode(row.residence.province) ||
       row.residence.latitude === null ||
       row.residence.longitude === null
     ) {
@@ -4599,9 +6559,9 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
 
     let origin: { latitude: number; longitude: number } | null = null;
-    if (normalizedPostal && countryAddress) {
-      const geo = await geocodingProvider.geocode({ countryRestriction: countryAddress.geocodeCountryRestriction, postalCode: normalizedPostal });
-      if (geo.status === "ok") origin = { latitude: geo.location.latitude, longitude: geo.location.longitude };
+    if (placeInput && countryAddress) {
+      const found = await resolveSearchPlace(placeInput, { countryAddress, geocoder: geocodingProvider });
+      if (found.status === "ok") origin = { latitude: found.place.latitude, longitude: found.place.longitude };
     }
 
     // Fail closed on an unavailable country currency — never silently substitute CAD. Byte-identical
@@ -4611,6 +6571,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       return reply.code(400).send({ error: "RWOS_COUNTRY_CURRENCY_UNAVAILABLE", message: "Currency is not configured for the selected country." });
     }
 
+    const detailPay = workerPay(row, row.pricingSnapshot?.workerHourlyRateMinor ?? null);
     const candidate: MarketplaceJobDetailCandidate = {
       jobRequestId: row.id,
       role: row.roleDefinition.displayLabel,
@@ -4625,10 +6586,12 @@ export function buildApi(options: BuildApiOptions = {}) {
       startAt: row.startAt.toISOString(),
       endAt: row.endAt.toISOString(),
       openings: row.numberOfWorkers,
-      workerRateMinor: row.pricingSnapshot?.workerHourlyRateMinor ?? null, // W from the approval snapshot; employer rate E never exposed
+      workerRateMinor: detailPay.rateMinor, // W from the approval snapshot; employer rate E never exposed
       currency: countryCurrency, // display-only; driven by the selected country (CAD for Canada)
+      ...detailPay.extra, // long-term listing (flag on): the employer's own pay offer
       description: row.description,
       duties: row.calendarProfile?.dutiesSummary ?? null,
+      safetyNotes: row.calendarProfile?.specialInstructions ?? null,
       qualifications: coerceQualifications(row.calendarProfile?.qualifications)
     };
     if (!countryAddress) {
@@ -4659,7 +6622,61 @@ export function buildApi(options: BuildApiOptions = {}) {
     } catch {
       saved = false; // not a worker → not saved
     }
-    return reply.code(200).send({ job: { ...detail, saved, allowances: workerAllowances(row.calendarProfile, row.pricingSnapshot) } });
+    // Hybrid auto-offer: a job is directly claimable when it was approved+priced with open-claim on.
+    // The worker UI shows Accept/Claim (vs express-interest) based on this flag.
+    // A full job (every place taken) is not claimable, so the worker never sees Accept on it.
+    const placesLeft = prisma
+      ? await remainingOpenings(prisma, [{ id: row.id, numberOfWorkers: row.numberOfWorkers }])
+          .then((left) => left.get(row.id) ?? row.numberOfWorkers)
+          .catch(() => row.numberOfWorkers)
+      : row.numberOfWorkers;
+    // Required certificates (shown on the page) and, for a signed-in worker, which ones they miss.
+    // A long-term listing is never claimed (workers apply, the employer chooses); a job asking for an
+    // "other" certificate goes through Apply too, because a person must check that certificate.
+    const required = storedRequiredCertificates(row);
+    const longTerm = isLongTermListingJob(row);
+    const viewer = prisma
+      ? await prisma.workerIdentity.findUnique({ where: { userId: session.user.id }, select: { id: true } }).catch(() => null)
+      : null;
+    const missingCertificateKeys = viewer && prisma && required.keys.length > 0
+      ? (await certificateGapForJob(prisma, { workerIdentityId: viewer.id, job: row }).catch(() => ({ missing: required.keys }))).missing
+      : [];
+    // Same rule as the claim: never claimable once started or when below the minimum wage on its date.
+    const claimBlockedReason = claimBlockReason(row, new Date());
+    const claimable =
+      row.openClaim === true &&
+      row.status === "approved_for_dispatch" &&
+      !!row.pricingSnapshot &&
+      placesLeft > 0 &&
+      !longTerm &&
+      !required.keys.includes("other") &&
+      claimBlockedReason === null;
+    // The job's active bonus (kind + amount only; who pays it is never shown to workers).
+    const bonus = prisma
+      ? await activeBonusByJob(prisma, [row.id])
+          .then((m) => m.get(row.id) ?? null)
+          .catch(() => null)
+      : null;
+    return reply.code(200).send({
+      job: {
+        ...detail,
+        openings: placesLeft,
+        saved,
+        allowances: workerAllowances(row.calendarProfile, row.pricingSnapshot),
+        openClaim: row.openClaim === true,
+        claimable,
+        // Why the job can't be taken ("job_started" | "below_minimum_wage"), shown on the job page.
+        claimBlockedReason: longTerm ? null : claimBlockedReason,
+        longTerm,
+        requiredCertificates: required,
+        missingCertificates: viewer ? missingCertificateKeys : null,
+        bonus,
+        // This worker holds the shift: the page shows it as their shift (address, Check in / out).
+        booked,
+        // "Before you go": break, dress code, equipment, notes; arrival instructions only when booked.
+        conditions: workerShiftConditions(row.calendarProfile, booked)
+      }
+    });
   });
 
   // Employer PUBLIC PROFILE — only approved public info: public display name, real
@@ -4682,11 +6699,11 @@ export function buildApi(options: BuildApiOptions = {}) {
       return reply.code(404).send({ error: "RWOS_MARKETPLACE_EMPLOYER_NOT_FOUND", message: "That employer is not available." });
     }
     const jobRows = await prisma!.jobRequest.findMany({
-      where: {
+      where: listedJobWhere({
         organizationId: org.id,
         status: { in: ["submitted", "approved_for_dispatch"] },
         residence: { status: "active" }
-      },
+      }),
       select: {
         id: true,
         startAt: true,
@@ -4703,7 +6720,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       name: org.displayName,
       verified: await verificationService.isEmployerVerified(org.id), // authoritative
       opportunities: jobRows.flatMap((j) =>
-        isProvinceCode(j.residence.province)
+        options.countryAddress?.isRegionCode(j.residence.province)
           ? [
               {
                 jobRequestId: j.id,
@@ -4790,6 +6807,12 @@ export function buildApi(options: BuildApiOptions = {}) {
             ...("addressSummary" in proposed ? { addressSummary: address } : {})
           }
         });
+        // A new site address is a change of place for workers already holding the shift.
+        const newAddress = address?.trim();
+        if ("addressSummary" in proposed && newAddress && newAddress !== (profile.addressSummary ?? "").trim() && prisma) {
+          const holders = await readShiftHolders(prisma, { jobRequestIds: [source.id] }).catch(() => [] as ShiftHolder[]);
+          await tellWorkersShiftChanged({ jobRequestId: source.id, summary: { newPlace: newAddress }, workers: holders.map((h) => ({ userId: h.userId })) });
+        }
         return reply.code(200).send({ classification: "NON_MATERIAL", applied: true, materialFields: [] });
       }
 
@@ -4813,6 +6836,15 @@ export function buildApi(options: BuildApiOptions = {}) {
         currency,
         reason: readOptionalString(body, "reason")
       });
+      // Tell the confirmed workers when the change touches what they agreed to: role, place, day or
+      // time. A qualifications or headcount change alone is not sent to them.
+      if (proposal.status === "reconfirmation_pending" && prisma) {
+        const summary = await describeMaterialEdit(classification.materialFields, after);
+        if (summary) {
+          const holders = await readShiftHolders(prisma, { assignmentIds: proposal.affectedAssignmentIds }).catch(() => [] as ShiftHolder[]);
+          await tellWorkersShiftChanged({ jobRequestId: source.id, summary, workers: holders.map((h) => ({ userId: h.userId })) });
+        }
+      }
       return reply.code(200).send({
         classification: "MATERIAL",
         materialFields: classification.materialFields,
@@ -4895,8 +6927,18 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!roles.includes("PLATFORM_ADMINISTRATOR")) {
       return reply.code(403).send({ error: "RWOS_REDUCE_DENIED", message: "Platform authority is required." });
     }
+    // Workers whose assignment this reduction cancels, read before each cancel; told once it is done.
+    const reducedHolders: ShiftHolder[] = [];
+    const reducedAssignmentIds = new Set<string>();
+    const tellReducedWorkers = async () => {
+      const cancelledHolders = reducedHolders.filter((h) => reducedAssignmentIds.has(h.assignmentId));
+      for (const [jobRequestId, onJob] of groupShiftHoldersByJob(cancelledHolders)) {
+        await tellWorkersShiftCancelled({ jobRequestId, cancelledBy: "employer", workers: onJob.map((h) => ({ userId: h.userId })) });
+      }
+    };
     const port: SelectedAssignmentCancelPort = {
       async cancelSelectedAssignments({ organizationId, jobRequestId, assignmentIds, reason }) {
+        if (prisma) reducedHolders.push(...(await readShiftHolders(prisma, { assignmentIds }).catch(() => [] as ShiftHolder[])));
         const active = await assignmentService.listAssignments({
           session,
           roles,
@@ -4915,6 +6957,7 @@ export function buildApi(options: BuildApiOptions = {}) {
           }
           try {
             await assignmentService.cancel({ session, roles, assignmentId: id, expectedVersion: version, reason, status: "employer_cancelled" });
+            reducedAssignmentIds.add(id);
             cancelled += 1;
           } catch {
             failed += 1;
@@ -4928,8 +6971,11 @@ export function buildApi(options: BuildApiOptions = {}) {
         reductionId: readRouteParam(request.params, "reductionId"),
         assignmentCancelPort: port
       });
+      await tellReducedWorkers();
       return reply.code(200).send(result);
     } catch (error) {
+      // Assignments already cancelled stay cancelled, so their workers are told either way.
+      await tellReducedWorkers();
       return sendReduceError(reply, error);
     }
   });
@@ -4950,10 +6996,21 @@ export function buildApi(options: BuildApiOptions = {}) {
       return reply.code(400).send({ error: "RWOS_EDIT_INVALID", message: "outcome must be accepted or declined." });
     }
     try {
-      const result = await employerRequestEditService.completeReconfirmation({
-        proposalId: readRouteParam(request.params, "proposalId"),
-        outcome
-      });
+      const proposalId = readRouteParam(request.params, "proposalId");
+      // Read the proposal's state first: workers are told only when this call settles it.
+      const before = prisma
+        ? await prisma.employerRequestChangeProposal.findUnique({ where: { id: proposalId }, select: { status: true } }).catch(() => null)
+        : null;
+      const result = await employerRequestEditService.completeReconfirmation({ proposalId, outcome });
+      const settledNow = before !== null && before.status !== "completed" && before.status !== "rejected";
+      if (settledNow && prisma && result.proposal.affectedAssignmentIds.length > 0) {
+        const holders = await readShiftHolders(prisma, { assignmentIds: result.proposal.affectedAssignmentIds }).catch(() => [] as ShiftHolder[]);
+        await tellWorkersShiftChanged({
+          jobRequestId: result.proposal.jobRequestId,
+          summary: { outcome: outcome === "accepted" ? "final" : "withdrawn" },
+          workers: holders.map((h) => ({ userId: h.userId }))
+        });
+      }
       return reply.code(200).send(result);
     } catch (error) {
       return sendEditError(reply, error);
@@ -5015,13 +7072,43 @@ export function buildApi(options: BuildApiOptions = {}) {
         return sendJobRequestDenied(reply);
       }
 
+      const organizationId = readRouteParam(request.params, "organizationId");
       const jobRequest = await jobRequestService.getForOrganization({
         actorUserId: session.user.id,
-        organizationId: readRouteParam(request.params, "organizationId"),
+        organizationId,
         jobRequestIdOrNumber: readRouteParam(request.params, "jobRequestIdOrNumber")
       });
+      // The employer's own certificates and allowances, so "Edit draft" opens fully pre-filled.
+      // Read only after the organization check above passed, and scoped to that organization.
+      const extrasRow = prisma
+        ? await prisma.jobRequest
+            .findFirst({
+              where: { id: jobRequest.id, organizationId },
+              select: {
+                requiredCertificates: true,
+                requiredCertificateOther: true,
+                calendarProfile: {
+                  select: {
+                    transportProvision: true,
+                    transportAmountMinor: true,
+                    transportNote: true,
+                    mealProvision: true,
+                    mealAmountMinor: true,
+                    mealNote: true,
+                    lodgingProvision: true,
+                    lodgingAmountMinor: true,
+                    lodgingNote: true,
+                    ...SHIFT_CONDITIONS_SELECT
+                  }
+                }
+              }
+            })
+            .catch(() => null)
+        : null;
 
-      return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
+      return reply.code(200).send({
+        jobRequest: { ...(await serializeEmployerJobRequest(jobRequest)), ...(extrasRow ? draftEditExtras(extrasRow) : {}) }
+      });
     }
   );
 
@@ -5056,6 +7143,14 @@ export function buildApi(options: BuildApiOptions = {}) {
         .send({ error: "RWOS_INVALID_JOB_REQUEST", message: "Invalid job request." });
     }
 
+    const certificates = readDraftCertificatesUpdate(body);
+    if (certificates.status === "invalid") {
+      return reply.code(400).send({
+        error: "RWOS_INVALID_REQUIRED_CERTIFICATES",
+        message: "Choose required certificates from the list; describe an \"other\" certificate in 120 characters or less."
+      });
+    }
+
     const jobRequest = await jobRequestService.updateDraft({
       actorUserId: session.user.id,
       organizationId: readRouteParam(request.params, "organizationId"),
@@ -5075,7 +7170,15 @@ export function buildApi(options: BuildApiOptions = {}) {
       endAt: readOptionalDate(body, "endAt")
     });
 
-    return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
+    // updateDraft above has already checked the employer may edit this draft of this organization.
+    if (certificates.status === "ok" && prisma) {
+      await prisma.jobRequest.updateMany({
+        where: { id: jobRequest.id, organizationId: jobRequest.organizationId, status: { in: ["draft", "information_required"] } },
+        data: certificates.data
+      });
+    }
+
+    return reply.code(200).send({ jobRequest: await serializeEmployerJobRequest(jobRequest) });
   });
 
   app.post(
@@ -5097,7 +7200,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
       });
 
-      return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
+      return reply.code(200).send({ jobRequest: await serializeEmployerJobRequest(jobRequest) });
     }
   );
 
@@ -5121,15 +7224,37 @@ export function buildApi(options: BuildApiOptions = {}) {
           .send({ error: "RWOS_INVALID_JOB_REQUEST", message: "Invalid job request." });
       }
 
+      const organizationId = readRouteParam(request.params, "organizationId");
+      const jobRequestId = readRouteParam(request.params, "jobRequestId");
+      // Who holds the shift, read before the cancel (only jobs of this organization).
+      const holders = prisma
+        ? await prisma.jobRequest
+            .findFirst({ where: { id: jobRequestId, organizationId, status: { not: "cancelled" } }, select: { id: true } })
+            .then((job) => (job ? readShiftHolders(prisma, { jobRequestIds: [job.id] }) : []))
+            .catch(() => [] as ShiftHolder[])
+        : [];
+      const directCancelledAt = new Date();
+      const directConfirmed = prisma
+        ? await readConfirmedAssignments(prisma, organizationId, [jobRequestId]).catch(() => [] as ConfirmedAssignment[])
+        : [];
       const jobRequest = await jobRequestService.cancel({
         actorUserId: session.user.id,
-        organizationId: readRouteParam(request.params, "organizationId"),
-        jobRequestId: readRouteParam(request.params, "jobRequestId"),
+        organizationId,
+        jobRequestId,
         expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
         reason
       });
+      await chargeLateCancellation({
+        organizationId,
+        jobRequestId: jobRequest.id,
+        actorUserId: session.user.id,
+        cancelledAt: directCancelledAt,
+        source: "employer_job_cancel",
+        confirmed: directConfirmed
+      });
+      await tellWorkersShiftCancelled({ jobRequestId: jobRequest.id, cancelledBy: "employer", workers: holders.map((h) => ({ userId: h.userId })) });
 
-      return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
+      return reply.code(200).send({ jobRequest: await serializeEmployerJobRequest(jobRequest) });
     }
   );
 
@@ -5220,6 +7345,50 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   );
 
+  // The staff approve-for-dispatch flow: the governed approval (pricing resolved before the status flip,
+  // permission-checked), then open-claim dispatch and the job-code email. The brain's auto-approval
+  // calls this same function, so it can never skip a check staff go through.
+  const approveForDispatchFlow = async (input: {
+    session: Awaited<ReturnType<typeof authService.validateSession>>;
+    roles: readonly AuthorizationRoleKey[];
+    jobRequestId: string;
+    expectedVersion: number;
+    marginPpm: number | null;
+    openClaim: boolean;
+  }) => {
+    const jobRequest = await jobRequestService.approveForDispatch({
+      session: input.session,
+      roles: input.roles,
+      jobRequestId: input.jobRequestId,
+      expectedVersion: input.expectedVersion,
+      marginPpm: input.marginPpm
+    });
+
+    // Hybrid auto-offer: when the admin approves+prices WITH open-claim, mark the job claimable and
+    // auto-open a dispatch in offer_preparation so eligible workers can self-claim instantly. When
+    // the flag is absent/false, nothing here runs and the manual shortlist→offer path is unchanged.
+    let openClaimState: { openClaim: boolean; dispatchReviewId: string | null } = {
+      openClaim: false,
+      dispatchReviewId: null
+    };
+    // Every approved job goes on the shared jobs calendar (owner rule) unless staff explicitly opt out.
+    if (prisma && input.openClaim && input.session.user) {
+      await prisma.jobRequest.update({ where: { id: jobRequest.id }, data: { openClaim: true } });
+      const opened = await ensureOpenClaimDispatch(
+        prisma,
+        { dispatchRepository: createPrismaDispatchRepository(prisma) },
+        { jobRequest, actorUserId: input.session.user.id, now: new Date() }
+      );
+      openClaimState = { openClaim: true, dispatchReviewId: opened.dispatchReviewId };
+    }
+
+    // Notify the client their request is approved, with the job code (best-effort, never blocks).
+    if (prisma) {
+      await notifyClient(prisma, emailSender, { jobRequestId: jobRequest.id, kind: "job_code" });
+    }
+    return { jobRequest, openClaimState };
+  };
+
   app.post(
     "/platform/job-requests/intake/:jobRequestId/approve-for-dispatch",
     async (request, reply) => {
@@ -5232,20 +7401,16 @@ export function buildApi(options: BuildApiOptions = {}) {
       }
 
       const body = asRecord(request.body);
-      const jobRequest = await jobRequestService.approveForDispatch({
+      const { jobRequest, openClaimState } = await approveForDispatchFlow({
         session,
         roles: await resolveAuthorizationRoles(session.user.id),
         jobRequestId: readRouteParam(request.params, "jobRequestId"),
         expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
-        marginPpm: readOptionalNumber(body, "marginPpm") ?? null
+        marginPpm: readOptionalNumber(body, "marginPpm") ?? null,
+        openClaim: body.openClaim !== false
       });
 
-      // Notify the client their request is approved, with the job code (best-effort, never blocks).
-      if (prisma) {
-        await notifyClient(prisma, emailSender, { jobRequestId: jobRequest.id, kind: "job_code" });
-      }
-
-      return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
+      return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest), openClaim: openClaimState });
     }
   );
 
@@ -5401,6 +7566,16 @@ export function buildApi(options: BuildApiOptions = {}) {
           message: "Invalid calendar request."
         });
       }
+      // Optional shift conditions (break, dress code, equipment, arrival, notes for workers): plain
+      // text, length-checked. Absent → the stored values stay as they are.
+      const conditions = parseShiftConditions(body.conditions);
+      if (conditions.status === "invalid") {
+        return reply.code(400).send({
+          error: "RWOS_INVALID_SHIFT_CONDITIONS",
+          message: "Check the shift conditions: a break of 0 to 240 minutes, and short plain-text notes.",
+          field: conditions.field
+        });
+      }
 
       const profile = await calendarRequestService.upsertClientProfile({
         actorUserId: session.user.id,
@@ -5413,8 +7588,18 @@ export function buildApi(options: BuildApiOptions = {}) {
         allowances: readAllowancesInput(body),
         expectedVersion: readOptionalNumber(body, "expectedVersion")
       });
+      // The service checked the organization; write the conditions onto the same profile row.
+      let storedConditions = null as ReturnType<typeof storedShiftConditions> | null;
+      if (conditions.status === "ok" && prisma) {
+        const row = await prisma.staffingRequestCalendarProfile.update({
+          where: { id: profile.id },
+          data: conditions.data,
+          select: SHIFT_CONDITIONS_SELECT
+        });
+        storedConditions = storedShiftConditions(row);
+      }
 
-      return reply.code(200).send({ profile: serializeCalendarProfile(profile) });
+      return reply.code(200).send({ profile: serializeCalendarProfile(profile), ...(storedConditions ? { conditions: storedConditions } : {}) });
     }
   );
 
@@ -5460,6 +7645,24 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
 
     const requests = await calendarRequestService.listAdminCalendar({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id)
+    });
+    // Staff-only card details (company, location, role). Read after authorization; best-effort.
+    const cards = await readStaffRequestCards(requests.map((item) => item.id));
+
+    return reply.code(200).send({ requests: requests.map(serializeCalendarRequest), cards });
+  });
+
+  // Full-lifecycle admin calendar — every non-draft request (submission → closure), not only the
+  // review queue. Same admin-review authority as /platform/calendar/requests; read-only.
+  app.get("/platform/calendar/lifecycle", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+
+    const requests = await calendarRequestService.listAdminLifecycleCalendar({
       session,
       roles: await resolveAuthorizationRoles(session.user.id)
     });
@@ -5560,6 +7763,17 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
   });
 
+  // Finance staff's view of worker payouts, and whether the test-mode send is switched on.
+  app.get("/platform/worker-payouts", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const items = await listWorkerPayoutsForStaff(prisma!);
+    return reply.code(200).send({
+      items,
+      testPayoutEnabled: runtimeConfig.payoutTestModeEnabled && isPayoutTestExecutionEnabled()
+    });
+  });
+
   // Mark a RELEASED worker payout as paid — the "money transferred to the worker" step — and inform
   // the worker by email. HARD finance-gated: with FINANCE_LIVE_ENABLED off (the default, requires a
   // recorded CPA sign-off) this returns 423 and nothing moves. No external send happens here; this
@@ -5595,11 +7809,12 @@ export function buildApi(options: BuildApiOptions = {}) {
       return reply.code(409).send({ error: "RWOS_PAYOUT_CONFLICT", message: "Payout changed; retry." });
     }
 
-    const notified = await notifyWorkerPayoutPaid(prisma, emailSender, {
-      workerIdentityId: payout.workerIdentityId,
-      amountMinor: payout.amountMinor,
-      currency: payout.currency
-    });
+    const notified = await notifyWorkerPayoutPaid(
+      prisma,
+      emailSender,
+      { workerIdentityId: payout.workerIdentityId, amountMinor: payout.amountMinor, currency: payout.currency },
+      pushSender
+    );
     return reply.code(200).send({ payout: { id: payout.id, status: "paid" }, workerNotification: notified.status });
   });
 
@@ -5637,13 +7852,26 @@ export function buildApi(options: BuildApiOptions = {}) {
         .send({ error: `RWOS_PAYOUT_${result.reason.toUpperCase()}`, message: "This payout cannot be paid now." });
     }
 
-    // Best-effort "money received" notice, with the TEST reference. Never blocks the paid result.
-    const notified = await notifyWorkerPayoutPaid(prisma, emailSender, {
-      workerIdentityId: result.payout.workerIdentityId,
-      amountMinor: result.payout.amountMinor,
-      currency: result.payout.currency,
-      reference: result.payout.paymentRef
-    });
+    // Best-effort "money received" notice, with the TEST reference. Never blocks the paid result. On a
+    // successful send we stamp paid_notified_at so the background progression job does not re-send;
+    // if it fails (or the mailer is unconfigured) the marker stays null and the job retries it later.
+    const notified = await notifyWorkerPayoutPaid(
+      prisma,
+      emailSender,
+      {
+        workerIdentityId: result.payout.workerIdentityId,
+        amountMinor: result.payout.amountMinor,
+        currency: result.payout.currency,
+        reference: result.payout.paymentRef
+      },
+      pushSender
+    );
+    if (notified.status === "sent") {
+      await prisma.workerPayout.updateMany({
+        where: { id: result.payout.id, paidNotifiedAt: null },
+        data: { paidNotifiedAt: new Date() }
+      });
+    }
     return reply.code(200).send({
       payout: {
         id: result.payout.id,
@@ -5661,6 +7889,27 @@ export function buildApi(options: BuildApiOptions = {}) {
   // worker-withdraw endpoint surfaces. "suspend" disables the account for 7 days (auto-reinstated at
   // sign-in once suspended_until passes); "permanent_close" closes it. Admin-gated; the worker is
   // emailed. No money moves. Closure is irreversible, which is why only an admin can do it.
+  // The 7-day suspension for a cancellation less than 24 h before the start (owner policy): disable
+  // the account until the end date, revoke its sessions, and send the existing penalty notice. Used by
+  // staff (below) and applied automatically when a worker cancels their own shift too late.
+  const suspendWorkerForLateCancellation = async (input: { workerIdentityId: string; userId: string; now: Date }) => {
+    const until = new Date(input.now.getTime() + WORKER_SUSPENSION_DAYS * 86_400_000);
+    await prisma!.user.update({
+      where: { id: input.userId },
+      data: { status: "disabled", disabledAt: input.now, suspendedUntil: until }
+    });
+    await prisma!.session.updateMany({
+      where: { userId: input.userId, status: "active" },
+      data: { status: "revoked", revokedAt: input.now }
+    });
+    const notified = await notifyWorkerAccountPenalty(prisma!, emailSender, {
+      workerIdentityId: input.workerIdentityId,
+      penalty: "suspend",
+      suspensionDays: WORKER_SUSPENSION_DAYS
+    });
+    return { reinstatesAt: until, workerNotification: notified.status };
+  };
+
   app.post("/platform/workers/:workerIdentityId/apply-cancellation-penalty", async (request, reply) => {
     const session = await authService.validateSession(readBearerToken(request.headers.authorization));
     if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
@@ -5680,32 +7929,22 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!identity) return reply.code(404).send({ error: "RWOS_WORKER_NOT_FOUND", message: "Worker not found." });
 
     const nowDate = new Date();
+    if (action === "suspend") {
+      const suspended = await suspendWorkerForLateCancellation({ workerIdentityId, userId: identity.userId, now: nowDate });
+      return reply.code(200).send({
+        applied: "suspend",
+        suspensionDays: WORKER_SUSPENSION_DAYS,
+        reinstatesAt: suspended.reinstatesAt.toISOString(),
+        workerNotification: suspended.workerNotification
+      });
+    }
     // Kick the worker out immediately: revoke every active session so a signed-in worker can't keep
-    // acting during the suspension/closure (new sign-ins are already blocked by the status gate).
+    // acting during the closure (new sign-ins are already blocked by the status gate).
     const revokeActiveSessions = () =>
       prisma.session.updateMany({
         where: { userId: identity.userId, status: "active" },
         data: { status: "revoked", revokedAt: nowDate }
       });
-    if (action === "suspend") {
-      const until = new Date(nowDate.getTime() + WORKER_SUSPENSION_DAYS * 86_400_000);
-      await prisma.user.update({
-        where: { id: identity.userId },
-        data: { status: "disabled", disabledAt: nowDate, suspendedUntil: until }
-      });
-      await revokeActiveSessions();
-      const notified = await notifyWorkerAccountPenalty(prisma, emailSender, {
-        workerIdentityId,
-        penalty: "suspend",
-        suspensionDays: WORKER_SUSPENSION_DAYS
-      });
-      return reply.code(200).send({
-        applied: "suspend",
-        suspensionDays: WORKER_SUSPENSION_DAYS,
-        reinstatesAt: until.toISOString(),
-        workerNotification: notified.status
-      });
-    }
     await prisma.user.update({
       where: { id: identity.userId },
       data: { status: "closed", closedAt: nowDate, suspendedUntil: null }
@@ -5730,8 +7969,11 @@ export function buildApi(options: BuildApiOptions = {}) {
       roles: await resolveAuthorizationRoles(session.user.id),
       jobRequestIdOrNumber: readRouteParam(request.params, "jobRequestIdOrNumber")
     });
+    // Staff-only "what the employer asked for" block. Read only after the admin calendar
+    // authorization above passed; a failure leaves it null and never breaks the page.
+    const summary = await readStaffRequestSummary(calendarRequest.id);
 
-    return reply.code(200).send({ request: serializeCalendarRequest(calendarRequest) });
+    return reply.code(200).send({ request: serializeCalendarRequest(calendarRequest), summary });
   });
 
   // Control Room enrichment: the immutable pricing snapshot for one job (finance authority only).
@@ -5877,11 +8119,21 @@ export function buildApi(options: BuildApiOptions = {}) {
     const dispatchSourceNumbers = await Promise.all(
       dispatches.map((item) => reduceJobRequestRepository.findJobRequestById(item.jobRequestId))
     );
+    // Each row carries its shift's start and end (so staff see WHEN, not only when the review began),
+    // and the list is soonest shift first.
     return reply.code(200).send({
-      dispatches: dispatches.map((item, index) => ({
-        ...serializeDispatchReview(item),
-        jobRequestNumber: dispatchSourceNumbers[index]?.jobRequestNumber ?? null
-      }))
+      dispatches: sortDispatchesBySoonestShift(
+        dispatches.map((item, index) => {
+          const source = dispatchSourceNumbers[index];
+          return {
+            ...serializeDispatchReview(item),
+            jobRequestNumber: source?.jobRequestNumber ?? null,
+            shiftStartAt: source?.startAt ? source.startAt.toISOString() : null,
+            shiftEndAt: source?.endAt ? source.endAt.toISOString() : null,
+            shiftTimezone: source?.timezone ?? null
+          };
+        })
+      )
     });
   });
 
@@ -6135,13 +8387,20 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!session.authenticated || !session.user) return sendDispatchDenied(reply);
 
     const body = asRecord(request.body);
+    const dispatchReviewId = readRouteParam(request.params, "dispatchReviewId");
+    // Cancelling a dispatch leaves its assignments as they are, but the offers it already sent to
+    // workers no longer lead anywhere. Read those workers first; unsent offers were never seen.
+    const offered = await readSentOfferWorkers({ dispatchReviewId });
     const dispatchReview = await dispatchService.cancel({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
-      dispatchReviewId: readRouteParam(request.params, "dispatchReviewId"),
+      dispatchReviewId,
       expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
       reason: readRequiredString(body, "reason") ?? ""
     });
+    for (const [jobRequestId, userIds] of offered) {
+      await tellWorkersShiftCancelled({ jobRequestId, cancelledBy: "staff", workers: userIds.map((userId) => ({ userId, offerOnly: true })) });
+    }
 
     return reply.code(200).send({ dispatchReview: serializeDispatchReview(dispatchReview) });
   });
@@ -6197,6 +8456,74 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   );
 
+  // What an offer states when the admin writes nothing: the approved pay, employer and area, so a
+  // worker never accepts binding terms without seeing them. Written in the worker's own language.
+  const defaultOfferCompensation = async (dispatchReviewId: string, workerIdentityId: string): Promise<string | null> => {
+    if (!prisma || !isCanonicalUuid(dispatchReviewId)) return null;
+    const [review, worker] = await Promise.all([
+      prisma.dispatchReview.findUnique({
+        where: { id: dispatchReviewId },
+        select: {
+          jobRequest: {
+            select: {
+              pricingSnapshot: { select: { workerHourlyRateMinor: true, currency: true, jobLength: true } },
+              ...WORKER_PAY_SELECT,
+              organization: { select: { displayName: true } },
+              residence: { select: { city: true, province: true } }
+            }
+          }
+        }
+      }),
+      isCanonicalUuid(workerIdentityId)
+        ? prisma.workerIdentity
+            .findUnique({ where: { id: workerIdentityId }, select: { preferredLanguage: true, user: { select: { primaryLanguage: true } } } })
+            .catch(() => null)
+        : Promise.resolve(null)
+    ]);
+    const job = review?.jobRequest;
+    if (!job?.pricingSnapshot) return null;
+    const language = resolveWorkerLanguage(worker?.preferredLanguage, worker?.user?.primaryLanguage);
+    return defaultOfferCompensationLine(job, language);
+  };
+
+  // Staff pre-check before offering a job to a worker or assigning them: which required certificates
+  // the worker misses (verified, unexpired documents only) and whether an override is already on the
+  // offer. The screen shows the list and the override box from this. Platform administrators only.
+  app.get("/platform/dispatches/:dispatchReviewId/certificate-check", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendWorkerOfferDenied(reply);
+    const roles = await resolveAuthorizationRoles(session.user.id);
+    if (!roles.includes("PLATFORM_ADMINISTRATOR") || !prisma) return sendWorkerOfferDenied(reply);
+    const dispatchReviewId = readRouteParam(request.params, "dispatchReviewId");
+    const query = asRecord(request.query);
+    const workerOfferId = readOptionalString(query, "workerOfferId");
+    let workerIdentityId = readOptionalString(query, "workerIdentityId");
+    let overridden = false;
+    if (!isCanonicalUuid(dispatchReviewId)) return reply.code(404).send({ error: "RWOS_NOT_FOUND", message: "Not found." });
+    if (workerOfferId) {
+      if (!isCanonicalUuid(workerOfferId)) return reply.code(404).send({ error: "RWOS_NOT_FOUND", message: "Not found." });
+      const offer = await prisma.workerOffer.findFirst({
+        where: { id: workerOfferId, dispatchReviewId },
+        select: { workerIdentityId: true, certificateOverrideAt: true }
+      });
+      if (!offer) return reply.code(404).send({ error: "RWOS_NOT_FOUND", message: "Not found." });
+      workerIdentityId = offer.workerIdentityId;
+      overridden = offer.certificateOverrideAt !== null;
+    }
+    if (!workerIdentityId || !isCanonicalUuid(workerIdentityId)) return reply.code(400).send({ error: "RWOS_INVALID", message: "A worker or an offer is required." });
+    const dispatch = await prisma.dispatchReview.findUnique({
+      where: { id: dispatchReviewId },
+      select: { jobRequest: { select: { startAt: true, requiredCertificates: true, requiredCertificateOther: true } } }
+    });
+    if (!dispatch) return reply.code(404).send({ error: "RWOS_NOT_FOUND", message: "Not found." });
+    const gap = await certificateGapForJob(prisma, { workerIdentityId, job: dispatch.jobRequest });
+    return reply.code(200).header("cache-control", "no-store").send({
+      required: gap.required,
+      missing: gap.missing,
+      overridden
+    });
+  });
+
   app.post("/platform/worker-offers", async (request, reply) => {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
@@ -6207,17 +8534,61 @@ export function buildApi(options: BuildApiOptions = {}) {
     const expiresAt = readRequiredDate(body, "expiresAt");
     if (!expiresAt) return sendWorkerOfferDenied(reply);
 
+    // Required certificates: staff cannot offer the job to a worker who misses one unless they tick
+    // the explicit override, which is recorded on the offer and in the audit log.
+    const offerRoles = await resolveAuthorizationRoles(session.user.id);
+    const certificateOverride = readCertificateOverride(body);
+    let overrideGap: { organizationId: string; jobRequestId: string; missing: readonly string[] } | null = null;
+    if (prisma && offerRoles.includes("PLATFORM_ADMINISTRATOR")) {
+      const dispatchReviewId = readRequiredString(body, "dispatchReviewId") ?? "";
+      const workerIdentityId = readRequiredString(body, "workerIdentityId") ?? "";
+      const dispatch = isCanonicalUuid(dispatchReviewId) && isCanonicalUuid(workerIdentityId)
+        ? await prisma.dispatchReview.findUnique({
+            where: { id: dispatchReviewId },
+            select: { organizationId: true, jobRequest: { select: { id: true, startAt: true, requiredCertificates: true, requiredCertificateOther: true } } }
+          })
+        : null;
+      if (dispatch) {
+        const gap = await certificateGapForJob(prisma, { workerIdentityId, job: dispatch.jobRequest });
+        if (gap.missing.length > 0) {
+          if (!certificateOverride.override) {
+            return reply.code(422).send({
+              error: "RWOS_CERTIFICATE_REQUIRED",
+              message: "This worker does not hold every certificate the job requires. Tick the certificate override to offer it anyway; it is logged.",
+              reasons: certificateReasons(gap.missing),
+              requiredCertificateOther: gap.required.other
+            });
+          }
+          overrideGap = { organizationId: dispatch.organizationId, jobRequestId: dispatch.jobRequest.id, missing: gap.missing };
+        }
+      }
+    }
+
     const workerOffer = await workerOfferService.createOffer({
       session,
-      roles: await resolveAuthorizationRoles(session.user.id),
+      roles: offerRoles,
       dispatchReviewId: readRequiredString(body, "dispatchReviewId") ?? "",
       workerIdentityId: readRequiredString(body, "workerIdentityId") ?? "",
       expiresAt,
       workerVisibleTitle: readOptionalString(body, "workerVisibleTitle"),
       workerVisibleSummary: readOptionalString(body, "workerVisibleSummary"),
-      compensationSummary: readOptionalString(body, "compensationSummary"),
+      compensationSummary:
+        readOptionalString(body, "compensationSummary") ??
+        (await defaultOfferCompensation(readRequiredString(body, "dispatchReviewId") ?? "", readRequiredString(body, "workerIdentityId") ?? "")),
       policySummary: readOptionalString(body, "policySummary")
     });
+
+    if (prisma && overrideGap) {
+      await recordCertificateOverride(prisma, {
+        workerOfferId: workerOffer.id,
+        organizationId: overrideGap.organizationId,
+        jobRequestId: overrideGap.jobRequestId,
+        actorUserId: session.user.id,
+        missing: overrideGap.missing as Parameters<typeof recordCertificateOverride>[1]["missing"],
+        reason: certificateOverride.reason,
+        source: "offer_create"
+      });
+    }
 
     return reply.code(201).send({ workerOffer: serializeWorkerOffer(workerOffer) });
   });
@@ -6334,13 +8705,19 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!session.authenticated || !session.user) return sendWorkerOfferDenied(reply);
 
     const body = asRecord(request.body);
+    const workerOfferId = readRouteParam(request.params, "workerOfferId");
+    // Only a worker who was actually sent the offer hears that it was cancelled.
+    const offered = await readSentOfferWorkers({ workerOfferId });
     const workerOffer = await workerOfferService.cancel({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
-      workerOfferId: readRouteParam(request.params, "workerOfferId"),
+      workerOfferId,
       expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
       reason: readRequiredString(body, "reason") ?? ""
     });
+    for (const [jobRequestId, userIds] of offered) {
+      await tellWorkersShiftCancelled({ jobRequestId, cancelledBy: "staff", workers: userIds.map((userId) => ({ userId, offerOnly: true })) });
+    }
 
     return reply.code(200).send({ workerOffer: serializeWorkerOffer(workerOffer) });
   });
@@ -6414,6 +8791,15 @@ export function buildApi(options: BuildApiOptions = {}) {
           agreementVersions: WORKER_AGREEMENT_VERSIONS
         });
       }
+
+      // Required certificates: the worker must hold each one, unless staff approved them with the
+      // logged certificate override on this offer. Only checked on the worker's own offer; anything
+      // else falls through to the service, which refuses it.
+      const certificateRefusal = await offerCertificateRefusal(prisma, {
+        workerOfferId: readRouteParam(request.params, "workerOfferId"),
+        userId: session.user.id
+      });
+      if (certificateRefusal) return reply.code(422).send(certificateRefusal);
     }
 
     const body = asRecord(request.body);
@@ -6437,7 +8823,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         // Best-effort: push the confirmed shift to the worker's own Google Calendar. Opt-in per
         // worker (calendar scope granted) + flag-gated; never blocks or fails the accept.
         void pushAssignmentToCalendar(
-          { prisma, config: googleOAuthConfigFromEnv() },
+          { prisma, config: googleOAuthConfigFromEnv(), countryTimezone: options.countryTimezone },
           { userId: session.user.id, jobRequestId: offer.jobRequestId }
         );
       }
@@ -6488,9 +8874,47 @@ export function buildApi(options: BuildApiOptions = {}) {
         message: "Invalid assignment request."
       });
     }
+    // Required certificates: staff assignment is blocked when the worker misses one, unless the offer
+    // already carries a certificate override or staff tick the override now (recorded and logged).
+    const assignRoles = await resolveAuthorizationRoles(session.user.id);
+    if (prisma && assignRoles.includes("PLATFORM_ADMINISTRATOR")) {
+      const offer = await prisma.workerOffer.findUnique({
+        where: { id: workerOfferId },
+        select: {
+          id: true,
+          organizationId: true,
+          workerIdentityId: true,
+          certificateOverrideAt: true,
+          jobRequest: { select: { id: true, startAt: true, requiredCertificates: true, requiredCertificateOther: true } }
+        }
+      });
+      if (offer && !offer.certificateOverrideAt) {
+        const gap = await certificateGapForJob(prisma, { workerIdentityId: offer.workerIdentityId, job: offer.jobRequest });
+        if (gap.missing.length > 0) {
+          const override = readCertificateOverride(body);
+          if (!override.override) {
+            return reply.code(422).send({
+              error: "RWOS_CERTIFICATE_REQUIRED",
+              message: "This worker does not hold every certificate the job requires. Tick the certificate override to assign anyway; it is logged.",
+              reasons: certificateReasons(gap.missing),
+              requiredCertificateOther: gap.required.other
+            });
+          }
+          await recordCertificateOverride(prisma, {
+            workerOfferId: offer.id,
+            organizationId: offer.organizationId,
+            jobRequestId: offer.jobRequest.id,
+            actorUserId: session.user.id,
+            missing: gap.missing,
+            reason: override.reason,
+            source: "assignment_create"
+          });
+        }
+      }
+    }
     const assignment = await assignmentService.createFromAcceptedOffer({
       session,
-      roles: await resolveAuthorizationRoles(session.user.id),
+      roles: assignRoles,
       workerOfferId,
       expectedDispatchReviewId: dispatchReviewId,
       expectedOfferVersion: expectedOfferVersion as number
@@ -6503,6 +8927,44 @@ export function buildApi(options: BuildApiOptions = {}) {
       await workerJobInterestService.markOfferAcceptedByOffer(workerOfferId);
     } catch {
       /* interest mirror is best-effort; the governed assignment already succeeded */
+    }
+
+    // Put the shift on the worker's schedule, where they punch in and out. Those steps have no admin
+    // screen, so an assignment would otherwise never reach the worker. A failure here must not undo
+    // the assignment; it is logged for staff instead.
+    try {
+      const roles = await resolveAuthorizationRoles(session.user.id);
+      const assignmentId = assignment.id;
+      const ready = await assignmentService.markReadyForAttendance({ session, roles, assignmentId, expectedVersion: assignment.version });
+      await assignmentService.attendanceHandoff({ session, roles, assignmentId, expectedVersion: ready.version });
+      // Long-term job (employer plans flag): the employer pays directly, Joblop keeps no attendance.
+      if (!(await isLongTermAssignment(prisma, assignmentId))) {
+        await attendanceService.createFromAssignment({ session, roles, assignmentId, verificationMethod: null });
+      }
+    } catch (error) {
+      logger.warn("assignment.schedule_handoff_failed", { assignmentId: assignment.id, error: error instanceof Error ? error.message : "unknown" });
+    }
+
+    // "You got the job!" — confirm the worker by email (+ SMS when enabled). Best-effort. The session
+    // here is the staff member's, so the recipient comes from the assignment.
+    if (prisma) {
+      try {
+        const assignedWorker = await prisma.workerIdentity.findUnique({
+          where: { id: assignment.workerIdentityId },
+          select: { userId: true }
+        });
+        if (assignedWorker) {
+          await notifyWorkerAssigned(
+            prisma,
+            emailSender,
+            smsSender,
+            { userId: assignedWorker.userId, jobRequestId: assignment.jobRequestId, workerWebOrigin: offerCtaOrigin },
+            pushSender
+          );
+        }
+      } catch (error) {
+        logger.warn("assignment.worker_notice_failed", { assignmentId: assignment.id, error: error instanceof Error ? error.message : "unknown" });
+      }
     }
 
     return reply.code(201).send({ assignment: serializeAssignment(assignment) });
@@ -6615,14 +9077,40 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!session.authenticated || !session.user) return sendAssignmentDenied(reply);
 
     const body = asRecord(request.body);
+    const assignmentId = readRouteParam(request.params, "assignmentId");
+    const cancelStatus = readAssignmentStatus(readOptionalString(body, "status")) ?? "platform_cancelled";
+    // A shift on the worker's schedule can be cancelled only before the worker has checked in.
+    const attendanceBefore = prisma
+      ? await prisma.attendanceRecord.findUnique({ where: { assignmentId }, select: { status: true } }).catch(() => null)
+      : null;
+    if (attendanceBefore && attendanceBefore.status !== "pending_start" && attendanceBefore.status !== "cancelled") {
+      return reply.code(409).send(SHIFT_ALREADY_STARTED_BODY);
+    }
+    // The worker holding this assignment, read before the cancel changes its status.
+    const holders = prisma ? await readShiftHolders(prisma, { assignmentIds: [assignmentId] }).catch(() => [] as ShiftHolder[]) : [];
+    const reason = readRequiredString(body, "reason") ?? "";
     const assignment = await assignmentService.cancel({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
-      assignmentId: readRouteParam(request.params, "assignmentId"),
+      assignmentId,
       expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
-      reason: readRequiredString(body, "reason") ?? "",
-      status: readAssignmentStatus(readOptionalString(body, "status")) ?? "platform_cancelled"
+      reason,
+      status: cancelStatus
     });
+    // The same cancel-a-booked-shift path as the worker and the employer: the attendance record goes
+    // too, so the shift leaves the worker's schedule (the assignment half is already done above).
+    if (prisma && attendanceBefore?.status === "pending_start") {
+      await cancelBookedShift(bookedShiftDeps(), { assignmentId, by: "staff", actorUserId: session.user.id, reason, now: new Date() });
+    }
+    // Staff act here; an employer_cancelled status records that the employer asked for it. No
+    // late-cancellation pay is computed on this path, so none is mentioned.
+    for (const [jobRequestId, onJob] of groupShiftHoldersByJob(holders)) {
+      await tellWorkersShiftCancelled({
+        jobRequestId,
+        cancelledBy: cancelStatus === "employer_cancelled" ? "employer" : "staff",
+        workers: onJob.map((h) => ({ userId: h.userId }))
+      });
+    }
 
     return reply.code(200).send({ assignment: serializeAssignment(assignment) });
   });
@@ -6773,6 +9261,104 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ assignment: serializeWorkerAssignment(assignment) });
   });
 
+  // Worker self-cancel of a booked shift (worker website + phone app). The one cancel-a-booked-shift
+  // path: the assignment and the attendance record are cancelled together, so the shift leaves the
+  // worker's schedule and the place reopens on the job board at once. More than 24 h before the start
+  // it is free; later, the existing 7-day suspension is applied automatically with its notice (a repeat
+  // late cancel is flagged as "permanent_close" for staff, who decide on closure). The employer and
+  // staff are told. The response carries no rate.
+  const workerCancelBookedShift = async (reply: FastifyReply, userId: string, assignmentId: string) => {
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+    const identity = await prisma.workerIdentity.findUnique({ where: { userId }, select: { id: true } });
+    const owned = identity && isCanonicalUuid(assignmentId)
+      ? await prisma.assignment.findUnique({ where: { id: assignmentId }, select: { workerIdentityId: true } })
+      : null;
+    if (!identity || !owned || owned.workerIdentityId !== identity.id) {
+      return reply.code(404).send({ error: "RWOS_SHIFT_NOT_FOUND", message: "That shift is not on your schedule." });
+    }
+    const now = new Date();
+    const result = await cancelBookedShift(bookedShiftDeps(), { assignmentId, by: "worker", actorUserId: userId, reason: "worker_cancelled", now });
+    if (result.status === "already_started") return reply.code(409).send(SHIFT_ALREADY_STARTED_BODY);
+    if (result.status === "not_found") return reply.code(404).send({ error: "RWOS_SHIFT_NOT_FOUND", message: "That shift is not on your schedule." });
+    if (result.status === "conflict") return reply.code(409).send({ error: "RWOS_SHIFT_CHANGED", message: "This shift changed. Refresh and try again." });
+    if (result.status === "not_booked" || !result.assignmentCancelled) {
+      return reply.code(409).send({ error: "RWOS_SHIFT_NOT_CANCELLABLE", message: "This shift can no longer be cancelled." });
+    }
+
+    // Late cancellations before this one (the policy counts repeats).
+    const priors = await prisma.assignment.findMany({
+      where: { workerIdentityId: identity.id, status: "worker_withdrawn", id: { not: assignmentId } },
+      select: { confirmedStartAt: true, workerWithdrawnAt: true }
+    });
+    const priorLate = priors.filter(
+      (a) => a.workerWithdrawnAt && (a.confirmedStartAt.getTime() - a.workerWithdrawnAt.getTime()) / 3_600_000 < 24
+    ).length;
+    const penalty = deriveWorkerCancellationPenalty({
+      shiftStartIso: result.startAt.toISOString(),
+      nowIso: now.toISOString(),
+      priorLateCancellations: priorLate
+    });
+    let suspension: { reinstatesAt: string; suspensionDays: number } | null = null;
+    if (penalty.penalty !== "none") {
+      const applied = await suspendWorkerForLateCancellation({ workerIdentityId: identity.id, userId, now });
+      suspension = { reinstatesAt: applied.reinstatesAt.toISOString(), suspensionDays: WORKER_SUSPENSION_DAYS };
+    }
+
+    // Tell the employer and staff (best-effort, never undoes the cancel).
+    await notifyClient(prisma, emailSender, { jobRequestId: result.jobRequestId, kind: "worker_cancelled" }).catch(() => undefined);
+    if (staffAlertEmail) {
+      const job = await prisma.jobRequest.findUnique({ where: { id: result.jobRequestId }, select: { jobRequestNumber: true, title: true } }).catch(() => null);
+      // The staff inbox has no single reader's language, so the alert carries EN, FR and AR.
+      const code = job?.jobRequestNumber ?? result.jobRequestId;
+      const hours = penalty.hoursBeforeStart.toFixed(1);
+      const late = penalty.penalty !== "none";
+      const repeat = penalty.penalty === "permanent_close";
+      const en =
+        `A worker cancelled their shift "${job?.title ?? ""}" (${code}), ${hours} h before the start. The place is open again on the job board.\n` +
+        (late
+          ? `Under 24 h: the 7-day suspension was applied automatically.${repeat ? " This is a repeat late cancellation: the policy recommends closing the account (staff decision)." : ""}`
+          : "More than 24 h before the start: no penalty.");
+      const fr =
+        `Un travailleur a annulé son quart « ${job?.title ?? ""} » (${code}), ${hours} h avant le début. La place est de nouveau ouverte au tableau des emplois.\n` +
+        (late
+          ? `Moins de 24 h : la suspension de 7 jours a été appliquée automatiquement.${repeat ? " C'est une annulation tardive répétée : la politique recommande de fermer le compte (décision du personnel)." : ""}`
+          : "Plus de 24 h avant le début : aucune pénalité.");
+      const ar =
+        `ألغى عامل مناوبته «${job?.title ?? ""}» (${code}) قبل البداية بـ${hours} ساعة. أصبح المكان متاحًا من جديد على لوحة الوظائف.\n` +
+        (late
+          ? `أقل من 24 ساعة: طُبّق الإيقاف لمدة 7 أيام تلقائيًا.${repeat ? " هذا إلغاء متأخر متكرر: توصي السياسة بإغلاق الحساب (قرار الفريق)." : ""}`
+          : "أكثر من 24 ساعة قبل البداية: لا عقوبة.");
+      await emailSender
+        .send({
+          to: staffAlertEmail,
+          subject: `Joblop — a worker cancelled / un travailleur a annulé / ألغى عامل ${code}${late ? " (< 24 h)" : ""}`,
+          text: `${en}\n\n— — —\n\n${fr}\n\n— — —\n\n${ar}\n\n— Joblop`
+        })
+        .catch(() => undefined);
+    }
+
+    return reply.code(200).send({
+      status: "cancelled",
+      assignmentId,
+      lateCancellation: penalty.penalty !== "none",
+      hoursBeforeStart: penalty.hoursBeforeStart,
+      recommendedPenalty: penalty.penalty,
+      suspension
+    });
+  };
+
+  // By attendance record: the id the worker's schedule (website and phone app) already has.
+  app.post("/worker/attendance/:attendanceRecordId/cancel", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendAssignmentDenied(reply);
+    const attendanceRecordId = readRouteParam(request.params, "attendanceRecordId");
+    const record = prisma && isCanonicalUuid(attendanceRecordId)
+      ? await prisma.attendanceRecord.findUnique({ where: { id: attendanceRecordId }, select: { assignmentId: true } })
+      : null;
+    if (!record) return reply.code(404).send({ error: "RWOS_SHIFT_NOT_FOUND", message: "That shift is not on your schedule." });
+    return workerCancelBookedShift(reply, session.user.id, record.assignmentId);
+  });
+
   app.post("/worker/assignments/:assignmentId/withdraw", async (request, reply) => {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
@@ -6781,6 +9367,13 @@ export function buildApi(options: BuildApiOptions = {}) {
 
     const body = asRecord(request.body);
     const assignmentId = readRouteParam(request.params, "assignmentId");
+    // A shift already on the schedule goes through the same self-cancel path as the website button.
+    const current = prisma && isCanonicalUuid(assignmentId)
+      ? await prisma.assignment.findUnique({ where: { id: assignmentId }, select: { status: true } })
+      : null;
+    if (current?.status === "attendance_handoff") {
+      return workerCancelBookedShift(reply, session.user.id, assignmentId);
+    }
     const assignment = await assignmentService.workerWithdraw({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
@@ -6831,6 +9424,9 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!session.authenticated || !session.user) return sendAttendanceUnauthenticated(reply);
 
     const body = asRecord(request.body);
+    if (await isLongTermAssignment(prisma, readRequiredString(body, "assignmentId") ?? "")) {
+      return reply.code(409).send(LONG_TERM_NO_TIMESHEETS_BODY);
+    }
     const attendanceRecord = await attendanceService.createFromAssignment({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
@@ -6938,13 +9534,40 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!session.authenticated || !session.user) return sendAttendanceUnauthenticated(reply);
 
     const body = asRecord(request.body);
+    const attendanceRecordId = readRouteParam(request.params, "attendanceRecordId");
+    // The worker on this attendance record, read before the cancel, and only while their assignment
+    // still holds the shift (an already-cancelled assignment told them when it was cancelled).
+    const before = prisma
+      ? await prisma.attendanceRecord
+          .findUnique({ where: { id: attendanceRecordId }, select: { assignmentId: true, status: true } })
+          .catch(() => null)
+      : null;
+    const holders = prisma && before
+      ? await readShiftHolders(prisma, { assignmentIds: [before.assignmentId] }).catch(() => [] as ShiftHolder[])
+      : [];
+    const reason = readRequiredString(body, "reason") ?? "";
     const attendanceRecord = await attendanceService.cancel({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
-      attendanceRecordId: readRouteParam(request.params, "attendanceRecordId"),
+      attendanceRecordId,
       expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
-      reason: readRequiredString(body, "reason") ?? ""
+      reason
     });
+    // Before the shift started, a staff cancel releases the booking too (the one cancel-a-booked-shift
+    // path): the assignment is cancelled, so the place frees and the job board reopens. No employer
+    // charge on a staff cancel. A shift cancelled after check-in keeps today's behaviour.
+    if (prisma && before?.status === "pending_start") {
+      await cancelBookedShift(bookedShiftDeps(), {
+        assignmentId: before.assignmentId,
+        by: "staff",
+        actorUserId: session.user.id,
+        reason: reason || "staff_cancelled",
+        now: new Date()
+      });
+    }
+    for (const [jobRequestId, onJob] of groupShiftHoldersByJob(holders)) {
+      await tellWorkersShiftCancelled({ jobRequestId, cancelledBy: "staff", workers: onJob.map((h) => ({ userId: h.userId })) });
+    }
 
     return reply.code(200).send({ attendanceRecord: serializeAttendanceRecord(attendanceRecord) });
   });
@@ -6987,8 +9610,14 @@ export function buildApi(options: BuildApiOptions = {}) {
       return sendAttendanceDenied(reply);
     }
 
+    // Staff notes (the free-text exception / cancel reason, the supervisor note, evidence, staff ids)
+    // never reach the employer; a cancelled shift says only who cancelled it.
+    const cancelledBy = await employerCancelledByMap(attendanceRecords.map((item) => item.id));
     return reply.code(200).send({
-      attendanceRecords: attendanceRecords.map((item) => serializeAttendanceRecord(item))
+      attendanceRecords: attendanceRecords.map((item) => ({
+        ...workerAttendanceView(serializeAttendanceRecord(item)),
+        cancelledBy: cancelledBy.get(item.id) ?? null
+      }))
     });
   });
 
@@ -7004,7 +9633,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       attendanceRecordId: readRouteParam(request.params, "attendanceRecordId")
     });
 
-    return reply.code(200).send({ attendanceRecord: serializeAttendanceRecord(attendanceRecord) });
+    return reply.code(200).send({ attendanceRecord: workerAttendanceView(serializeAttendanceRecord(attendanceRecord)) });
   });
 
   app.post("/worker/attendance/:attendanceRecordId/check-in", async (request, reply) => {
@@ -7014,6 +9643,18 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!session.authenticated || !session.user) return sendAttendanceUnauthenticated(reply);
 
     const body = asRecord(request.body);
+    // Long-term job (employer plans flag): no clock-in / clock-out, the employer pays directly.
+    if (await isLongTermAttendance(prisma, readRouteParam(request.params, "attendanceRecordId"))) {
+      return reply.code(409).send(LONG_TERM_NO_TIMESHEETS_BODY);
+    }
+    // A cancelled job or a cancelled booking can never be worked.
+    const checkInRecordId = readRouteParam(request.params, "attendanceRecordId");
+    if (prisma && isCanonicalUuid(checkInRecordId) && (await cancelledShiftReason(prisma, checkInRecordId))) {
+      return reply.code(409).send(SHIFT_CANCELLED_BODY);
+    }
+    // Check-in opens 30 minutes before the shift starts.
+    const checkInOpensAt = await checkInTooEarly(prisma, readRouteParam(request.params, "attendanceRecordId"), session.user.id);
+    if (checkInOpensAt) return reply.code(409).send(checkInTooEarlyBody(checkInOpensAt));
     const attendanceRecord = await attendanceService.workerCheckIn({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
@@ -7024,7 +9665,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       locationPolicyResult: readOptionalString(body, "locationPolicyResult")
     });
 
-    return reply.code(200).send({ attendanceRecord: serializeAttendanceRecord(attendanceRecord) });
+    return reply.code(200).send({ attendanceRecord: workerAttendanceView(serializeAttendanceRecord(attendanceRecord)) });
   });
 
   app.post("/worker/attendance/:attendanceRecordId/check-out", async (request, reply) => {
@@ -7034,6 +9675,10 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!session.authenticated || !session.user) return sendAttendanceUnauthenticated(reply);
 
     const body = asRecord(request.body);
+    // Long-term job (employer plans flag): no clock-in / clock-out, the employer pays directly.
+    if (await isLongTermAttendance(prisma, readRouteParam(request.params, "attendanceRecordId"))) {
+      return reply.code(409).send(LONG_TERM_NO_TIMESHEETS_BODY);
+    }
     const attendanceRecord = await attendanceService.workerCheckOut({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
@@ -7044,7 +9689,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       locationPolicyResult: readOptionalString(body, "locationPolicyResult")
     });
 
-    return reply.code(200).send({ attendanceRecord: serializeAttendanceRecord(attendanceRecord) });
+    return reply.code(200).send({ attendanceRecord: workerAttendanceView(serializeAttendanceRecord(attendanceRecord)) });
   });
 
   // ── HR-4: worker schedule + attendance (worker-scoped read over the EXISTING attendance
@@ -7053,7 +9698,8 @@ export function buildApi(options: BuildApiOptions = {}) {
   app.get("/worker/attendance", async (request, reply) => {
     const session = await authService.validateSession(readBearerToken(request.headers.authorization));
     if (!session.authenticated || !session.user) return sendAttendanceUnauthenticated(reply);
-    const identity = await prisma!.workerIdentity.findUnique({ where: { userId: session.user.id }, select: { id: true } });
+    const userId = session.user.id;
+    const identity = await prisma!.workerIdentity.findUnique({ where: { userId }, select: { id: true } });
     if (!identity) return reply.code(403).send({ error: "RWOS_ATTENDANCE_DENIED", message: "Only a worker can view their schedule." });
     const query = asRecord(request.query);
     const limit = Math.min(Math.max(parseQueryInt(readOptionalString(query, "limit")) ?? 25, 1), 100);
@@ -7064,22 +9710,75 @@ export function buildApi(options: BuildApiOptions = {}) {
       take: limit + 1,
       ...(cursor && isCanonicalUuid(cursor) ? { cursor: { id: cursor }, skip: 1 } : {}),
       select: {
-        id: true, assignmentId: true, status: true, scheduledStartAt: true, scheduledEndAt: true, timezone: true,
-        checkInAt: true, checkOutAt: true, exceptionCategory: true, version: true,
+        id: true, assignmentId: true, jobRequestId: true, status: true, scheduledStartAt: true, scheduledEndAt: true, timezone: true,
+        checkInAt: true, checkOutAt: true, version: true, cancelledByUserId: true,
+        assignment: { select: { status: true } },
         organization: { select: { displayName: true } },
-        residence: { select: { city: true, province: true } }
+        residence: { select: WORKSITE_ADDRESS_SELECT },
+        jobRequest: { select: { jobLength: true, title: true, status: true, cancellation: { select: { id: true } }, roleDefinition: { select: { displayLabel: true } }, calendarProfile: { select: { addressSummary: true, specialInstructions: true } } } }
       }
     });
     const hasMore = rows.length > limit;
+    // "Report my hours": the latest report per shift, and whether the worker can report hours now.
+    const reports = await latestHoursReports(prisma!, rows.slice(0, limit).map((r) => r.id));
+    const scheduleNow = new Date();
     const items = rows.slice(0, limit).map((r) => ({
-      attendanceRecordId: r.id, assignmentId: r.assignmentId, status: r.status,
+      hoursReport: reports.has(r.id) ? { status: reports.get(r.id)! } : null,
+      canReportHours: hoursReportAvailability(
+        {
+          attendanceStatus: r.status,
+          assignmentCancelled: (CANCELLED_ASSIGNMENT_STATUSES as readonly string[]).includes(r.assignment.status),
+          jobCancelled: r.jobRequest.status === "cancelled",
+          scheduledStartAt: r.scheduledStartAt,
+          scheduledEndAt: r.scheduledEndAt,
+          checkInAt: r.checkInAt,
+          checkOutAt: r.checkOutAt,
+          latestReportStatus: reports.get(r.id) ?? null,
+          longTerm: "clockInAllowed" in clockInFields(r.jobRequest.jobLength)
+        },
+        scheduleNow
+      ).available,
+      reportHoursUntil: hoursReportDeadline(r.scheduledEndAt).toISOString(),
+      attendanceRecordId: r.id, assignmentId: r.assignmentId, jobRequestId: r.jobRequestId, status: r.status,
       scheduledStartAt: r.scheduledStartAt.toISOString(), scheduledEndAt: r.scheduledEndAt.toISOString(), timezone: r.timezone,
       checkInAt: r.checkInAt?.toISOString() ?? null, checkOutAt: r.checkOutAt?.toISOString() ?? null,
-      exceptionCategory: r.exceptionCategory, version: r.version,
+      version: r.version,
+      // Who cancelled ("joblop" | "employer" | "worker"), shown as a plain label. The free-text
+      // reason staff or the employer typed is internal and is never sent to the worker.
+      cancelledBy: workerCancelledBy({
+        attendanceStatus: r.status,
+        attendanceCancelledByUserId: r.cancelledByUserId,
+        workerUserId: userId,
+        assignmentStatus: r.assignment.status,
+        jobStatus: r.jobRequest.status,
+        jobCancelledByEmployer: r.jobRequest.cancellation !== null
+      }),
       employerName: r.organization.displayName,
-      areaLabel: r.residence.city && isProvinceCode(r.residence.province) ? `${r.residence.city}, ${r.residence.province}` : null
+      // The job the worker is doing (e.g. "Farm worker"); the schedule card shows it as the title.
+      roleLabel: r.jobRequest.roleDefinition?.displayLabel ?? r.jobRequest.title ?? null,
+      areaLabel: r.residence.city && options.countryAddress?.isRegionCode(r.residence.province) ? `${r.residence.city}, ${r.residence.province}` : null,
+      // This route only returns the signed-in worker's own assigned shifts.
+      worksiteAddress: isWorksiteAddressVisible(r.status) ? workerJobAddress(r.jobRequest.calendarProfile?.addressSummary, r.residence) : null,
+      safetyNotes: isWorksiteAddressVisible(r.status) ? (r.jobRequest.calendarProfile?.specialInstructions ?? null) : null,
+      // Long-term job (employer plans flag): no clock-in offered; nothing added otherwise.
+      ...clockInFields(r.jobRequest.jobLength)
     }));
     return reply.code(200).send({ items, nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null });
+  });
+
+  // "Report my hours": worker report of a shift worked with no check-in; staff approve or reject
+  // (hoursReportRoutes.ts). Approval prepares the timesheet the same way /platform/timesheets/prepare does.
+  registerHoursReportRoutes(app, {
+    prisma: prisma ?? null,
+    validateSession: (request) => authService.validateSession(readBearerToken(request.headers.authorization)),
+    resolveAuthorizationRoles,
+    attendanceService,
+    timesheetService,
+    emailSender,
+    smsSender,
+    staffEmail: staffAlertEmail,
+    isLongTermAttendance: (attendanceRecordId) => isLongTermAttendance(prisma, attendanceRecordId),
+    serializeTimesheet
   });
 
   // ── HR-4 payroll boundary: ApprovedWorkedTime. The ONLY authoritative HR input the future
@@ -7129,7 +9828,8 @@ export function buildApi(options: BuildApiOptions = {}) {
     const where: Record<string, unknown> = { status: "locked" };
     if (organizationId) where.organizationId = organizationId;
     if (payrollPeriodId) where.payrollPeriodId = payrollPeriodId;
-    const calcs = await prisma!.payrollCalculation.findMany({ where, select: { id: true, currency: true } });
+    const locked = await prisma!.payrollCalculation.findMany({ where, select: { id: true, currency: true, familyRootId: true, revision: true } });
+    const calcs = currentPayrollCalculations(locked);
     const ids = calcs.map((c) => c.id);
     const currency = calcs[0]?.currency ?? "CAD";
     const [deductions, employerCosts] = await Promise.all([
@@ -7216,7 +9916,7 @@ export function buildApi(options: BuildApiOptions = {}) {
 
   // JobScanner: scan external partner feeds (Adzuna now; Talent.com later) for Québec jobs, normalize
   // and dedupe them into external leads, and optionally rank them for a worker (role keywords +
-  // location). These are EXTERNAL leads — a hand-off to the source, not JobLop governed jobs; no money
+  // location). These are EXTERNAL leads — a hand-off to the source, not Joblop governed jobs; no money
   // moves. Uses the live Adzuna API when ADZUNA_APP_ID/ADZUNA_APP_KEY are set, else a mock QC feed so
   // the pipeline runs before the account is approved. Results are not yet persisted (next slice).
   app.post("/platform/jobscanner/scan", async (request, reply) => {
@@ -7273,13 +9973,13 @@ export function buildApi(options: BuildApiOptions = {}) {
       ranked: ranked !== null,
       note:
         client.mode === "mock"
-          ? "MOCK feed (Adzuna account not yet approved). External leads only — hand-off to the source, not JobLop jobs."
-          : "Live Adzuna feed. External leads only — hand-off to the source, not JobLop jobs."
+          ? "MOCK feed (Adzuna account not yet approved). External leads only — hand-off to the source, not Joblop jobs."
+          : "Live Adzuna feed. External leads only — hand-off to the source, not Joblop jobs."
     });
   });
 
   // JobScanner: read stored leads (from prior scans), optionally filtered by province/city and ranked
-  // for a worker. This is the funnel's data source — external hand-off leads, not JobLop jobs.
+  // for a worker. This is the funnel's data source — external hand-off leads, not Joblop jobs.
   app.get("/platform/jobscanner/leads", async (request, reply) => {
     const actor = await requireHrAuthority(request, reply);
     if (!actor) return;
@@ -7309,7 +10009,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       leads = rankLeadsForWorker(stored, profile);
       ranked = true;
     }
-    return reply.code(200).send({ leadCount: stored.length, ranked, leads, note: "External leads only — hand-off to the source, not JobLop jobs." });
+    return reply.code(200).send({ leadCount: stored.length, ranked, leads, note: "External leads only — hand-off to the source, not Joblop jobs." });
   });
 
   // AI CV Builder: generate a tailored CV + cover letter for a worker, optionally targeted at a stored
@@ -7336,16 +10036,18 @@ export function buildApi(options: BuildApiOptions = {}) {
       const title = readOptionalString(j, "title");
       if (title) job = { title, employer: readOptionalString(j, "employer"), description: readOptionalString(j, "description"), city: readOptionalString(j, "city") };
     }
-    const provider = getCvProvider();
-    let result;
-    try {
-      result = await provider.generate({ profile, job });
-    } catch (err) {
-      return reply.code(502).send({ error: "RWOS_CV_PROVIDER_ERROR", message: (err as Error).message, provider: provider.kind });
-    }
+    // Launch step 6: one AI attempt with a hard timeout, 50 a day per staff member, and the basic
+    // offline CV with a friendly note on any failure or limit. Never a 502 or an internal error code.
+    const result = await generateCvSafely({
+      profile,
+      job,
+      ai: getClaudeCvProvider(),
+      usage: { store: createPrismaAiUsageStore(prisma!), feature: AI_USAGE_FEATURES.cvStaff, actorRef: actor, limits: CV_STAFF_LIMITS }
+    });
     return reply.code(200).send({
-      cv: result,
-      providerKind: provider.kind,
+      cv: result.cv,
+      providerKind: result.providerKind,
+      fallback: result.fallback,
       note: "Advisory draft — the worker reviews and edits before use. Nothing is sent. Apply is a separate, worker-confirmed step."
     });
   });
@@ -7750,6 +10452,18 @@ export function buildApi(options: BuildApiOptions = {}) {
 
   // Bounded BULK calculation for a period (payroll authority). Calculation-only — no approve/lock/
   // pay. Returns a bounded per-worker summary + a keyset cursor for the next page.
+  // Employers a pay period can be opened for.
+  app.get("/platform/payroll/organizations", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const items = await prisma!.employerOrganization.findMany({
+      orderBy: { displayName: "asc" },
+      take: 200,
+      select: { id: true, displayName: true }
+    });
+    return reply.code(200).send({ items });
+  });
+
   app.post("/platform/payroll/periods/:periodId/bulk-calculate", async (request, reply) => {
     const actor = await requirePayrollAuthority(request, reply);
     if (!actor) return;
@@ -8130,16 +10844,16 @@ export function buildApi(options: BuildApiOptions = {}) {
       deductions: c.deductionLines.map((d) => ({ category: d.category, code: d.code, description: d.description, amountMinor: d.amountMinor, currency: d.currency }))
     }));
     // Accurate to-date totals across ALL the worker's approved/locked statements (not just this page).
-    const totals = await prisma!.payrollCalculation.aggregate({
+    const statements = await prisma!.payrollCalculation.findMany({
       where: { workerIdentityId: identity.id, status: { in: ["approved", "locked"] } },
-      _sum: { grossPayMinor: true, totalDeductionsMinor: true, netPayMinor: true },
-      _count: true
+      select: { id: true, familyRootId: true, revision: true, grossPayMinor: true, totalDeductionsMinor: true, netPayMinor: true }
     });
+    const current = currentPayrollCalculations(statements);
     const summary = {
-      statementCount: totals._count,
-      totalGrossMinor: totals._sum.grossPayMinor ?? 0,
-      totalDeductionsMinor: totals._sum.totalDeductionsMinor ?? 0,
-      totalNetMinor: totals._sum.netPayMinor ?? 0,
+      statementCount: current.length,
+      totalGrossMinor: current.reduce((sum, c) => sum + c.grossPayMinor, 0),
+      totalDeductionsMinor: current.reduce((sum, c) => sum + c.totalDeductionsMinor, 0),
+      totalNetMinor: current.reduce((sum, c) => sum + c.netPayMinor, 0),
       currency: items[0]?.currency ?? "CAD"
     };
     return reply.code(200).send({ items, summary, workerClassification: identity.classification, nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null, synthetic: true, notice: PAYROLL_SYNTHETIC_NOTICE });
@@ -8343,21 +11057,50 @@ export function buildApi(options: BuildApiOptions = {}) {
     // Worker Pro gating: Pro workers get the AI-written CV (Claude when keyed); free workers get the
     // basic synthetic draft. Enforced server-side — the free path never reaches the paid provider.
     const pro = await isPro(prisma!, session.user.id);
-    const provider = pro ? getCvProvider() : createSyntheticCvProvider();
+    // Launch step 6: Pro workers get one AI attempt (20 s timeout, no retry, 10 a day). Any failure,
+    // limit or the kill switch gives the basic offline CV with a friendly note, never an error.
+    const generated = pro
+      ? await generateCvSafely({
+          profile,
+          job,
+          ai: getClaudeCvProvider(),
+          usage: { store: createPrismaAiUsageStore(prisma!), feature: AI_USAGE_FEATURES.cvWorker, actorRef: session.user.id, limits: CV_WORKER_LIMITS }
+        })
+      : await generateCvSafely({ profile, job, ai: null, env: {} });
+    const result = generated.cv;
+    // R2-15: persist the built CV to Joblop's DB (one current CV per worker). Best-effort — a storage
+    // hiccup must never fail the generate the worker is waiting on; we log and still return the CV.
+    let saved = false;
     try {
-      const result = await provider.generate({ profile, job });
-      return reply.code(200).send({
-        cv: result,
-        providerKind: provider.kind,
-        pro,
-        upgradeAvailable: !pro,
-        note: pro
-          ? "Advisory draft — review and edit before applying. Nothing is sent."
-          : "Free basic draft. Upgrade to Worker Pro for an AI-written CV, premium designs, and best-jobs-first."
+      const data = {
+        headline: result.headline,
+        cvMarkdown: result.cvMarkdown,
+        coverLetterMarkdown: result.coverLetterMarkdown,
+        tailoredTo: result.tailoredTo,
+        language: profile.language ?? "en",
+        profileJson: profile as unknown as Prisma.InputJsonValue,
+        providerKind: generated.providerKind
+      };
+      await prisma!.workerCv.upsert({
+        where: { workerRef: session.user.id },
+        create: { workerRef: session.user.id, ...data },
+        update: data
       });
-    } catch (err) {
-      return reply.code(502).send({ error: "RWOS_CV_PROVIDER_ERROR", message: (err as Error).message, provider: provider.kind });
+      saved = true;
+    } catch (persistErr) {
+      app.log.error({ err: persistErr, userId: session.user.id }, "worker CV persist failed");
     }
+    return reply.code(200).send({
+      cv: result,
+      providerKind: generated.providerKind,
+      fallback: generated.fallback,
+      pro,
+      saved,
+      upgradeAvailable: !pro,
+      note: pro
+        ? "Advisory draft — review and edit before applying. Nothing is sent."
+        : "Free basic draft. Upgrade to Worker Pro for an AI-written CV, premium designs, and best-jobs-first."
+    });
   });
 
   // Worker Pro plan status for the signed-in worker.
@@ -8518,6 +11261,35 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ canceled: true });
   });
 
+  // EMPLOYER FIXED PLANS (short-term jobs: pay_per_shift / shift_pro / shift_business) and LONG-TERM
+  // JOB LISTINGS (C$99/month paid in advance; registered inside registerEmployerPlanRoutes). Mirrors
+  // Worker Pro above. Every route is 404 unless
+  // EMPLOYER_PLANS_ENABLED === "enabled"; card payment is Stripe TEST mode only. Employer = active
+  // owner/administrator of the organization (same rule as the job-bonus routes).
+  if (prisma) {
+    registerEmployerPlanRoutes(app, {
+      prisma,
+      emailSender,
+      log: (event, fields) => {
+        const safe = fields as Record<string, string | number | boolean | null>;
+        if (event.endsWith("_failed")) logger.warn(event, safe);
+        else logger.info(event, safe);
+      },
+      fallbackOrigin: runtimeConfig.internalApiOrigin,
+      requireStaff: requireHrAuthority,
+      requireUser: async (request, reply) => {
+        const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+        if (!session.authenticated || !session.user) {
+          reply.code(401).send({ error: "RWOS_EMPLOYER_PLAN_DENIED", message: "Authentication is required." });
+          return null;
+        }
+        return session.user.id;
+      },
+      isOrganizationManager: async (userId, organizationId) =>
+        (await requireActiveOrgMembership(userId, organizationId, ["ORGANIZATION_OWNER", "ORGANIZATION_ADMINISTRATOR"])) !== null
+    });
+  }
+
   // Worker's own CV attachments — workerRef is the user id from the session, never client-supplied.
   app.post("/worker/cv-assets", async (request, reply) => {
     const session = await authService.validateSession(readBearerToken(request.headers.authorization));
@@ -8558,6 +11330,304 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ deleted: true });
   });
 
+  // ── Platform Greetings & Certificates ────────────────────────────────────────────────────────────
+  // Admin sends holiday/occasion greeting cards and issues certificates to workers/employers. In-app +
+  // best-effort email. Country-neutral: occasions come from the active CountryProfile's holiday list.
+  const requirePlatformAdmin = async (request: FastifyRequest, reply: FastifyReply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      reply.code(401).send({ error: "RWOS_PLATFORM_DENIED", message: "Authentication is required." });
+      return null;
+    }
+    const roles = await resolveAuthorizationRoles(session.user.id);
+    if (!roles.includes("PLATFORM_ADMINISTRATOR")) {
+      reply.code(403).send({ error: "RWOS_PLATFORM_DENIED", message: "Platform authority is required." });
+      return null;
+    }
+    return session.user;
+  };
+
+  // ── Joblop Brain (phase 1) ──────────────────────────────────────────────────────────────────────
+  // Deterministic rules find problems; actions fix them only behind their own switch (all OFF by
+  // default), a master mode (off / watch / live), daily caps and once-only claims, with an audit row
+  // each. Approvals go through the same governed services staff use, acting as the staff account in
+  // BRAIN_ACTOR_USER_ID (unset = the brain changes no records). Nothing here moves money.
+  const brainActorUserId = (environment.BRAIN_ACTOR_USER_ID ?? "").trim() || null;
+  const brainSession = async (userId: string) => {
+    if (!prisma) return null;
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, publicId: true, emailNormalized: true, displayName: true, status: true }
+    });
+    if (!user || user.status !== "active") return null;
+    return {
+      authenticated: true,
+      user: { id: user.id, publicId: user.publicId, emailNormalized: user.emailNormalized, displayName: user.displayName, status: "active" as const },
+      session: { id: `brain-${randomUUID()}`, userId: user.id, expiresAt: new Date(Date.now() + 5 * 60_000) }
+    };
+  };
+  const requireBrainSession = async (userId: string) => {
+    const session = await brainSession(userId);
+    if (!session) throw new Error("The brain staff account is missing or not active.");
+    return { session, roles: await resolveAuthorizationRoles(userId) };
+  };
+  const brainDomain: JoblopBrainDomain = {
+    async approveJobRequest({ jobRequestId, actorUserId }) {
+      const { session, roles } = await requireBrainSession(actorUserId);
+      const current = await prisma!.jobRequest.findUnique({ where: { id: jobRequestId }, select: { status: true, version: true } });
+      if (!current) throw new Error("Request not found.");
+      let version = current.version;
+      if (current.status === "submitted") {
+        const reviewed = await jobRequestService.startAdminReview({ session, roles, jobRequestId, expectedVersion: version });
+        version = reviewed.version;
+      }
+      await approveForDispatchFlow({ session, roles, jobRequestId, expectedVersion: version, marginPpm: null, openClaim: true });
+    },
+    async approveTimesheet({ timesheetId, expectedVersion, actorUserId }) {
+      const { session, roles } = await requireBrainSession(actorUserId);
+      await timesheetService.approve({ session, roles, timesheetId, expectedVersion });
+    },
+    async requestTimesheetCorrection({ timesheetId, expectedVersion, reason, actorUserId }) {
+      const { session, roles } = await requireBrainSession(actorUserId);
+      await timesheetService.requestCorrection({ session, roles, timesheetId, expectedVersion, reason });
+    },
+    async markAttendanceMissed({ attendanceRecordId, expectedVersion, reason, actorUserId }) {
+      const { session, roles } = await requireBrainSession(actorUserId);
+      await attendanceService.markMissed({ session, roles, attendanceRecordId, expectedVersion, reason });
+    }
+  };
+  // Logs carry plain values only (counts, keys), never message text or personal details.
+  const brainLog = (event: string, fields?: Readonly<Record<string, unknown>>) =>
+    logger.info(
+      event,
+      Object.fromEntries(
+        Object.entries(fields ?? {}).filter(([, v]) => v === null || typeof v === "string" || typeof v === "number" || typeof v === "boolean")
+      ) as Record<string, string | number | boolean | null>
+    );
+  const brainStore = prisma ? createPrismaBrainStore(prisma) : null;
+  const brain =
+    prisma && brainStore
+      ? createJoblopBrain({
+          store: brainStore,
+          data: createPrismaJoblopBrainData(prisma, (jobs) => remainingOpenings(prisma, jobs)),
+          ceoData: createPrismaJoblopCeoData(prisma),
+          ceoEffects: createJoblopCeoEffects({ log: brainLog }),
+          effects: createJoblopBrainEffects({
+            prisma,
+            emailSender,
+            smsSender,
+            rawEmailSender,
+            rawSmsSender,
+            actorUserId: brainActorUserId,
+            domain: brainDomain,
+            now: () => new Date(),
+            workerWebOrigin: offerCtaOrigin
+          }),
+          extraSwitches: assistantSwitchKeys(),
+          log: brainLog
+        })
+      : null;
+  // ── Joblop Brain phase 2: the role assistant inside "Contact Joblop" ─────────────────────────────
+  // Every switch starts OFF (assistant, assistant.<role>, one per action) and lives with the brain
+  // settings. Tools call the existing routes through inject, as the signed-in person (their bearer),
+  // so every permission check and validation applies. Actions only run after the person's Confirm.
+  const assistant = brainStore
+    ? createAssistantService({
+        store: brainStore,
+        signer: createProposalSigner(environment.ASSISTANT_PROPOSAL_SECRET),
+        apiKey: () => outsideAiApiKey(),
+        model: (environment.ASSISTANT_AI_MODEL ?? environment.CONTACT_AI_MODEL ?? "").trim() || "claude-opus-5-5",
+        guideFor: (role) => guideFor(role === "staff" ? "admin" : role),
+        callerFor: (authorization) => async ({ method, url, body }) => {
+          const res = await app.inject({
+            method,
+            url,
+            headers: { authorization, ...(body ? { "content-type": "application/json" } : {}) },
+            ...(body ? { payload: JSON.stringify(body) } : {})
+          });
+          let parsed: unknown;
+          try {
+            parsed = res.body ? JSON.parse(res.body) : null;
+          } catch {
+            parsed = null;
+          }
+          return { status: res.statusCode, body: parsed };
+        },
+        log: (event, fields) => logger.info(event, fields)
+      })
+    : null;
+  const brainSummaryHour = Number.parseInt((environment.BRAIN_SUMMARY_HOUR_UTC ?? "").trim(), 10);
+  registerBrainRoutes(app, {
+    brain,
+    store: brainStore,
+    sweepToken: (environment.BRAIN_SWEEP_TOKEN ?? "").trim(),
+    requireStaff: async (request, reply) => (await requirePlatformAdmin(request, reply))?.id ?? null,
+    emailSender,
+    staffEmail: staffAlertEmail,
+    summaryHourUtc: Number.isInteger(brainSummaryHour) && brainSummaryHour >= 0 && brainSummaryHour <= 23 ? brainSummaryHour : 12,
+    actorConfigured: brainActorUserId !== null,
+    ...(prisma ? { afterSweep: () => purgeOldDeliveryBodies(prisma, new Date()) } : {}),
+    log: brainLog
+  });
+
+  // ── CRM core (phase 1) ──────────────────────────────────────────────────────────────────────────
+  // Staff-only pipeline + contacts, served to the dedicated CRM app. Platform-administrator authority
+  // is enforced here (requireStaff sends 401/403 and returns null before any write). Nothing in this
+  // phase sends marketing email or moves money; consent is read-only.
+  registerCrmRoutes(app, {
+    prisma: prisma ?? null,
+    requireStaff: async (request, reply) => (await requirePlatformAdmin(request, reply))?.id ?? null
+  });
+
+  // Upcoming holiday occasions for the active country — drives the greeting-card occasion picker.
+  app.get("/platform/greetings/holidays", async (request, reply) => {
+    const user = await requirePlatformAdmin(request, reply);
+    if (!user) return;
+    try {
+      const holidays = upcomingHolidays(activeCountry().holidays, new Date(), 12);
+      return reply.code(200).send({ country: activeCountry().code, holidays });
+    } catch (err) {
+      return reply.code(500).send({ error: "RWOS_COUNTRY_UNCONFIGURED", message: (err as Error).message });
+    }
+  });
+
+  // Search workers/employers by name/email for the "selected recipients" picker.
+  app.get("/platform/greetings/recipients", async (request, reply) => {
+    const user = await requirePlatformAdmin(request, reply);
+    if (!user) return;
+    const q = asRecord(request.query);
+    const query = readOptionalString(q, "q") ?? "";
+    const kindRaw = readOptionalString(q, "kind") ?? "all";
+    const kind: RecipientKind | "all" = kindRaw === "worker" || kindRaw === "employer" ? kindRaw : "all";
+    const results = await searchRecipients(prisma!, query, kind);
+    return reply.code(200).send({ recipients: results });
+  });
+
+  // Send a greeting to an audience (all / workers / employers / selected).
+  app.post("/platform/greetings", async (request, reply) => {
+    const user = await requirePlatformAdmin(request, reply);
+    if (!user) return;
+    const body = asRecord(request.body);
+    const title = readOptionalString(body, "title");
+    const message = readOptionalString(body, "message");
+    if (!title || !message) return reply.code(400).send({ error: "RWOS_GREETING_INVALID", message: "title and message are required." });
+    const scopeRaw = readOptionalString(body, "audienceScope") ?? "all";
+    const validScopes: AudienceScope[] = ["all", "workers", "employers", "selected"];
+    if (!validScopes.includes(scopeRaw as AudienceScope)) return reply.code(400).send({ error: "RWOS_GREETING_INVALID", message: "Invalid audienceScope." });
+    const audienceScope = scopeRaw as AudienceScope;
+    const selectedUserIds = Array.isArray(body.recipientUserIds)
+      ? body.recipientUserIds.filter((v): v is string => typeof v === "string" && isCanonicalUuid(v))
+      : [];
+    if (audienceScope === "selected" && selectedUserIds.length === 0) return reply.code(400).send({ error: "RWOS_GREETING_INVALID", message: "Select at least one recipient." });
+    const result = await sendGreeting(prisma!, emailSender, {
+      createdByUserId: user.id,
+      occasionKey: readOptionalString(body, "occasionKey") ?? null,
+      templateKey: readOptionalString(body, "templateKey") ?? "custom",
+      title: title.slice(0, 160),
+      message: message.slice(0, 2000),
+      audienceScope,
+      selectedUserIds
+    });
+    return reply.code(201).send(result);
+  });
+
+  // Greetings the admin has sent (history).
+  app.get("/platform/greetings", async (request, reply) => {
+    const user = await requirePlatformAdmin(request, reply);
+    if (!user) return;
+    return reply.code(200).send({ greetings: await listSentGreetings(prisma!) });
+  });
+
+  // Issue a certificate to one recipient.
+  app.post("/platform/certificates", async (request, reply) => {
+    const user = await requirePlatformAdmin(request, reply);
+    if (!user) return;
+    const body = asRecord(request.body);
+    const recipientUserId = readOptionalString(body, "recipientUserId");
+    const kind = readOptionalString(body, "kind") ?? "";
+    if (!recipientUserId || !isCanonicalUuid(recipientUserId)) return reply.code(400).send({ error: "RWOS_CERTIFICATE_INVALID", message: "A valid recipientUserId is required." });
+    if (!isCertificateKind(kind)) return reply.code(400).send({ error: "RWOS_CERTIFICATE_INVALID", message: "Invalid certificate kind." });
+    const result = await issueCertificate(prisma!, emailSender, {
+      issuedByUserId: user.id,
+      recipientUserId,
+      kind,
+      title: readOptionalString(body, "title"),
+      note: readOptionalString(body, "note")
+    });
+    if (!result.ok) return reply.code(404).send({ error: "RWOS_CERTIFICATE_RECIPIENT_NOT_FOUND", message: "Recipient not found." });
+    return reply.code(201).send({ certificate: result.certificate });
+  });
+
+  // Certificates the admin has issued (history).
+  app.get("/platform/certificates", async (request, reply) => {
+    const user = await requirePlatformAdmin(request, reply);
+    if (!user) return;
+    return reply.code(200).send({ certificates: await listIssuedCertificates(prisma!) });
+  });
+
+  // Recipient-facing inbox: a signed-in worker or employer reads THEIR greetings/certificates. The same
+  // handlers serve both apps — delivery rows are keyed by user id, so each user sees only their own.
+  const requireRecipient = async (request: FastifyRequest, reply: FastifyReply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      reply.code(401).send({ error: "RWOS_INBOX_DENIED", message: "Authentication is required." });
+      return null;
+    }
+    return session.user;
+  };
+
+  if (prisma) {
+    registerInstantContactRoutes(app, {
+      prisma,
+      emailSender,
+      smsSender,
+      pushSender,
+      isLocal: runtimeConfig.rwosEnv === "local",
+      requireUser: requireRecipient,
+      requireAdmin: requirePlatformAdmin,
+      assistant
+    });
+  }
+
+  app.get("/inbox/greetings", async (request, reply) => {
+    const user = await requireRecipient(request, reply);
+    if (!user) return;
+    return reply.code(200).send({ greetings: await listGreetingsForRecipient(prisma!, user.id) });
+  });
+
+  app.post("/inbox/greetings/:id/read", async (request, reply) => {
+    const user = await requireRecipient(request, reply);
+    if (!user) return;
+    const id = readRouteParam(request.params, "id");
+    if (!id || !isCanonicalUuid(id)) return reply.code(400).send({ error: "RWOS_INBOX_INVALID" });
+    await markGreetingRead(prisma!, user.id, id);
+    return reply.code(200).send({ read: true });
+  });
+
+  app.get("/inbox/certificates", async (request, reply) => {
+    const user = await requireRecipient(request, reply);
+    if (!user) return;
+    return reply.code(200).send({ certificates: await listCertificatesForRecipient(prisma!, user.id) });
+  });
+
+  app.post("/inbox/certificates/:id/read", async (request, reply) => {
+    const user = await requireRecipient(request, reply);
+    if (!user) return;
+    const id = readRouteParam(request.params, "id");
+    if (!id || !isCanonicalUuid(id)) return reply.code(400).send({ error: "RWOS_INBOX_INVALID" });
+    await markCertificateRead(prisma!, user.id, id);
+    return reply.code(200).send({ read: true });
+  });
+
+  // Invite-a-friend: the signed-in user's own invite code (created on first use) + how many have joined.
+  app.get("/invite/code", async (request, reply) => {
+    const user = await requireRecipient(request, reply);
+    if (!user) return;
+    const code = await getOrCreateReferralCode(prisma!, user.id);
+    const stats = await referralStats(prisma!, user.id);
+    return reply.code(200).send({ code, joined: stats.joined });
+  });
+
   // The old free toggle is removed: classification can no longer be flipped without a signed election.
   app.put("/worker/profile/classification", async (_request, reply) =>
     reply.code(410).send({
@@ -8578,12 +11648,12 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!identity) {
       return reply.code(200).send({ toPay: [], paid: [], summary: { currency: "CAD", toPayMinor: 0, paidMinor: 0 }, synthetic: true });
     }
-    const { payouts, newlyRegistered } = await materializeAndListWorkerPayouts(prisma!, identity.id, new Date());
-    // The 48h dispute window closed clean for these payouts this read → the amount is now confirmed
-    // ("registered in your account"). Notify once (best-effort); the "transferred/paid" notice comes later.
-    for (const r of newlyRegistered) {
-      await notifyWorkerPayoutRegistered(prisma!, emailSender, { workerIdentityId: r.workerIdentityId, amountMinor: r.amountMinor, currency: r.currency });
-    }
+    // Materialize for immediacy so the worker sees current state on read, but DO NOT send any email
+    // here — the read path must not await notifications. The background progression job
+    // (startWorkerPayoutProgressionSchedule) owns sending the "registered" notice and retrying any
+    // that failed, driven by the durable registered_notified_at / paid_notified_at markers. So this
+    // read ignores `newlyRegistered`: registeredAt may be persisted here, but the job delivers the notice.
+    const { payouts } = await materializeAndListWorkerPayouts(prisma!, identity.id, new Date());
     const toPay = payouts.filter((p) => p.status === "pending" || p.status === "held" || p.status === "released");
     const paid = payouts.filter((p) => p.status === "paid");
     const currency = payouts[0]?.currency ?? "CAD";
@@ -8606,10 +11676,11 @@ export function buildApi(options: BuildApiOptions = {}) {
     const taxYear = readOptionalNumber(query, "year") ?? new Date().getUTCFullYear();
     const yearStart = new Date(Date.UTC(taxYear, 0, 1));
     const yearEnd = new Date(Date.UTC(taxYear + 1, 0, 1));
-    const calcs = await prisma!.payrollCalculation.findMany({
+    const locked = await prisma!.payrollCalculation.findMany({
       where: { workerIdentityId: identity.id, status: "locked", payrollPeriod: { periodStart: { gte: yearStart, lt: yearEnd } } },
-      select: { id: true, workerClassification: true, grossPayMinor: true, totalEmployerCostMinor: true, currency: true }
+      select: { id: true, familyRootId: true, revision: true, workerClassification: true, grossPayMinor: true, totalEmployerCostMinor: true, currency: true }
     });
+    const calcs = currentPayrollCalculations(locked);
     if (calcs.length === 0) return reply.code(200).send({ slips: [], taxYear, synthetic: true });
     const deductions = await prisma!.payrollDeductionLine.findMany({
       where: { payrollCalculationId: { in: calcs.map((c) => c.id) } },
@@ -8680,6 +11751,50 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ items, synthetic: true });
   });
 
+  // Staff queue of worker disputes. Payroll or platform administrators only.
+  app.get("/platform/worker-disputes", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const status = readOptionalString(asRecord(request.query), "status") ?? "open";
+    if (status !== "open" && status !== "resolved" && status !== "withdrawn") {
+      return reply.code(400).send({ error: "RWOS_INVALID_DISPUTE", message: "status must be open, resolved or withdrawn." });
+    }
+    const items = await listWorkerDisputesForStaff(prisma!, { status });
+    return reply.code(200).send({ items, synthetic: true });
+  });
+
+  // Staff settle an open dispute: the decision is recorded and shown to the worker, and the payout it
+  // held returns to the normal flow. No amount changes here. A different amount is a payroll correction.
+  app.post("/platform/worker-disputes/:disputeId/resolve", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const disputeId = readRouteParam(request.params, "disputeId");
+    const resolution = normalizeWorkerDisputeReason(asRecord(request.body).resolution);
+    if (!resolution) {
+      return reply.code(400).send({ error: "RWOS_INVALID_DISPUTE", message: "Say how the dispute was settled." });
+    }
+    if (!isCanonicalUuid(disputeId)) {
+      return reply.code(404).send({ error: "RWOS_DISPUTE_NOT_FOUND", message: "Dispute not found." });
+    }
+    const now = new Date();
+    const result = await resolveWorkerDispute(prisma!, { disputeId, resolution, now });
+    if (!result.ok) {
+      return result.reason === "not_found"
+        ? reply.code(404).send({ error: "RWOS_DISPUTE_NOT_FOUND", message: "Dispute not found." })
+        : reply.code(409).send({ error: "RWOS_DISPUTE_NOT_OPEN", message: "This dispute is already closed." });
+    }
+    try {
+      await createPrismaPayrollRepository(prisma!).recordAudit({
+        entityType: "worker_dispute", entityId: result.dispute.id, entityPublicReference: result.dispute.payrollCalculationId,
+        organizationId: result.dispute.organizationId, action: "worker_dispute.resolved", priorState: "open", newState: "resolved",
+        reason: resolution.slice(0, 240), actorUserId: actor, correlationId: request.id, now
+      });
+    } catch (error) {
+      logger.warn("worker_dispute.audit_failed", { disputeId, error: error instanceof Error ? error.message : "unknown" });
+    }
+    return reply.code(200).send({ dispute: result.dispute, synthetic: true });
+  });
+
   // The worker withdraws their own still-open dispute; its paused payout returns to the normal flow.
   app.post("/worker/disputes/:disputeId/withdraw", async (request, reply) => {
     const session = await authService.validateSession(readBearerToken(request.headers.authorization));
@@ -8698,6 +11813,43 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
     return reply.code(200).send({ dispute: result.dispute, synthetic: true });
   });
+
+  // A job request as its employer may see it. The review note is kept only when it is meant for the
+  // employer (staff asking for information) or when the company wrote it (e.g. its own cancel reason);
+  // a note staff left on anything else (approval, a staff cancel) is internal.
+  async function serializeEmployerJobRequest(jobRequest: Parameters<typeof serializeJobRequest>[0]) {
+    const base = serializeJobRequest(jobRequest);
+    if (!base.adminReviewReason || jobRequest.status === "information_required") return base;
+    const writer = jobRequest.updatedByUserId;
+    const companyWrote = writer ? await userHasOrganizationAccess(writer, jobRequest.organizationId).catch(() => false) : false;
+    return companyWrote ? base : { ...base, adminReviewReason: null };
+  }
+
+  // Who cancelled each attendance record, for the employer: "joblop" | "company" | "worker".
+  async function employerCancelledByMap(attendanceRecordIds: readonly string[]): Promise<Map<string, ReturnType<typeof employerCancelledBy>>> {
+    const result = new Map<string, ReturnType<typeof employerCancelledBy>>();
+    if (!prisma || attendanceRecordIds.length === 0) return result;
+    const rows = await prisma.attendanceRecord.findMany({
+      where: { id: { in: [...attendanceRecordIds] } },
+      select: {
+        id: true, status: true, cancelledByUserId: true,
+        assignment: { select: { status: true } },
+        workerIdentity: { select: { userId: true } },
+        jobRequest: { select: { status: true, cancellation: { select: { id: true } } } }
+      }
+    });
+    for (const r of rows) {
+      result.set(r.id, employerCancelledBy(workerCancelledBy({
+        attendanceStatus: r.status,
+        attendanceCancelledByUserId: r.cancelledByUserId,
+        workerUserId: r.workerIdentity.userId,
+        assignmentStatus: r.assignment.status,
+        jobStatus: r.jobRequest.status,
+        jobCancelledByEmployer: r.jobRequest.cancellation !== null
+      })));
+    }
+    return result;
+  }
 
   async function userHasOrganizationAccess(userId: string, organizationId: string): Promise<boolean> {
     const memberships = await membershipService.listMemberships(userId);
@@ -8726,6 +11878,13 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
 
     const body = asRecord(request.body);
+    if (await isLongTermAttendance(prisma, readRequiredString(body, "attendanceRecordId") ?? "")) {
+      return reply.code(409).send(LONG_TERM_NO_TIMESHEETS_BODY);
+    }
+    // No timesheet (so no pay or invoice) for a cancelled job or a cancelled booking.
+    if (prisma && isCanonicalUuid(readRequiredString(body, "attendanceRecordId") ?? "") && (await cancelledShiftReason(prisma, readRequiredString(body, "attendanceRecordId") ?? ""))) {
+      return reply.code(409).send(SHIFT_CANCELLED_BODY);
+    }
     const timesheet = await timesheetService.createFromAttendance({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
@@ -8752,6 +11911,89 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
 
     return reply.code(200).send({ timesheets: timesheets.map((item) => serializeTimesheet(item)) });
+  });
+
+  // Staff queue: finished shifts still needing a timesheet, plus every timesheet with readable names.
+  app.get("/platform/timesheets/queue", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
+
+    // Also the authority check: the shift names below are read only after this list is allowed.
+    const timesheets = await timesheetService.listTimesheets({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id)
+    });
+    const finished = await prisma!.attendanceRecord.findMany({
+      where: { status: { in: ["checked_out", "completed"] }, timesheet: { is: null } },
+      orderBy: { checkOutAt: "desc" },
+      take: 100,
+      select: {
+        id: true, status: true, checkInAt: true, checkOutAt: true,
+        organization: { select: { displayName: true } },
+        workerIdentity: { select: { displayName: true, user: { select: { displayName: true } } } }
+      }
+    });
+    const [organizations, workers] = await Promise.all([
+      prisma!.employerOrganization.findMany({
+        where: { id: { in: [...new Set(timesheets.map((t) => t.organizationId))] } },
+        select: { id: true, displayName: true }
+      }),
+      prisma!.workerIdentity.findMany({
+        where: { id: { in: [...new Set(timesheets.map((t) => t.workerIdentityId))] } },
+        select: { id: true, displayName: true, user: { select: { displayName: true } } }
+      })
+    ]);
+    const organizationName = new Map(organizations.map((o) => [o.id, o.displayName]));
+    // A worker profile often has no name of its own yet; the account's name is the next best.
+    const workerName = new Map(workers.map((w) => [w.id, w.displayName ?? w.user.displayName]));
+    return reply.code(200).send({
+      ready: finished.map((a) => ({
+        attendanceRecordId: a.id,
+        status: a.status,
+        employerName: a.organization.displayName,
+        workerName: a.workerIdentity.displayName ?? a.workerIdentity.user?.displayName ?? null,
+        checkInAt: a.checkInAt?.toISOString() ?? null,
+        checkOutAt: a.checkOutAt?.toISOString() ?? null
+      })),
+      timesheets: timesheets.map((t) => ({
+        id: t.id,
+        status: t.status,
+        version: t.version,
+        employerName: organizationName.get(t.organizationId) ?? "",
+        workerName: workerName.get(t.workerIdentityId) ?? null,
+        scheduledStartAt: t.scheduledStartAt.toISOString(),
+        payableMinutes: t.payableMinutes,
+        exceptionSummary: t.exceptionSummary
+      }))
+    });
+  });
+
+  // One staff action for a finished shift: complete attendance, create the timesheet, calculate it.
+  // A worker's punch-out cannot do this, because these steps need staff authority.
+  app.post("/platform/timesheets/prepare", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
+
+    const attendanceRecordId = readRequiredString(asRecord(request.body), "attendanceRecordId") ?? "";
+    if (await isLongTermAttendance(prisma, attendanceRecordId)) {
+      return reply.code(409).send(LONG_TERM_NO_TIMESHEETS_BODY);
+    }
+    // No timesheet (so no pay or invoice) for a cancelled job or a cancelled booking.
+    if (prisma && isCanonicalUuid(attendanceRecordId) && (await cancelledShiftReason(prisma, attendanceRecordId))) {
+      return reply.code(409).send(SHIFT_CANCELLED_BODY);
+    }
+    const roles = await resolveAuthorizationRoles(session.user.id);
+    const attendance = await attendanceService.readAttendance({ session, roles, attendanceRecordId });
+    if (attendance.status === "checked_out") {
+      await attendanceService.markCompleted({ session, roles, attendanceRecordId, expectedVersion: attendance.version });
+    }
+    const created = await timesheetService.createFromAttendance({ session, roles, attendanceRecordId });
+    const timesheet = await timesheetService.calculate({ session, roles, timesheetId: created.id, expectedVersion: created.version });
+    return reply.code(200).send({ timesheet: serializeTimesheet(timesheet) });
   });
 
   app.get("/platform/timesheets/:timesheetId", async (request, reply) => {
@@ -9009,6 +12251,47 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   );
 
+  // The worker's own timesheets (worker-scoped list). Mirrors GET /worker/attendance: a bounded,
+  // index-backed, privacy-safe projection over the EXISTING timesheet authority — the worker sees only
+  // their OWN timesheets, with no employer economics, no exact address, and no other worker's data. It
+  // computes nothing and moves no money; it only lets the worker find the timesheet to confirm/dispute.
+  app.get("/worker/timesheets", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
+    const identity = await prisma!.workerIdentity.findUnique({ where: { userId: session.user.id }, select: { id: true } });
+    if (!identity) return reply.code(403).send({ error: "RWOS_TIMESHEET_DENIED", message: "Only a worker can view their timesheets." });
+    const query = asRecord(request.query);
+    const limit = Math.min(Math.max(parseQueryInt(readOptionalString(query, "limit")) ?? 25, 1), 100);
+    const cursor = readOptionalString(query, "cursor");
+    const rows = await prisma!.timesheet.findMany({
+      // A late-cancellation timesheet only carries the employer's charge; it pays the worker nothing
+      // and is not work they did, so it is not shown as one of their timesheets.
+      where: {
+        workerIdentityId: identity.id,
+        OR: [{ exceptionSummary: null }, { exceptionSummary: { not: LATE_CANCELLATION_TIMESHEET_MARKER } }]
+      },
+      orderBy: [{ scheduledStartAt: "desc" }, { id: "desc" }],
+      take: limit + 1,
+      ...(cursor && isCanonicalUuid(cursor) ? { cursor: { id: cursor }, skip: 1 } : {}),
+      select: {
+        id: true, assignmentId: true, status: true, scheduledStartAt: true, scheduledEndAt: true,
+        payableMinutes: true, billableMinutes: true, breakMinutes: true, workerReviewStatus: true, version: true,
+        organization: { select: { displayName: true } },
+        residence: { select: { city: true, province: true } }
+      }
+    });
+    const hasMore = rows.length > limit;
+    const items = rows.slice(0, limit).map((r) => ({
+      timesheetId: r.id, assignmentId: r.assignmentId, status: r.status,
+      scheduledStartAt: r.scheduledStartAt.toISOString(), scheduledEndAt: r.scheduledEndAt.toISOString(),
+      payableMinutes: r.payableMinutes, billableMinutes: r.billableMinutes, breakMinutes: r.breakMinutes,
+      workerReviewStatus: r.workerReviewStatus, version: r.version,
+      employerName: r.organization.displayName,
+      areaLabel: r.residence.city && options.countryAddress?.isRegionCode(r.residence.province) ? `${r.residence.city}, ${r.residence.province}` : null
+    }));
+    return reply.code(200).send({ items, nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null });
+  });
+
   app.get("/worker/timesheets/:timesheetId", async (request, reply) => {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
@@ -9102,6 +12385,25 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   }
 
+  // Money-flow Phase 2: BACKGROUND worker-payout progression — the real driver of the payout lifecycle
+  // and its notifications, independent of any worker page view. OFF by default (its own env flag):
+  // starts only when WORKER_PAYOUT_PROGRESSION_INTERVAL_MIN is a positive number. Even then every pass
+  // is fail-closed behind the durable kill switch (payment_sweep_control row "worker_payout_progression",
+  // default OFF) and serialized by a cross-instance lease. It moves no money and never reads
+  // FINANCE_LIVE_ENABLED. See docs/finance/WORKER_PAYOUT_TEST_EXECUTION.md.
+  if (prisma && process.env.WORKER_PAYOUT_PROGRESSION_INTERVAL_MIN) {
+    const intervalMinutes = Number(process.env.WORKER_PAYOUT_PROGRESSION_INTERVAL_MIN);
+    if (Number.isFinite(intervalMinutes) && intervalMinutes > 0) {
+      const runner = createWorkerPayoutProgressionRunner({
+        prisma,
+        emailSender,
+        emitMetrics: (m) => logger.info("worker_payout.progression.metrics", { ...m })
+      });
+      const stop = startWorkerPayoutProgressionSchedule({ runner, intervalMinutes, logger });
+      app.addHook("onClose", async () => stop());
+    }
+  }
+
   async function resolveCatalogueReadRoles(userId: string, organizationId: string | null) {
     if (organizationId) {
       const decision = await membershipService.selectOrganizationContext({
@@ -9128,6 +12430,8 @@ export function isPublicWorkerIngressPath(rawUrl: string) {
     path === "/auth/sign-out" ||
     path === "/auth/email/send-code" ||
     path === "/auth/email/verify-code" ||
+    path === "/auth/email/add" ||
+    path === "/auth/email/confirm" ||
     path === "/auth/password-reset/request" ||
     path === "/auth/password-reset/complete" ||
     path.startsWith("/worker/")
@@ -9228,14 +12532,6 @@ function readAllowancesInput(body: Record<string, unknown>) {
     meal: readAllowanceEntryInput(allowances, "meal"),
     lodging: readAllowanceEntryInput(allowances, "lodging")
   };
-}
-
-// Parse an ISO date/datetime string into a Date, or null if absent/invalid. Used for
-// marketplace date-range filters (server-authoritative).
-function parseIsoDate(value: string | null): Date | null {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function readStringArray(body: Record<string, unknown>, key: string) {
@@ -9445,26 +12741,6 @@ function trustedIdentityHeaders(
     }));
 }
 
-function deriveAuthenticationRateLimitKeys(
-  input: Readonly<{
-    action: "register" | "sign_in" | "email_verify_send" | "password_reset_request";
-    ip: string;
-    email: string;
-  }>,
-  secret: string,
-  namespace = "rwos:authrl:test:v1",
-  keyId = "memory"
-) {
-  const digest = (kind: "account" | "network", value: string) =>
-    createHmac("sha256", secret)
-      .update(`rwos:auth-rate-limit:v1:${input.action}:${kind}:${value}`)
-      .digest("hex");
-  return {
-    accountKey: `${namespace}:${keyId}:${input.action}:account:${digest("account", input.email.trim().toLowerCase())}`,
-    networkKey: `${namespace}:${keyId}:${input.action}:network:${digest("network", input.ip.trim().toLowerCase())}`
-  };
-}
-
 function hasEmailVerificationDelegate(prisma: unknown): boolean {
   return Boolean(
     prisma &&
@@ -9557,25 +12833,6 @@ function applySecurityHeaders(reply: FastifyReply, production: boolean) {
   if (production) {
     reply.header("strict-transport-security", "max-age=31536000; includeSubDomains");
   }
-}
-
-function isProductionDisabledOperation(method: string, url: string) {
-  const path = url.split("?")[0] ?? url;
-  if (method === "GET" && /\/platform\/dispatches\/[^/]+\/candidates\/search$/.test(path)) {
-    return true;
-  }
-  if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) return false;
-  return (
-    path.startsWith("/platform/dispatches") ||
-    path.startsWith("/platform/worker-offers") ||
-    path.startsWith("/worker/offers") ||
-    path.startsWith("/platform/assignments") ||
-    path.startsWith("/worker/assignments") ||
-    path.startsWith("/platform/attendance") ||
-    path.startsWith("/worker/attendance") ||
-    path.startsWith("/platform/timesheets") ||
-    path.startsWith("/worker/timesheets")
-  );
 }
 
 function sendAuthenticationRateLimited(reply: FastifyReply, retryAfterSeconds: number) {
@@ -9870,6 +13127,20 @@ function sendWorkerOfferFailure(reply: FastifyReply, error: WorkerOfferError) {
     });
   }
   return sendWorkerOfferDenied(reply);
+}
+
+// Public job codes look like "JR-2026-000123": letters, digits and dashes only. Anything else is
+// refused before a database read (the code is only ever compared for equality).
+function isPublicJobCode(value: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9-]{2,63}$/.test(value);
+}
+
+// A worker can never hold two shifts at the same time. Every path that would give them one (open
+// claim, offer create / send / accept, staff assignment) answers 409 with the same body: the code,
+// the message in the caller's language, all three languages, and the shift already held.
+function sendShiftOverlap(reply: FastifyReply, acceptLanguage: string | string[] | undefined, heldShift: HeldShift) {
+  const header = Array.isArray(acceptLanguage) ? acceptLanguage[0] : acceptLanguage;
+  return reply.code(409).send(shiftOverlapResponseBody(heldShift, shiftOverlapLanguageFromHeader(header)));
 }
 
 function sendAssignmentDenied(reply: FastifyReply) {
@@ -10637,6 +13908,7 @@ function createUnavailableAttendanceService(): AttendanceService {
     workerCheckIn: denied,
     workerCheckOut: denied,
     markCompleted: denied,
+    recordReportedHours: denied,
     markMissed: denied,
     markException: denied,
     cancel: denied,
@@ -10687,7 +13959,80 @@ function createUnavailableCalendarRequestService(): CalendarRequestService {
     listClientCalendar: denied,
     getClientCalendarRequest: denied,
     listAdminCalendar: denied,
+    listAdminLifecycleCalendar: denied,
     getAdminCalendarRequest: denied,
     getWorkerOfferCalendarReference: denied
   } as CalendarRequestService;
+}
+
+// Assignment states that still hold a place on a job. Withdrawn, cancelled and replaced ones free it.
+const PLACE_HOLDING_ASSIGNMENT_STATUSES = [
+  "pending_validation",
+  "confirmed",
+  "worker_acknowledged",
+  "ready_for_attendance",
+  "in_attendance_window",
+  "attendance_handoff",
+  "closed"
+] as const;
+
+// Workers to tell when a shift is cancelled or changed: those still holding a place on it. A closed
+// (finished) assignment is left out; nothing about it can change for the worker any more.
+const SHIFT_NOTICE_ASSIGNMENT_STATUSES = PLACE_HOLDING_ASSIGNMENT_STATUSES.filter((status) => status !== "closed");
+
+export type ShiftHolder = Readonly<{ jobRequestId: string; assignmentId: string; status: string; userId: string }>;
+
+// Read who holds a place on the given jobs (or the given assignments) right now. Callers read this
+// BEFORE a cancel changes any status, and only notify after the cancel has succeeded.
+export async function readShiftHolders(
+  prisma: Pick<ReturnType<typeof createPrismaClient>, "assignment">,
+  where: Readonly<{ jobRequestIds?: readonly string[]; assignmentIds?: readonly string[] }>
+): Promise<ShiftHolder[]> {
+  const jobIds = where.jobRequestIds ?? [];
+  const assignmentIds = where.assignmentIds ?? [];
+  if (jobIds.length === 0 && assignmentIds.length === 0) return [];
+  const rows = await prisma.assignment.findMany({
+    where: {
+      status: { in: [...SHIFT_NOTICE_ASSIGNMENT_STATUSES] },
+      ...(jobIds.length > 0 ? { jobRequestId: { in: [...jobIds] } } : {}),
+      ...(assignmentIds.length > 0 ? { id: { in: [...assignmentIds] } } : {})
+    },
+    select: { id: true, jobRequestId: true, status: true, workerIdentity: { select: { userId: true } } }
+  });
+  return rows.map((row) => ({ jobRequestId: row.jobRequestId, assignmentId: row.id, status: row.status, userId: row.workerIdentity.userId }));
+}
+
+// Group holders by job, so each job's notice names its own shift.
+export function groupShiftHoldersByJob(holders: readonly ShiftHolder[]): Map<string, ShiftHolder[]> {
+  const byJob = new Map<string, ShiftHolder[]>();
+  for (const holder of holders) byJob.set(holder.jobRequestId, [...(byJob.get(holder.jobRequestId) ?? []), holder]);
+  return byJob;
+}
+
+// How many places are still open on each job: the headcount asked for, less the workers holding one.
+export async function remainingOpenings(
+  prisma: Pick<ReturnType<typeof createPrismaClient>, "assignment">,
+  jobs: readonly Readonly<{ id: string; numberOfWorkers: number }>[]
+): Promise<Map<string, number>> {
+  const left = new Map(jobs.map((job) => [job.id, job.numberOfWorkers]));
+  if (jobs.length === 0) return left;
+  const held = await prisma.assignment.groupBy({
+    by: ["jobRequestId"],
+    where: { jobRequestId: { in: jobs.map((job) => job.id) }, status: { in: [...PLACE_HOLDING_ASSIGNMENT_STATUSES] } },
+    _count: { _all: true }
+  });
+  for (const row of held) {
+    left.set(row.jobRequestId, Math.max(0, (left.get(row.jobRequestId) ?? 0) - row._count._all));
+  }
+  return left;
+}
+
+// The employer's view of a cancellation preview: the worker-side fields are internal and never leave
+// the API (workers' pay is not the employer's business, and it is always 0 since 2026-11-09).
+export function employerSafePreview<T extends { workerCompensationHours?: unknown; workerCompensationMinor?: unknown }>(
+  preview: T
+): Omit<T, "workerCompensationHours" | "workerCompensationMinor"> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { workerCompensationHours, workerCompensationMinor, ...rest } = preview;
+  return rest;
 }

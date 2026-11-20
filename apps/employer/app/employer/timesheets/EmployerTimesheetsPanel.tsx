@@ -6,11 +6,13 @@ import {
   calendarListState,
   calendarPartialState,
   formatRwosDateTime,
-  parseEmployerTimesheetList,
   type AuthenticatedViewState,
   type EmployerTimesheetDto
 } from "@rwos/shared";
 import { styles } from "../employerStyles";
+import { useLocale } from "../../i18n/LocaleProvider";
+import { fill, langOf, statusLabel } from "../../i18n/localText";
+import { reviewStatusLabels, timesheetStatusLabels, timesheetsText } from "../recordListText";
 
 type OrganizationChoice = Readonly<{ id: string; publicId: string; displayName: string }>;
 type TimesheetsState =
@@ -20,6 +22,8 @@ type TimesheetsState =
 // Persisted, org-scoped employer timesheet read (GET /api/timesheets → /organizations/:id/timesheets).
 // Read-only review surface — no confirm/dispute mutations here. Never shows fixture rows as persisted data.
 export function EmployerTimesheetsPanel() {
+  const lang = langOf(useLocale());
+  const tx = timesheetsText[lang];
   const [state, setState] = useState<TimesheetsState>({ status: "loading" });
   const generationRef = useRef(0);
 
@@ -37,9 +41,10 @@ export function EmployerTimesheetsPanel() {
         }
       }
       if (!response.ok) return setState(calendarFailureState(response.status));
-      const payload = await response.json();
+      // The route has already parsed the API record into this shape, and parsing it again would fail.
+      const payload = (await response.json()) as { timesheets: readonly EmployerTimesheetDto[] };
       if (generation !== generationRef.current) return;
-      const timesheets = parseEmployerTimesheetList(payload);
+      const timesheets = payload.timesheets;
       setState(timesheets.length > 0 ? calendarListState(timesheets) : calendarPartialState(timesheets));
     } catch {
       if (generation === generationRef.current) setState({ status: "error" });
@@ -56,35 +61,35 @@ export function EmployerTimesheetsPanel() {
   if (state.status === "loading") {
     return (
       <TimesheetsMessage
-        title="Loading timesheets"
-        message="Checking your authenticated organization context."
+        title={tx.loading}
+        message={tx.loadingBody}
       />
     );
   }
   if (state.status === "denied") {
     return (
       <TimesheetsMessage
-        title="Sign in to view timesheets"
-        message="Timesheets are shown only for your authenticated organization."
-        action={{ href: "/signin", label: "Go to sign in" }}
+        title={tx.signInTitle}
+        message={tx.signInBody}
+        action={{ href: "/signin", label: tx.goToSignIn }}
       />
     );
   }
   if (state.status === "organization_required") {
     return (
       <TimesheetsMessage
-        title="Select your organization"
-        message="Choose your organization on the request calendar, then return to view its timesheets."
-        action={{ href: "/employer/calendar", label: "Open request calendar" }}
+        title={tx.chooseCompanyTitle}
+        message={tx.chooseCompanyBody}
+        action={{ href: "/employer/calendar", label: tx.openCalendar }}
       />
     );
   }
   if (state.status === "empty") {
     return (
       <TimesheetsMessage
-        title="No timesheets yet"
-        message="Timesheets for this organization will appear here — no fixture records are shown."
-        action={{ href: "/employer/attendance", label: "View attendance" }}
+        title={tx.emptyTitle}
+        message={tx.emptyBody}
+        action={{ href: "/employer/attendance", label: tx.emptyAction }}
       />
     );
   }
@@ -93,12 +98,12 @@ export function EmployerTimesheetsPanel() {
       <TimesheetsMessage
         title={
           state.status === "unavailable"
-            ? "Timesheets unavailable"
+            ? tx.unavailableTitle
             : state.status === "stale"
-              ? "Timesheets changed"
-              : "Timesheets could not be loaded"
+              ? tx.changedTitle
+              : tx.errorTitle
         }
-        message="No fixture records are shown as persisted data. Retry when the service is available."
+        message={tx.errorBody}
         onRetry={load}
       />
     );
@@ -108,19 +113,15 @@ export function EmployerTimesheetsPanel() {
     <div style={styles.cardGrid}>
       {state.data.map((timesheet) => (
         <article key={timesheet.timesheetId} style={styles.card}>
-          <span style={styles.statusBadge}>{timesheet.status.replaceAll("_", " ")}</span>
+          <span style={styles.statusBadge}>{statusLabel(timesheetStatusLabels[lang], timesheet.status)}</span>
           <h3 style={styles.cardTitle}>{formatTimesheetWindow(timesheet)}</h3>
-          <p style={styles.cardText}>{formatTotals(timesheet)}</p>
-          <p style={styles.cardText}>{formatReviewStates(timesheet)}</p>
+          <p style={styles.cardText}>{formatTotals(timesheet, tx.totals)}</p>
+          <p style={styles.cardText}>{formatReviewStates(timesheet, tx.reviews, reviewStatusLabels[lang])}</p>
           {timesheet.exceptionSummary ? (
-            <p style={styles.cardText}>Exception: {timesheet.exceptionSummary}</p>
+            <p style={styles.cardText}>{fill(tx.problem, { issue: timesheet.exceptionSummary })}</p>
           ) : null}
-          <a
-            href={`/employer/assignments/detail?assignment=${encodeURIComponent(timesheet.assignmentId)}`}
-            style={styles.secondaryButton}
-          >
-            Open assignment detail
-          </a>
+          {/* No link here: the records carry no request number, and the old assignment-detail
+              page is not available on the live site. */}
           {timesheet.status === "employer_review" ? (
             <TimesheetActions timesheet={timesheet} onDone={load} />
           ) : null}
@@ -138,6 +139,7 @@ function TimesheetActions({
   timesheet,
   onDone
 }: Readonly<{ timesheet: EmployerTimesheetDto; onDone: () => void | Promise<void> }>) {
+  const tx = timesheetsText[langOf(useLocale())];
   const [mode, setMode] = useState<ActionMode>("idle");
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -160,22 +162,22 @@ function TimesheetActions({
           body: JSON.stringify({ expectedVersion: timesheet.versionToken, ...extra })
         });
         if (response.status === 409) {
-          setError("This timesheet changed. Reloading the latest version.");
+          setError(tx.changed);
           await onDone();
           return;
         }
         if (!response.ok) {
-          setError("That action could not be completed. Please try again.");
+          setError(tx.actionFailed);
           setMode(action === "dispute" ? "disputing" : "idle");
           return;
         }
         await onDone();
       } catch {
-        setError("That action could not be completed. Please try again.");
+        setError(tx.actionFailed);
         setMode(action === "dispute" ? "disputing" : "idle");
       }
     },
-    [onDone, timesheet.timesheetId, timesheet.versionToken]
+    [onDone, timesheet.timesheetId, timesheet.versionToken, tx]
   );
 
   const busy = mode === "submitting";
@@ -185,11 +187,11 @@ function TimesheetActions({
       {mode === "disputing" ? (
         <>
           <label style={styles.cardText} htmlFor={`dispute-${timesheet.timesheetId}`}>
-            Reason for dispute
+            {tx.disputeReason}
           </label>
           <textarea
             id={`dispute-${timesheet.timesheetId}`}
-            aria-label="Reason for dispute"
+            aria-label={tx.disputeReason}
             value={reason}
             onChange={(event) => setReason(event.target.value)}
             maxLength={1000}
@@ -204,7 +206,7 @@ function TimesheetActions({
               onClick={() => void submit("dispute", { reason: reason.trim() })}
               style={{ ...styles.primaryButton, cursor: busy ? "wait" : "pointer" }}
             >
-              {busy ? "Submitting…" : "Submit dispute"}
+              {busy ? tx.submitting : tx.submitDispute}
             </button>
             <button
               type="button"
@@ -215,7 +217,7 @@ function TimesheetActions({
               }}
               style={{ ...styles.secondaryButton, cursor: "pointer" }}
             >
-              Cancel
+              {tx.cancel}
             </button>
           </div>
         </>
@@ -227,7 +229,7 @@ function TimesheetActions({
             onClick={() => void submit("confirm")}
             style={{ ...styles.primaryButton, cursor: busy ? "wait" : "pointer" }}
           >
-            {busy ? "Confirming…" : "Confirm timesheet"}
+            {busy ? tx.confirming : tx.confirm}
           </button>
           <button
             type="button"
@@ -238,7 +240,7 @@ function TimesheetActions({
             }}
             style={{ ...styles.secondaryButton, cursor: "pointer" }}
           >
-            Dispute
+            {tx.dispute}
           </button>
         </div>
       )}
@@ -271,17 +273,24 @@ function formatMinutes(minutes: number | null) {
   return hours > 0 ? `${hours}h ${rest}m` : `${rest}m`;
 }
 
-function formatTotals(timesheet: EmployerTimesheetDto) {
-  return `Payable ${formatMinutes(timesheet.payableMinutes)} · billable ${formatMinutes(
-    timesheet.billableMinutes
-  )} · break ${formatMinutes(timesheet.breakMinutes)}`;
+function formatTotals(timesheet: EmployerTimesheetDto, template: string) {
+  return fill(template, {
+    worked: formatMinutes(timesheet.payableMinutes),
+    billed: formatMinutes(timesheet.billableMinutes),
+    break: formatMinutes(timesheet.breakMinutes)
+  });
 }
 
-function formatReviewStates(timesheet: EmployerTimesheetDto) {
-  const label = (value: string) => value.replaceAll("_", " ");
-  return `Worker ${label(timesheet.workerReviewStatus)} · employer ${label(
-    timesheet.employerReviewStatus
-  )} · platform ${label(timesheet.platformReviewStatus)}`;
+function formatReviewStates(
+  timesheet: EmployerTimesheetDto,
+  template: string,
+  labels: Readonly<Record<string, string>>
+) {
+  return fill(template, {
+    worker: statusLabel(labels, timesheet.workerReviewStatus),
+    employer: statusLabel(labels, timesheet.employerReviewStatus),
+    platform: statusLabel(labels, timesheet.platformReviewStatus)
+  });
 }
 
 function TimesheetsMessage({
@@ -295,6 +304,7 @@ function TimesheetsMessage({
   action?: Readonly<{ href: string; label: string }>;
   onRetry?: () => void;
 }>) {
+  const retryLabel = timesheetsText[langOf(useLocale())].retry;
   return (
     <div aria-live="polite" style={styles.panel}>
       <h3 style={styles.sectionTitle}>{title}</h3>
@@ -310,7 +320,7 @@ function TimesheetsMessage({
           style={{ ...styles.secondaryButton, cursor: "pointer" }}
           type="button"
         >
-          Retry
+          {retryLabel}
         </button>
       ) : null}
     </div>

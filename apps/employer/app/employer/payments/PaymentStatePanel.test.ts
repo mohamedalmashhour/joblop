@@ -9,6 +9,9 @@ function countKey(key: string) {
   return messages.split(`"${key}":`).length - 1;
 }
 
+// en-CA (source of truth) + fr-CA (Bill 96 parity) + ar (RTL, en-CA fallback).
+const LOCALE_COUNT = 3;
+
 describe("durable employer payment panel", () => {
   it("renders truthful loading, error, empty, and disabled mutation boundaries", () => {
     for (const [key, statement] of [
@@ -20,7 +23,7 @@ describe("durable employer payment panel", () => {
     ] as const) {
       expect(source).toContain(`t("${key}")`);
       expect(messages).toContain(`"${key}": "${statement}`);
-      expect(countKey(key)).toBe(2); // en-CA and fr-CA
+      expect(countKey(key)).toBe(LOCALE_COUNT); // en-CA, fr-CA, ar
     }
     expect(source).toContain('fetch("/api/payments"');
     expect(source).toContain("disabled");

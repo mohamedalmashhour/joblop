@@ -1,22 +1,14 @@
-import { EmployerShell } from "../employer/EmployerShell";
-import { styles } from "../employer/employerStyles";
+// Reviewed and accepted by the owner's Québec lawyer (2026-11-09). See docs/legal/LEGAL_REVIEW_NOTES.md before changing any wording.
+import { employerPrivacy } from "../legal/employerLegal";
+import { LegalDocumentPage } from "../legal/LegalDocumentPage";
 
 export default function PrivacyPage() {
-  const version = process.env.PRIVACY_NOTICE_VERSION;
   return (
-    <EmployerShell
-      currentRoute="/privacy"
-      eyebrow="Legal notice"
-      title="Privacy Notice"
-      lede="The applicable Privacy Notice must be approved and versioned before employer self-registration opens."
-    >
-      <section style={styles.section}>
-        <p style={styles.warning}>
-          {version
-            ? `Configured Privacy Notice version: ${version}. The approved publication content is supplied through the governed release process.`
-            : "No approved Privacy Notice version is configured. Employer self-registration remains disabled."}
-        </p>
-      </section>
-    </EmployerShell>
+    <LegalDocumentPage
+      current="/privacy"
+      documents={employerPrivacy}
+      fullTextKey="privacy"
+      title={{ en: "Privacy Policy for employers", fr: "Politique de confidentialité pour les employeurs", ar: "سياسة الخصوصية لأصحاب العمل" }}
+    />
   );
 }

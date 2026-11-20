@@ -1,15 +1,19 @@
 import type { CSSProperties } from "react";
 import { cookies } from "next/headers";
-import { LOCALE_COOKIE, resolveRwosLocale } from "./i18n/config";
+import { LOCALE_COOKIE, resolveEmployerLocale } from "./i18n/config";
 import { getLandingContent, type LandingContent } from "./landingContent";
 import { LogoIntro } from "./LogoIntro";
-import { JobLopLogo } from "./JobLopLogo";
-import { HeaderNav } from "./HeaderNav";
-import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
+import { VideoCard } from "./VideoCard";
+import { SiteHeader } from "./shared/SiteHeader";
+import { EmployerFlowMovie } from "./EmployerFlowMovie";
+import { JobScannerBand } from "./JobScannerBand";
+import { PlatformLoopMovie } from "./PlatformLoopMovie";
+import { homeFaqAnchors } from "./faq/faqContent";
+import { PublicSiteFooter } from "./pricing/publicPageStyles";
 
 async function resolveLocale() {
   const store = await cookies();
-  return resolveRwosLocale(store.get(LOCALE_COOKIE)?.value);
+  return resolveEmployerLocale(store.get(LOCALE_COOKIE)?.value);
 }
 
 function CheckTile({ size = 34 }: { size?: number }) {
@@ -18,7 +22,8 @@ function CheckTile({ size = 34 }: { size?: number }) {
       aria-hidden="true"
       style={{
         alignItems: "center",
-        background: "#e8f1ff",
+        background: "rgba(248, 184, 8, 0.14)",
+        border: "1px solid rgba(248, 184, 8, 0.45)",
         borderRadius: 9,
         display: "inline-flex",
         flex: "none",
@@ -30,7 +35,7 @@ function CheckTile({ size = 34 }: { size?: number }) {
       <svg width={size * 0.56} height={size * 0.56} viewBox="0 0 24 24" fill="none">
         <path
           d="M5 12.5l4.2 4.2L19 6.7"
-          stroke="#173a86"
+          stroke="#F8B808"
           strokeWidth="2.6"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -73,27 +78,27 @@ function StoreBadge({ kind, store }: { kind: "apple" | "google"; store: LandingC
 function PhoneMockup({ p }: { p: LandingContent["heroPhone"] }) {
   return (
     <div aria-hidden="true" style={hx.phone}>
-      <div style={{ fontSize: 13, color: "#6b7a90" }}>{p.greeting}</div>
-      <div style={{ fontSize: 18, fontWeight: 800, color: "#0b1f3f", margin: "2px 0 16px" }}>
+      <div style={{ fontSize: 13, color: "#b3a894" }}>{p.greeting}</div>
+      <div style={{ fontSize: 18, fontWeight: 800, color: "#f4efe4", margin: "2px 0 16px" }}>
         {p.prompt}
       </div>
       <div style={{ display: "grid", gap: 12 }}>
-        <div style={{ background: "#2563eb", color: "#fff", borderRadius: 14, padding: 16 }}>
+        <div style={{ background: "#f8b808", color: "#000000", borderRadius: 14, padding: 16 }}>
           <strong>{p.findWork}</strong>
           <div style={{ fontSize: 12, opacity: 0.85 }}>{p.findWorkSub}</div>
         </div>
-        <div style={{ background: "#0b1f3f", color: "#fff", borderRadius: 14, padding: 16 }}>
+        <div style={{ background: "#15110b", color: "#fff", borderRadius: 14, padding: 16 }}>
           <strong>{p.findPeople}</strong>
           <div style={{ fontSize: 12, opacity: 0.85 }}>{p.findPeopleSub}</div>
         </div>
       </div>
-      <div style={{ marginTop: 16, fontSize: 13, fontWeight: 700, color: "#0b1f3f" }}>
+      <div style={{ marginTop: 16, fontSize: 13, fontWeight: 700, color: "#f4efe4" }}>
         {p.popular}
       </div>
       <div style={hx.phoneJob}>
         <div>
           <strong style={{ fontSize: 13 }}>{p.jobTitle}</strong>
-          <div style={{ fontSize: 11, color: "#6b7a90" }}>{p.jobMeta}</div>
+          <div style={{ fontSize: 11, color: "#b3a894" }}>{p.jobMeta}</div>
         </div>
         <div style={{ fontWeight: 800, fontSize: 13 }}>{p.jobPay}</div>
       </div>
@@ -117,10 +122,10 @@ const hx: Record<string, CSSProperties> = {
     lineHeight: 1.03,
     letterSpacing: "-0.03em",
     fontWeight: 800,
-    color: "#0b1f3f",
+    color: "#f4efe4",
     margin: 0
   },
-  lede: { fontSize: 18, color: "#5b6b83", margin: "22px 0 0", maxWidth: 440, lineHeight: 1.6 },
+  lede: { fontSize: 18, color: "#b3a894", margin: "22px 0 0", maxWidth: 440, lineHeight: 1.6 },
   chips: {
     display: "flex",
     gap: 22,
@@ -134,14 +139,14 @@ const hx: Record<string, CSSProperties> = {
     alignItems: "center",
     gap: 8,
     fontWeight: 700,
-    color: "#1a2b47",
+    color: "#f4efe4",
     fontSize: 15
   },
   chipDot: {
     width: 22,
     height: 22,
     borderRadius: 999,
-    background: "#2563eb",
+    background: "#f8b808",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
@@ -149,8 +154,8 @@ const hx: Record<string, CSSProperties> = {
   },
   ctaRow: { display: "flex", gap: 14, margin: "28px 0 0", flexWrap: "wrap" },
   ctaPrimary: {
-    background: "#2563eb",
-    color: "#ffffff",
+    background: "#f8b808",
+    color: "#000000",
     padding: "15px 26px",
     borderRadius: 12,
     fontWeight: 700,
@@ -159,12 +164,12 @@ const hx: Record<string, CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     gap: 10,
-    boxShadow: "0 14px 30px rgba(37,99,235,0.28)"
+    boxShadow: "0 14px 30px rgba(248, 184, 8, 0.22)"
   },
   ctaOutline: {
-    background: "#ffffff",
-    color: "#16203a",
-    border: "1.5px solid #d3ddee",
+    background: "#000000",
+    color: "#f4efe4",
+    border: "1.5px solid rgba(248, 184, 8, 0.16)",
     padding: "15px 26px",
     borderRadius: 12,
     fontWeight: 700,
@@ -179,7 +184,7 @@ const hx: Record<string, CSSProperties> = {
     fontSize: 12,
     letterSpacing: "0.1em",
     textTransform: "uppercase",
-    color: "#93a0b5",
+    color: "#b3a894",
     fontWeight: 700,
     margin: "0 0 10px"
   },
@@ -188,7 +193,7 @@ const hx: Record<string, CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     gap: 10,
-    background: "#0b1f3f",
+    background: "#15110b",
     color: "#ffffff",
     borderRadius: 11,
     padding: "9px 18px",
@@ -204,9 +209,9 @@ const hx: Record<string, CSSProperties> = {
   phone: {
     width: 300,
     maxWidth: "100%",
-    background: "#ffffff",
+    background: "#000000",
     borderRadius: 34,
-    border: "10px solid #0b1f3f",
+    border: "10px solid rgba(248, 184, 8, 0.16)",
     boxShadow: "0 34px 80px rgba(11,31,63,0.28)",
     padding: "20px 16px 24px"
   },
@@ -216,17 +221,17 @@ const hx: Record<string, CSSProperties> = {
     alignItems: "center",
     marginTop: 8,
     padding: "10px 12px",
-    border: "1px solid #eef2f8",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 12
   },
   oppCard: {
     position: "absolute",
     bottom: 20,
     right: 0,
-    background: "#ffffff",
+    background: "#000000",
     borderRadius: 14,
     boxShadow: "0 18px 45px rgba(11,31,63,0.16)",
-    border: "1px solid #eef2f8",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     padding: "12px 16px",
     display: "flex",
     alignItems: "center",
@@ -237,11 +242,11 @@ const hx: Record<string, CSSProperties> = {
     width: 30,
     height: 30,
     borderRadius: 999,
-    border: "2px solid #ffffff",
+    border: "2px solid rgba(248, 184, 8, 0.16)",
     display: "inline-block"
   },
   avatarMore: {
-    background: "#0b1f3f",
+    background: "#15110b",
     color: "#ffffff",
     fontSize: 11,
     fontWeight: 700,
@@ -254,8 +259,12 @@ const hx: Record<string, CSSProperties> = {
   }
 };
 
-export default async function LandingPage() {
+export default async function LandingPage({ searchParams }: { searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
   const locale = await resolveLocale();
+  const sp = (await searchParams) ?? {};
+  const scanRaw = Array.isArray(sp.scan) ? sp.scan[0] : sp.scan;
+  const scanQuery = (scanRaw ?? "").trim().slice(0, 80);
+  const lang = locale === "ar" ? "ar" : locale.startsWith("fr") ? "fr" : "en";
   const c = getLandingContent(locale);
   const isProduction = process.env.RWOS_ENV === "production";
   const isStaging =
@@ -275,22 +284,7 @@ export default async function LandingPage() {
           <span>{c.staging.noProdData}</span>
         </aside>
       ) : null}
-      <header style={{ ...styles.header, position: "relative" }}>
-        <a href="/" style={styles.brand} aria-label="JobLop home">
-          <JobLopLogo height={30} />
-        </a>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <LanguageSwitcher />
-          <HeaderNav
-            ctaHref={isProduction ? "/contact" : "/signup/employer"}
-            ctaLabel={isProduction ? c.header.ctaRequestAccess : c.header.ctaGetStarted}
-            links={c.header.navLinks}
-            openLabel={c.header.openMenu}
-            closeLabel={c.header.closeMenu}
-            signIn={c.header.signIn}
-          />
-        </div>
-      </header>
+      <SiteHeader current="/" />
 
       <section style={hx.hero}>
         <div style={hx.heroCopy}>
@@ -299,10 +293,10 @@ export default async function LandingPage() {
             <br />
             {c.hero.line2}
             <br />
-            <span style={{ color: "#2563eb" }}>{c.hero.line3}</span>
+            <span style={{ color: "#f8b808" }}>{c.hero.line3}</span>
           </h1>
           <p style={hx.lede}>{c.hero.lede}</p>
-          <ul style={hx.chips} aria-label="Why JobLop">
+          <ul style={hx.chips} aria-label="Why Joblop">
             {c.hero.chips.map((label) => (
               <li key={label} style={hx.chip}>
                 <span aria-hidden="true" style={hx.chipDot}>
@@ -322,10 +316,10 @@ export default async function LandingPage() {
           </ul>
           <div style={hx.ctaRow}>
             <a href={workerAppUrl} style={hx.ctaPrimary}>
-              {c.hero.ctaWork} <span aria-hidden="true">→</span>
+              {c.hero.ctaWork} <span aria-hidden="true">{locale === "ar" ? "←" : "→"}</span>
             </a>
             <a href={hireHref} style={hx.ctaOutline}>
-              {c.hero.ctaHire} <span aria-hidden="true">→</span>
+              {c.hero.ctaHire} <span aria-hidden="true">{locale === "ar" ? "←" : "→"}</span>
             </a>
           </div>
           <div style={hx.storeWrap}>
@@ -341,17 +335,51 @@ export default async function LandingPage() {
           <PhoneMockup p={c.heroPhone} />
           <div style={hx.oppCard}>
             <div>
-              <strong style={{ display: "block", fontSize: 14, color: "#0b1f3f" }}>
+              <strong style={{ display: "block", fontSize: 14, color: "#f4efe4" }}>
                 {c.hero.oppTitle}
               </strong>
-              <span style={{ fontSize: 13, color: "#6b7a90" }}>{c.hero.oppAround}</span>
+              <span style={{ fontSize: 13, color: "#b3a894" }}>{c.hero.oppAround}</span>
             </div>
             <div style={hx.avatars}>
-              {["#7ca6f5", "#f5a97c", "#8fd4a8", "#c79cf0"].map((c, i) => (
+              {["#f8b808", "#f5a97c", "#8fd4a8", "#ffcf3f"].map((c, i) => (
                 <span key={c} style={{ ...hx.avatar, background: c, marginLeft: i ? -10 : 0 }} />
               ))}
               <span style={{ ...hx.avatar, ...hx.avatarMore, marginLeft: -10 }}>+2K</span>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <PlatformLoopMovie lang={lang} />
+
+      <JobScannerBand lang={lang} q={scanQuery} workerAppUrl={workerAppUrl} />
+
+      <EmployerFlowMovie lang={lang} />
+
+      <section aria-labelledby="media-title" className="media-band">
+        <div className="media-band-inner">
+          <div style={styles.centerHeader}>
+            <p style={styles.eyebrowDark}>{c.media.eyebrow}</p>
+            <h2 id="media-title" style={styles.sectionTitle}>
+              {c.media.title}
+            </h2>
+            <p style={styles.sectionCopy}>{c.media.copy}</p>
+          </div>
+          <div className="media-band-grid">
+            {c.media.clips.map((clip) => (
+              <div key={clip.src}>
+                <VideoCard
+                  src={clip.src}
+                  poster={clip.poster}
+                  label={clip.label}
+                  soundLabel={c.media.soundOn}
+                  muteLabel={c.media.soundOff}
+                  playLabel={c.media.play}
+                  withSound={clip.withSound === true}
+                />
+                <p style={{ marginTop: 14, textAlign: "center", color: "#e8dfcc", fontWeight: 600, fontSize: 15 }}>{clip.caption}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -459,7 +487,7 @@ export default async function LandingPage() {
       </section>
 
       <section aria-labelledby="ai-title" style={styles.aiSection}>
-        <div>
+        <div style={styles.centerHeader}>
           <p style={styles.eyebrowDark}>{c.ai.eyebrow}</p>
           <h2 id="ai-title" style={styles.sectionTitle}>
             {c.ai.title}
@@ -504,11 +532,11 @@ export default async function LandingPage() {
           </h2>
         </div>
         <div style={styles.faqGrid}>
-          {c.faq.questions.map((question) => (
+          {c.faq.questions.map((question, index) => (
             <article key={question} style={styles.faqItem}>
               <h3 style={styles.faqQuestion}>{question}</h3>
               <p style={styles.cardText}>{c.faq.readNote}</p>
-              <a href="/faq" style={styles.textLink}>
+              <a href={["/faq", homeFaqAnchors[index] ?? ""].join("#")} style={styles.textLink}>
                 {c.faq.readLink}
               </a>
             </article>
@@ -531,37 +559,16 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      <footer style={styles.footer}>
-        <a href="/" style={styles.footerBrand}>
-          JobLop
-        </a>
-        <nav aria-label="Footer navigation" style={styles.footerLinks}>
-          <a href="#employers" style={styles.footerLink}>
-            Employers
-          </a>
-          <a href="#workers" style={styles.footerLink}>
-            Workers
-          </a>
-          <a href="/how-it-works" style={styles.footerLink}>
-            How It Works
-          </a>
-          <a href="/pricing" style={styles.footerLink}>
-            Pricing
-          </a>
-          <a href="/contact" style={styles.footerLink}>
-            Contact
-          </a>
-        </nav>
-      </footer>
+      <PublicSiteFooter />
     </main>
   );
 }
 
 function DashboardPreview({ d }: { d: LandingContent["dashboard"] }) {
   return (
-    <article style={styles.dashboardPreview} aria-label="Employer dashboard preview">
-      <div style={styles.sidebar}>
-        <strong>JobLop</strong>
+    <article className="jl-dash" style={styles.dashboardPreview} aria-label="Employer dashboard preview">
+      <div className="jl-dash-side" style={styles.sidebar}>
+        <strong>Joblop</strong>
         {d.nav.map((item, index) => (
           <span key={item} style={index === 0 ? styles.sidebarActive : styles.sidebarItem}>
             {item}
@@ -569,7 +576,7 @@ function DashboardPreview({ d }: { d: LandingContent["dashboard"] }) {
         ))}
       </div>
       <div style={styles.dashboardCanvas}>
-        <div style={styles.dashboardTop}>
+        <div className="jl-dash-top" style={styles.dashboardTop}>
           <div>
             <h3 style={styles.dashboardTitle}>{d.welcome}</h3>
             <p style={styles.dashboardSub}>{d.org}</p>
@@ -614,7 +621,7 @@ function DashboardPreview({ d }: { d: LandingContent["dashboard"] }) {
 
 function WorkerPhonePreview({ rows }: { rows: LandingContent["workerPhone"] }) {
   return (
-    <article style={styles.phoneCluster} aria-label="Worker mobile app preview">
+    <article className="jl-phones" style={styles.phoneCluster} aria-label="Worker mobile app preview">
       {rows.map(([heading, detail, meta]) => (
         <div key={heading} style={styles.phone}>
           <div style={styles.phoneTop} />
@@ -670,15 +677,15 @@ const baseButton: CSSProperties = {
 
 const styles: Record<string, CSSProperties> = {
   page: {
-    background: "#f7faff",
-    color: "#081f49",
+    background: "#000000",
+    color: "#f4efe4",
     fontFamily:
       'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     minHeight: "100vh"
   },
   stagingBanner: {
     alignItems: "center",
-    background: "#fff4d6",
+    background: "#0c0c0c",
     borderBottom: "1px solid #d49b00",
     color: "#684b00",
     display: "flex",
@@ -690,8 +697,8 @@ const styles: Record<string, CSSProperties> = {
   },
   header: {
     alignItems: "center",
-    background: "rgba(255, 255, 255, 0.96)",
-    borderBottom: "1px solid #e3eaf4",
+    background: "rgba(0, 0, 0, 0.72)",
+    borderBottom: "1px solid rgba(248, 184, 8, 0.16)",
     display: "flex",
     flexWrap: "wrap",
     gap: 16,
@@ -703,7 +710,7 @@ const styles: Record<string, CSSProperties> = {
   },
   brand: {
     alignItems: "center",
-    color: "#081f49",
+    color: "#f4efe4",
     display: "inline-flex",
     fontSize: 17,
     fontWeight: 900,
@@ -729,7 +736,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 24
   },
   navLink: {
-    color: "#243b60",
+    color: "#f4efe4",
     fontSize: 13,
     fontWeight: 800,
     textDecoration: "none"
@@ -741,19 +748,19 @@ const styles: Record<string, CSSProperties> = {
   },
   primaryButton: {
     ...baseButton,
-    background: "#082a66",
-    boxShadow: "0 8px 18px rgba(8, 42, 102, 0.18)",
-    color: "#ffffff"
+    background: "#F8B808",
+    boxShadow: "0 8px 18px rgba(248, 184, 8, 0.22)",
+    color: "#000000"
   },
   ghostButton: {
     ...baseButton,
-    background: "#ffffff",
-    border: "1px solid #c7d4e8",
-    color: "#082a66"
+    background: "#000000",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
+    color: "#f4efe4"
   },
   hero: {
     alignItems: "center",
-    background: "linear-gradient(180deg, #ffffff 0%, #f5f9ff 74%, #eef5ff 100%)",
+    background: "linear-gradient(180deg, #000000 0%, #000000 74%, #0c0c0c 100%)",
     display: "grid",
     gap: 36,
     gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))",
@@ -763,7 +770,7 @@ const styles: Record<string, CSSProperties> = {
     maxWidth: 760
   },
   eyebrow: {
-    color: "#0b58b7",
+    color: "#f8b808",
     fontSize: 13,
     fontWeight: 900,
     letterSpacing: 0,
@@ -771,15 +778,16 @@ const styles: Record<string, CSSProperties> = {
     textTransform: "uppercase"
   },
   eyebrowDark: {
-    color: "#0b58b7",
+    color: "#f8b808",
     fontSize: 12,
     fontWeight: 900,
     letterSpacing: 0,
-    margin: 0,
+    lineHeight: 1.4,
+    margin: "0 0 10px",
     textTransform: "uppercase"
   },
   title: {
-    color: "#081f49",
+    color: "#f4efe4",
     fontSize: "clamp(42px, 6vw, 74px)",
     letterSpacing: 0,
     lineHeight: 1.02,
@@ -787,7 +795,7 @@ const styles: Record<string, CSSProperties> = {
     maxWidth: 860
   },
   lede: {
-    color: "#455a7c",
+    color: "#b3a894",
     fontSize: 18,
     lineHeight: 1.62,
     margin: 0,
@@ -801,25 +809,25 @@ const styles: Record<string, CSSProperties> = {
   },
   primaryButtonLarge: {
     ...baseButton,
-    background: "#0b4aa2",
-    boxShadow: "0 14px 30px rgba(11, 74, 162, 0.22)",
-    color: "#ffffff",
+    background: "#f8b808",
+    boxShadow: "0 14px 30px rgba(248, 184, 8, 0.18)",
+    color: "#000000",
     minHeight: 54,
     padding: "0 24px"
   },
   secondaryButtonLarge: {
     ...baseButton,
-    background: "#0f7f56",
-    boxShadow: "0 14px 30px rgba(15, 127, 86, 0.18)",
-    color: "#ffffff",
+    background: "#000000",
+    border: "1px solid rgba(248, 184, 8, 0.34)",
+    color: "#f4efe4",
     minHeight: 54,
     padding: "0 24px"
   },
   ghostButtonLarge: {
     ...baseButton,
-    background: "#ffffff",
-    border: "1px solid #c7d4e8",
-    color: "#082a66",
+    background: "#000000",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
+    color: "#f4efe4",
     minHeight: 54,
     padding: "0 24px"
   },
@@ -831,7 +839,7 @@ const styles: Record<string, CSSProperties> = {
   },
   trustPill: {
     alignItems: "center",
-    color: "#243b60",
+    color: "#f4efe4",
     display: "inline-flex",
     fontSize: 13,
     fontWeight: 800,
@@ -839,8 +847,8 @@ const styles: Record<string, CSSProperties> = {
     minHeight: 40
   },
   smallIcon: {
-    background: "#e8f1ff",
-    border: "1px solid #c9ddff",
+    background: "#0c0c0c",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     height: 34,
     width: 34
@@ -853,7 +861,7 @@ const styles: Record<string, CSSProperties> = {
     position: "relative"
   },
   photoFrame: {
-    background: "#dcecff",
+    background: "#0c0c0c",
     borderRadius: "42% 42% 0 0",
     boxShadow: "0 26px 70px rgba(8, 31, 73, 0.14)",
     height: 390,
@@ -871,12 +879,12 @@ const styles: Record<string, CSSProperties> = {
   },
   carePortrait: {
     background:
-      "radial-gradient(circle at 52% 34%, #ffffff 0 16%, transparent 17%), linear-gradient(135deg, #cfe3ff, #ffffff)",
+      "radial-gradient(circle at 52% 34%, #000000 0 16%, transparent 17%), linear-gradient(135deg, #0c0c0c, #000000)",
     height: "100%",
     position: "relative"
   },
   caregiver: {
-    background: "#073469",
+    background: "#3a2c12",
     borderRadius: "48% 48% 10% 10%",
     bottom: 0,
     height: "64%",
@@ -885,8 +893,8 @@ const styles: Record<string, CSSProperties> = {
     width: "30%"
   },
   resident: {
-    background: "#f0ece5",
-    border: "8px solid #ffffff",
+    background: "#0c0c0c",
+    border: "8px solid rgba(248, 184, 8, 0.16)",
     borderRadius: "50% 50% 10% 10%",
     bottom: 0,
     height: "52%",
@@ -895,12 +903,12 @@ const styles: Record<string, CSSProperties> = {
     width: "28%"
   },
   floatingMetric: {
-    background: "#ffffff",
-    border: "1px solid #d8e4f5",
+    background: "#000000",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     bottom: 24,
     boxShadow: "0 18px 45px rgba(8, 31, 73, 0.13)",
-    color: "#243b60",
+    color: "#f4efe4",
     display: "grid",
     gap: 2,
     padding: "14px 16px",
@@ -912,21 +920,21 @@ const styles: Record<string, CSSProperties> = {
   },
   centerHeader: {
     display: "grid",
-    gap: 10,
+    gap: 4,
     justifyItems: "center",
     margin: "0 auto 28px",
     maxWidth: 820,
     textAlign: "center"
   },
   sectionTitle: {
-    color: "#081f49",
+    color: "#f4efe4",
     fontSize: "clamp(28px, 4vw, 44px)",
     letterSpacing: 0,
-    lineHeight: 1.12,
+    lineHeight: 1.18,
     margin: 0
   },
   sectionCopy: {
-    color: "#526782",
+    color: "#b3a894",
     fontSize: 16,
     lineHeight: 1.62,
     margin: 0
@@ -937,8 +945,8 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))"
   },
   capsuleCard: {
-    background: "#ffffff",
-    border: "1px solid #e1eaf6",
+    background: "#000000",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 12,
     boxShadow: "0 18px 50px rgba(8, 31, 73, 0.07)",
     minHeight: 210,
@@ -955,26 +963,26 @@ const styles: Record<string, CSSProperties> = {
     padding: 20
   },
   cardTitle: {
-    color: "#081f49",
+    color: "#f4efe4",
     fontSize: 19,
     margin: "12px 0 0"
   },
   cardText: {
-    color: "#526782",
+    color: "#b3a894",
     fontSize: 14,
     lineHeight: 1.55,
     margin: "9px 0 0"
   },
   cardNote: {
-    color: "#243b60",
+    color: "#f4efe4",
     fontSize: 14,
     lineHeight: 1.55,
     margin: "14px 0 0"
   },
   workflowBand: {
-    background: "#ffffff",
-    borderBottom: "1px solid #e1eaf6",
-    borderTop: "1px solid #e1eaf6",
+    background: "#000000",
+    borderBottom: "1px solid rgba(248, 184, 8, 0.16)",
+    borderTop: "1px solid rgba(248, 184, 8, 0.16)",
     padding: "52px clamp(20px, 5vw, 72px)"
   },
   timeline: {
@@ -983,10 +991,10 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))"
   },
   timelineStep: {
-    background: "#f3f7ff",
-    border: "1px solid #d8e4f5",
+    background: "#000000",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
-    color: "#082a66",
+    color: "#f4efe4",
     fontSize: 13,
     fontWeight: 900,
     minHeight: 54,
@@ -999,8 +1007,8 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))"
   },
   experienceCard: {
-    background: "#ffffff",
-    border: "1px solid #e1eaf6",
+    background: "#000000",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     boxShadow: "0 18px 50px rgba(8, 31, 73, 0.07)",
     overflow: "hidden"
@@ -1015,7 +1023,7 @@ const styles: Record<string, CSSProperties> = {
     padding: 22
   },
   cleanList: {
-    color: "#243b60",
+    color: "#f4efe4",
     display: "grid",
     fontSize: 14,
     gap: 9,
@@ -1024,13 +1032,18 @@ const styles: Record<string, CSSProperties> = {
     paddingLeft: 18
   },
   previewBand: {
-    background: "#eef5ff",
+    background: "#0c0c0c",
     display: "grid",
     gap: 28,
     padding: "56px clamp(20px, 5vw, 72px)"
   },
   previewIntro: {
-    maxWidth: 780
+    display: "grid",
+    gap: 12,
+    justifyItems: "center",
+    margin: "0 auto",
+    maxWidth: 780,
+    textAlign: "center"
   },
   previewGrid: {
     alignItems: "start",
@@ -1039,8 +1052,8 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))"
   },
   dashboardPreview: {
-    background: "#ffffff",
-    border: "1px solid #d8e4f5",
+    background: "#000000",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     boxShadow: "0 24px 70px rgba(8, 31, 73, 0.12)",
     display: "grid",
@@ -1049,21 +1062,21 @@ const styles: Record<string, CSSProperties> = {
     overflow: "hidden"
   },
   sidebar: {
-    background: "#06234f",
+    background: "#1b160e",
     color: "#ffffff",
     display: "grid",
     gap: 10,
     padding: 18
   },
   sidebarItem: {
-    color: "#b7c8e4",
+    color: "#d8ccb4",
     fontSize: 12,
     fontWeight: 800
   },
   sidebarActive: {
-    background: "#0b58b7",
+    background: "#f8b808",
     borderRadius: 8,
-    color: "#ffffff",
+    color: "#000000",
     fontSize: 12,
     fontWeight: 900,
     padding: "9px 8px"
@@ -1080,20 +1093,22 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: "space-between"
   },
   dashboardTitle: {
-    color: "#081f49",
+    color: "#f4efe4",
     fontSize: 20,
     margin: 0
   },
   dashboardSub: {
-    color: "#526782",
+    color: "#b3a894",
     fontSize: 13,
     margin: "4px 0 0"
   },
   miniButton: {
     ...baseButton,
-    background: "#0b4aa2",
-    color: "#ffffff",
-    minHeight: 40
+    background: "#f8b808",
+    color: "#000000",
+    flexShrink: 0,
+    minHeight: 44,
+    whiteSpace: "nowrap"
   },
   metricGrid: {
     display: "grid",
@@ -1101,8 +1116,8 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(92px, 1fr))"
   },
   metricTile: {
-    background: "#f7faff",
-    border: "1px solid #e1eaf6",
+    background: "#000000",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     display: "grid",
     gap: 6,
@@ -1114,34 +1129,34 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))"
   },
   previewPanel: {
-    background: "#ffffff",
-    border: "1px solid #e1eaf6",
+    background: "#000000",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     padding: 14
   },
   panelHeading: {
-    color: "#081f49",
+    color: "#f4efe4",
     fontSize: 14,
     margin: "0 0 10px"
   },
   shiftRow: {
     alignItems: "center",
-    borderTop: "1px solid #edf2f8",
-    color: "#243b60",
+    borderTop: "1px solid rgba(248, 184, 8, 0.16)",
+    color: "#f4efe4",
     display: "flex",
     fontSize: 13,
     justifyContent: "space-between",
     padding: "10px 0"
   },
   statusGreen: {
-    color: "#0f7f56"
+    color: "#f8b808"
   },
   statusAmber: {
-    color: "#b36b00"
+    color: "#b3a894"
   },
   activityLine: {
-    borderTop: "1px solid #edf2f8",
-    color: "#243b60",
+    borderTop: "1px solid rgba(248, 184, 8, 0.16)",
+    color: "#f4efe4",
     fontSize: 13,
     margin: 0,
     padding: "10px 0"
@@ -1150,36 +1165,36 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "end",
     display: "grid",
     gap: 18,
-    gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))"
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))"
   },
   phone: {
-    background: "#ffffff",
-    border: "7px solid #121a2a",
+    background: "#000000",
+    border: "7px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 30,
     boxShadow: "0 18px 45px rgba(8, 31, 73, 0.16)",
-    minHeight: 286,
+    minHeight: 220,
     padding: "18px 14px"
   },
   phoneTop: {
-    background: "#121a2a",
+    background: "#171511",
     borderRadius: 999,
     height: 5,
     margin: "0 auto 18px",
     width: 44
   },
   phoneTitle: {
-    color: "#081f49",
+    color: "#f4efe4",
     fontSize: 15,
     margin: 0
   },
   phoneDetail: {
-    color: "#526782",
+    color: "#b3a894",
     fontSize: 13,
     lineHeight: 1.45,
     margin: "14px 0"
   },
   phoneMeta: {
-    color: "#0f7f56",
+    color: "#f8b808",
     fontSize: 20
   },
   phoneNav: {
@@ -1194,18 +1209,18 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))"
   },
   benefit: {
-    background: "#ffffff",
-    border: "1px solid #e1eaf6",
+    background: "#000000",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     boxShadow: "0 14px 34px rgba(8, 31, 73, 0.05)",
-    color: "#082a66",
+    color: "#f4efe4",
     fontWeight: 900,
     padding: 18
   },
   aiSection: {
-    background: "#ffffff",
-    borderBottom: "1px solid #e1eaf6",
-    borderTop: "1px solid #e1eaf6",
+    background: "#000000",
+    borderBottom: "1px solid rgba(248, 184, 8, 0.16)",
+    borderTop: "1px solid rgba(248, 184, 8, 0.16)",
     display: "grid",
     gap: 20,
     padding: "56px clamp(20px, 5vw, 72px)"
@@ -1216,8 +1231,8 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))"
   },
   flowStep: {
-    background: "#f7faff",
-    border: "1px solid #d8e4f5",
+    background: "#000000",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     padding: 20
   },
@@ -1228,8 +1243,8 @@ const styles: Record<string, CSSProperties> = {
   },
   controlCard: {
     alignItems: "center",
-    background: "#ffffff",
-    border: "1px solid #e1eaf6",
+    background: "#000000",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     display: "grid",
     gap: 12,
@@ -1239,14 +1254,14 @@ const styles: Record<string, CSSProperties> = {
     textAlign: "center"
   },
   controlIcon: {
-    background: "#e8f1ff",
-    border: "1px solid #c9ddff",
+    background: "#0c0c0c",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     height: 38,
     width: 38
   },
   smallTitle: {
-    color: "#081f49",
+    color: "#f4efe4",
     fontSize: 15,
     margin: 0
   },
@@ -1256,8 +1271,8 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))"
   },
   journeyCard: {
-    background: "#ffffff",
-    border: "1px solid #e1eaf6",
+    background: "#000000",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     boxShadow: "0 14px 34px rgba(8, 31, 73, 0.05)",
     padding: 22
@@ -1269,7 +1284,7 @@ const styles: Record<string, CSSProperties> = {
     paddingLeft: 22
   },
   stepItem: {
-    color: "#243b60",
+    color: "#f4efe4",
     fontWeight: 800,
     lineHeight: 1.45
   },
@@ -1279,20 +1294,20 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))"
   },
   faqItem: {
-    background: "#ffffff",
-    border: "1px solid #e1eaf6",
+    background: "#000000",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     boxShadow: "0 14px 34px rgba(8, 31, 73, 0.05)",
     padding: 18
   },
   faqQuestion: {
-    color: "#081f49",
+    color: "#f4efe4",
     fontSize: 17,
     margin: 0
   },
   textLink: {
     alignItems: "center",
-    color: "#0b5fc6",
+    color: "#a8842f",
     display: "inline-flex",
     fontWeight: 800,
     marginTop: 12,
@@ -1300,7 +1315,7 @@ const styles: Record<string, CSSProperties> = {
   },
   ctaBand: {
     alignItems: "center",
-    background: "#06234f",
+    background: "#1b160e",
     color: "#ffffff",
     display: "flex",
     flexWrap: "wrap",
@@ -1314,7 +1329,7 @@ const styles: Record<string, CSSProperties> = {
     margin: 0
   },
   ctaCopy: {
-    color: "#c9d8ec",
+    color: "#ece3d2",
     margin: "8px 0 0"
   },
   ctaActions: {
@@ -1324,8 +1339,8 @@ const styles: Record<string, CSSProperties> = {
   },
   lightButton: {
     ...baseButton,
-    background: "#ffffff",
-    color: "#082a66",
+    background: "#f8b808",
+    color: "#000000",
     minHeight: 48,
     padding: "0 22px"
   },
@@ -1339,9 +1354,9 @@ const styles: Record<string, CSSProperties> = {
   },
   footer: {
     alignItems: "center",
-    background: "#ffffff",
-    borderTop: "1px solid #e1eaf6",
-    color: "#243b60",
+    background: "#000000",
+    borderTop: "1px solid rgba(248, 184, 8, 0.16)",
+    color: "#f4efe4",
     display: "flex",
     flexWrap: "wrap",
     gap: 16,
@@ -1349,7 +1364,7 @@ const styles: Record<string, CSSProperties> = {
     padding: "30px clamp(20px, 5vw, 72px)"
   },
   footerBrand: {
-    color: "#081f49",
+    color: "#f4efe4",
     fontWeight: 900,
     textDecoration: "none"
   },
@@ -1359,7 +1374,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 18
   },
   footerLink: {
-    color: "#243b60",
+    color: "#f4efe4",
     fontSize: 14,
     fontWeight: 800,
     textDecoration: "none"

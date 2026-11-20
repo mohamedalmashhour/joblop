@@ -31,7 +31,7 @@ export const invoiceWorkflow = [
     title: "Charge Breakdown",
     route: "/employer/invoices/breakdown",
     status: "Line-item view",
-    boundary: "Charge breakdown explains fixture totals without tax advice or accounting entries."
+    boundary: "Charge breakdown explains invoice totals without tax advice or accounting entries."
   },
   {
     page: "051",
@@ -106,24 +106,6 @@ export const chargeBreakdownRows = [
   ["Adjustments", invoiceFixture.adjustments],
   ["Subtotal", invoiceFixture.subtotal],
   ["Total", invoiceFixture.total]
-] as const;
-
-export const invoiceBoundaries = [
-  "Invoice != Payment",
-  "Issued != Paid",
-  "Payment Authorized != Settled",
-  "Invoice total != Worker payable",
-  "Charge breakdown != Accounting ledger",
-  "Tax display != Tax advice"
-] as const;
-
-export const invoiceDataTruth = [
-  "Synthetic Test Employer Organization A data",
-  "No payment provider",
-  "No financial settlement",
-  "No accounting ledger",
-  "Versioned synthetic tax policy only",
-  "Legal issuer model not approved for production"
 ] as const;
 
 export function getInvoiceStateSummary(state: InvoiceState) {

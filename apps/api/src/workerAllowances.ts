@@ -1,4 +1,4 @@
-// Worker-facing allowance view. Under JobLop's hidden-markup model the worker must see the amount
+// Worker-facing allowance view. Under Joblop's hidden-markup model the worker must see the amount
 // THEY receive (employer-funded amount − platform margin), taken from the immutable approval
 // snapshot — never the employer-funded amount. When no snapshot exists yet (request not approved),
 // the amount is not finalized and is reported as null, so the employer amount (E) is never exposed.

@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { RequestPricingSnapshotCapture } from "./index";
 import {
+  AttendanceError,
   AuthenticationError,
   AuthenticationRequiredError,
+  REPORTED_HOURS_METHOD,
   AssignmentTransactionUnavailableError,
   PasswordPolicyError,
   RegistrationUnavailableError,
@@ -71,6 +73,7 @@ import type {
   UpdateEmailVerificationCodeInput,
   WorkerOfferRepository,
   WorkerOfferDeliveryProvider,
+  HeldShiftOverlapFinder,
   WorkGroupRepository,
   StoredJobRequest,
   StoredTimesheet,
@@ -119,6 +122,17 @@ describe("authentication service foundation", () => {
     expect(result.user.status).toBe("active");
     expect(result.token).toBe("session-token-000000000000000000000001");
     expect(repository.auditActions()).toContain("auth.registration");
+  });
+
+  it("records the Terms/Privacy version the person accepted at sign-up", async () => {
+    const repository = new MemoryAuthenticationRepository();
+    const service = createTestAuthenticationService(repository);
+    await service.register({
+      email: "legal@example.com",
+      password: "ValidPassword123",
+      acceptedLegalVersion: "2026-11-09"
+    });
+    expect(repository.auditReasons()).toContain("legal_accepted:2026-11-09");
   });
 
   it("blocks duplicate registration without exposing account details", async () => {
@@ -263,6 +277,10 @@ class MemoryAuthenticationRepository implements AuthenticationRepository {
 
   auditActions() {
     return this.auditEvents.map((event) => event.action);
+  }
+
+  auditReasons() {
+    return this.auditEvents.map((event) => event.reason);
   }
 
   setUserStatus(userId: string, status: StoredAuthenticationUser["status"]) {
@@ -3138,6 +3156,104 @@ describe("worker offer foundation", () => {
     ).resolves.toBe(1);
   });
 
+  describe("a worker can never hold two shifts at the same time", () => {
+    const heldShift = {
+      startAt: new Date("2026-08-12T13:00:00.000Z"),
+      endAt: new Date("2026-08-12T21:00:00.000Z"),
+      timezone: "America/Toronto"
+    };
+
+    it("does not create an offer for a shift that overlaps one the worker holds", async () => {
+      const calls: Array<Parameters<HeldShiftOverlapFinder>[0]> = [];
+      const { workerOfferService, dispatchReview, adminSession, workerOne, approvedJobRequest } =
+        await createWorkerOfferContext({
+          findHeldShiftOverlap: async (input) => {
+            calls.push(input);
+            return heldShift;
+          }
+        });
+      await expect(
+        workerOfferService.createOffer({
+          session: adminSession,
+          roles: ["DISPATCHER"],
+          dispatchReviewId: dispatchReview.id,
+          workerIdentityId: workerOne.id,
+          expiresAt: new Date("2026-08-12T10:00:00.000Z")
+        })
+      ).rejects.toMatchObject({
+        decision: expect.objectContaining({
+          status: "shift_overlap",
+          internalReason: "worker_schedule_conflict",
+          heldShift
+        })
+      });
+      expect(calls).toEqual([
+        {
+          workerIdentityId: workerOne.id,
+          jobRequestId: approvedJobRequest.id,
+          startAt: approvedJobRequest.startAt,
+          endAt: approvedJobRequest.endAt
+        }
+      ]);
+    });
+
+    it("refuses to send or accept once the worker holds an overlapping shift, but always allows decline", async () => {
+      let holding = false;
+      const { workerOfferService, dispatchReview, adminSession, workerOne, workerSession } =
+        await createWorkerOfferContext({ findHeldShiftOverlap: async () => (holding ? heldShift : null) });
+      const draft = await workerOfferService.createOffer({
+        session: adminSession,
+        roles: ["DISPATCHER"],
+        dispatchReviewId: dispatchReview.id,
+        workerIdentityId: workerOne.id,
+        expiresAt: new Date("2026-08-12T10:00:00.000Z")
+      });
+      const approved = await workerOfferService.approve({
+        session: adminSession,
+        roles: ["DISPATCHER"],
+        workerOfferId: draft.id,
+        expectedVersion: draft.versionToken
+      });
+
+      holding = true;
+      await expect(
+        workerOfferService.send({
+          session: adminSession,
+          roles: ["DISPATCHER"],
+          workerOfferId: approved.id,
+          expectedVersion: approved.versionToken
+        })
+      ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "shift_overlap", heldShift }) });
+
+      holding = false;
+      const sent = await workerOfferService.send({
+        session: adminSession,
+        roles: ["DISPATCHER"],
+        workerOfferId: approved.id,
+        expectedVersion: approved.versionToken
+      });
+      const viewed = await workerOfferService.workerRead({
+        session: workerSession,
+        roles: ["WORKER_ACCESS"],
+        workerOfferId: sent.id
+      });
+
+      holding = true;
+      const respond = {
+        session: workerSession,
+        roles: ["WORKER_ACCESS"] as const,
+        workerOfferId: viewed.id,
+        expectedVersion: viewed.versionToken,
+        expectedTermsVersionId: viewed.currentTermsVersion!.id
+      };
+      await expect(workerOfferService.accept({ ...respond, roles: [...respond.roles] })).rejects.toMatchObject({
+        decision: expect.objectContaining({ status: "shift_overlap", heldShift })
+      });
+      const declined = await workerOfferService.decline({ ...respond, roles: [...respond.roles] });
+      expect(declined.status).toBe("declined");
+    });
+  });
+
   it("approves, sends, views, and accepts without creating Assignment", async () => {
     const {
       workerOfferService,
@@ -3944,6 +4060,79 @@ describe("attendance foundation", () => {
     );
   });
 
+  it("records staff-approved reported hours (no check-in) as a normal check-out, marked as reported", async () => {
+    const { attendanceService, attendanceRepository, assignment, adminSession, workerSession } =
+      await createAttendanceContext();
+    const attendanceRecord = await attendanceService.createFromAssignment({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      assignmentId: assignment.id
+    });
+    const missed = await attendanceService.markMissed({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      attendanceRecordId: attendanceRecord.id,
+      expectedVersion: attendanceRecord.versionToken,
+      reason: "no_show"
+    });
+    const checkInAt = new Date("2026-08-12T12:00:00.000Z");
+    const checkOutAt = new Date("2026-08-12T18:00:00.000Z");
+
+    // A worker cannot do this; staff authority is required.
+    await expect(
+      attendanceService.recordReportedHours({
+        session: workerSession,
+        roles: ["WORKER_ACCESS"],
+        attendanceRecordId: missed.id,
+        expectedVersion: missed.versionToken,
+        checkInAt,
+        checkOutAt,
+        evidenceSummary: "self-approved"
+      })
+    ).rejects.toBeInstanceOf(AttendanceError);
+
+    const recorded = await attendanceService.recordReportedHours({
+      session: adminSession,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      attendanceRecordId: missed.id,
+      expectedVersion: missed.versionToken,
+      checkInAt,
+      checkOutAt,
+      evidenceSummary: "Reported by the worker; approved by staff."
+    });
+    expect(recorded.status).toBe("checked_out");
+    expect(recorded.checkInAt?.toISOString()).toBe(checkInAt.toISOString());
+    expect(recorded.checkOutAt?.toISOString()).toBe(checkOutAt.toISOString());
+    expect(recorded.checkInMethod).toBe(REPORTED_HOURS_METHOD);
+    expect(recorded.checkOutMethod).toBe(REPORTED_HOURS_METHOD);
+    expect(recorded.checkInEvidenceSummary).toContain("approved by staff");
+    // The "missed" mark is cleared: the worker did come, so it must not flag the timesheet.
+    expect(recorded.exceptionCategory).toBeNull();
+    expect(attendanceRepository.auditActions()).toEqual(
+      expect.arrayContaining(["attendance.checked_in", "attendance.checked_out"])
+    );
+
+    // Once it has times it cannot be recorded again.
+    await expect(
+      attendanceService.recordReportedHours({
+        session: adminSession,
+        roles: ["PLATFORM_ADMINISTRATOR"],
+        attendanceRecordId: recorded.id,
+        expectedVersion: recorded.versionToken,
+        checkInAt,
+        checkOutAt,
+        evidenceSummary: "again"
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "invalid_transition" }) });
+    const completed = await attendanceService.markCompleted({
+      session: adminSession,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      attendanceRecordId: recorded.id,
+      expectedVersion: recorded.versionToken
+    });
+    expect(completed.status).toBe("completed");
+  });
+
   it("prevents duplicate check-in/check-out and workers from reading another worker attendance", async () => {
     const { attendanceService, assignment, adminSession, workerSession, otherWorkerSession } =
       await createAttendanceContext();
@@ -4110,6 +4299,73 @@ describe("timesheet foundation", () => {
     expect(calculated.payableMinutes).toBe(360);
     expect(calculated.billableMinutes).toBe(360);
     expect(calculated.exceptionSummary ?? "").toContain("minimum_shift_floor_applied");
+  });
+
+  describe("15-minute margin and counting from the scheduled start (Laval 08:00–14:00, Nov 12)", () => {
+    // EST (UTC-5): 08:00 = 13:00Z, 14:00 = 19:00Z.
+    const T = (hhmmss: string) => new Date(`2026-11-12T${hhmmss}.000Z`);
+    async function calculateShift(checkIn: string, checkOut: string) {
+      const { timesheetService, attendanceRecord, adminSession, assignmentRepository, assignment } =
+        await createTimesheetContext();
+      const stored = await assignmentRepository.findAssignmentById(assignment.id);
+      if (!stored) throw new Error("assignment missing");
+      stored.confirmedStartAt = T("13:00:00");
+      stored.confirmedEndAt = T("19:00:00");
+      attendanceRecord.checkInAt = T(checkIn);
+      attendanceRecord.checkOutAt = T(checkOut);
+      const draft = await timesheetService.createFromAttendance({
+        session: adminSession,
+        roles: ["TIMESHEET_REVIEWER"],
+        attendanceRecordId: attendanceRecord.id
+      });
+      return timesheetService.calculate({
+        session: adminSession,
+        roles: ["TIMESHEET_REVIEWER"],
+        timesheetId: draft.id,
+        expectedVersion: draft.versionToken
+      });
+    }
+
+    it("07:30 in for an 08:00 start, out 14:00: 6.0 h billed and paid, early time excluded", async () => {
+      const calculated = await calculateShift("12:30:00", "19:00:00");
+      expect(calculated.rawElapsedMinutes).toBe(390);
+      expect(calculated.payableMinutes).toBe(360);
+      expect(calculated.billableMinutes).toBe(360);
+      expect(calculated.excludedMinutes).toBe(30);
+      // Early time is simply not counted, so it needs no review.
+      expect(calculated.exceptionSummary).toBeNull();
+      expect(calculated.status).toBe("worker_review");
+    });
+
+    it("within 15 minutes is normal: no flag, straight to worker review", async () => {
+      const calculated = await calculateShift("12:46:00", "19:14:00");
+      expect(calculated.exceptionSummary).toBeNull();
+      expect(calculated.status).toBe("worker_review");
+      expect(calculated.payableMinutes).toBe(360);
+      expect(calculated.billableMinutes).toBe(360);
+    });
+
+    it("in at 08:10: no flag, the 6-hour minimum still applies", async () => {
+      const calculated = await calculateShift("13:10:00", "19:00:00");
+      expect(calculated.exceptionSummary).toBeNull();
+      expect(calculated.status).toBe("worker_review");
+      expect(calculated.payableMinutes).toBe(360);
+    });
+
+    it("check-out 40 min late: flagged for review and capped at the scheduled end", async () => {
+      const calculated = await calculateShift("13:00:00", "19:40:00");
+      expect(calculated.exceptionSummary).toBe("late_departure");
+      expect(calculated.status).toBe("review_required");
+      expect(calculated.payableMinutes).toBe(360);
+      expect(calculated.billableMinutes).toBe(360);
+    });
+
+    it("left 2 h early: flagged, and the 6-hour minimum is noted", async () => {
+      const calculated = await calculateShift("13:00:00", "17:00:00");
+      expect(calculated.exceptionSummary).toBe("early_departure, minimum_shift_floor_applied");
+      expect(calculated.status).toBe("review_required");
+      expect(calculated.payableMinutes).toBe(360);
+    });
   });
 
   it("lets a platform reviewer override review exceptions back into the review chain", async () => {
@@ -6742,6 +6998,7 @@ async function createWorkerOfferContext(
     deliveryProvider?: WorkerOfferDeliveryProvider;
     now?: () => Date;
     numberOfWorkers?: number;
+    findHeldShiftOverlap?: HeldShiftOverlapFinder;
   } = {}
 ) {
   const { dispatchService, dispatchRepository, approvedJobRequest, adminSession, organization } =
@@ -6761,7 +7018,8 @@ async function createWorkerOfferContext(
         async deliver() {
           return { status: "sent", providerReference: "test-provider", retryable: false };
         }
-      }
+      },
+      ...(input.findHeldShiftOverlap ? { findHeldShiftOverlap: input.findHeldShiftOverlap } : {})
     }
   );
   const dispatchReview = await dispatchService.createDispatch({
@@ -7126,6 +7384,8 @@ describe("job request approval — pricing snapshot capture (slice 4C)", () => {
       }
     };
     const { jobRequestService, adminSession, review } = await driveToAdminReview(capture, "priced");
+    // Submit already priced the request once (the minimum-wage check); only approval is followed here.
+    order.length = 0;
     const approved = await jobRequestService.approveForDispatch({
       session: adminSession,
       roles: ["PLATFORM_ADMINISTRATOR"],
@@ -7164,5 +7424,96 @@ describe("job request approval — pricing snapshot capture (slice 4C)", () => {
       roles: ["PLATFORM_ADMINISTRATOR"]
     });
     expect(intake.map((request) => request.id)).toContain(review.id);
+  });
+
+  // Live check #88: a Joblop job showed $1.60/h, below the Québec minimum wage.
+  it("blocks approval below the Québec minimum wage, with no status change and nothing persisted", async () => {
+    let persisted = false;
+    let underpaid = false;
+    const capture: RequestPricingSnapshotCapture = {
+      async resolveAtApproval(input) {
+        const base = fakeResolved(input.jobRequestId, input.marginPpm);
+        // Fine at submit, $1.60/h at approval.
+        return underpaid ? { ...base, snapshot: { ...base.snapshot, workerHourlyRateMinor: 160 } } : base;
+      },
+      async persist() {
+        persisted = true;
+      }
+    };
+    const { jobRequestService, adminSession, review } = await driveToAdminReview(capture, "underpaid");
+    underpaid = true;
+    await expect(
+      jobRequestService.approveForDispatch({
+        session: adminSession,
+        roles: ["PLATFORM_ADMINISTRATOR"],
+        jobRequestId: review.id,
+        expectedVersion: review.versionToken,
+        marginPpm: 200_000
+      })
+    ).rejects.toThrow(/Worker pay is below Québec minimum wage \(\$\d+\.\d{2}\/h\)/);
+    expect(persisted).toBe(false);
+    const intake = await jobRequestService.listAdminIntake({ session: adminSession, roles: ["PLATFORM_ADMINISTRATOR"] });
+    expect(intake.map((request) => request.id)).toContain(review.id);
+  });
+
+  it("long-term listings (no hourly pay) are exempt from the minimum-wage check", async () => {
+    const capture: RequestPricingSnapshotCapture = {
+      async resolveAtApproval(input) {
+        const base = fakeResolved(input.jobRequestId, input.marginPpm);
+        return {
+          ...base,
+          snapshot: { ...base.snapshot, employerHourlyRateMinor: 0, workerHourlyRateMinor: 0, platformHourlyMarginMinor: 0 },
+          employerPlan: { jobLength: "long_term", planCode: "listing", discountPpm: 0 }
+        };
+      },
+      async persist() {}
+    };
+    const { jobRequestService, adminSession, review } = await driveToAdminReview(capture, "listing");
+    const approved = await jobRequestService.approveForDispatch({
+      session: adminSession,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      jobRequestId: review.id,
+      expectedVersion: review.versionToken,
+      marginPpm: null
+    });
+    expect(approved.status).toBe("approved_for_dispatch");
+  });
+
+  it("refuses an employer submit whose worker pay would be below the minimum (request stays a draft)", async () => {
+    let orgId = "";
+    const capture: RequestPricingSnapshotCapture = {
+      async resolveAtApproval(input) {
+        const base = fakeResolved(input.jobRequestId, input.marginPpm);
+        return { ...base, organizationId: orgId, snapshot: { ...base.snapshot, workerHourlyRateMinor: 160 } };
+      },
+      async persist() {}
+    };
+    const { organizationService, residenceService, departmentService, jobRequestService, jobRequestRepository } =
+      createJobRequestTestServices(capture);
+    const ownerId = "owner-submit-min-wage";
+    const organization = await organizationService.createOrganization({ actorUserId: ownerId, legalName: "Min Org", displayName: "Min Org" });
+    orgId = organization.organization.id;
+    const residence = await residenceService.createResidence({ actorUserId: ownerId, organizationId: orgId, name: "Min Residence" });
+    const department = await departmentService.createDepartment({ actorUserId: ownerId, organizationId: orgId, residenceId: residence.id, name: "Kitchen" });
+    const draft = await jobRequestService.createDraft({
+      actorUserId: ownerId,
+      organizationId: orgId,
+      residenceId: residence.id,
+      departmentId: department.id,
+      workGroupSlug: "kitchen",
+      roleDefinitionIdentifier: "chef",
+      title: "Min Chef",
+      numberOfWorkers: 1,
+      urgency: "normal",
+      requestType: "single_day",
+      timezone: "America/Toronto",
+      startAt: new Date("2026-08-12T12:00:00.000Z"),
+      endAt: new Date("2026-08-12T20:00:00.000Z")
+    });
+    await expect(
+      jobRequestService.submit({ actorUserId: ownerId, organizationId: orgId, jobRequestId: draft.id, expectedVersion: draft.versionToken })
+    ).rejects.toMatchObject({ code: "RWOS_BELOW_MINIMUM_WAGE" });
+    const stored = await jobRequestRepository.findJobRequestById(draft.id);
+    expect(stored?.status).toBe("draft");
   });
 });

@@ -12,6 +12,7 @@ type RawInterested = {
   interestId?: unknown;
   workerIdentityId?: unknown;
   displayName?: unknown;
+  employerFavorite?: unknown;
   status?: unknown;
   distanceKmAtInterest?: unknown;
   workerOfferId?: unknown;
@@ -54,6 +55,7 @@ export async function GET(request: Request, context: Readonly<{ params: Promise<
       status: s(w.status),
       distanceKmAtInterest: n(w.distanceKmAtInterest),
       linkedOfferId: s(w.workerOfferId),
+      employerFavorite: w.employerFavorite === true,
       createdAt: s(w.createdAt),
       governedOffer: offer ? { workerOfferId: s(offer.id), status: s(offer.status), version: n(offer.version) } : null
     };

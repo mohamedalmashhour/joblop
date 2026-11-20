@@ -2,9 +2,9 @@
 //
 // It aggregates EXTERNAL job postings from legal partner feeds (Adzuna first; Talent.com etc. later),
 // normalizes them into one shape, dedupes across sources, and ranks them for a given worker by fit +
-// pay + distance. These are EXTERNAL LEADS, not JobLop governed jobs — JobLop pay/classification/
+// pay + distance. These are EXTERNAL LEADS, not Joblop governed jobs — Joblop pay/classification/
 // dispatch never apply; we surface them, hand the worker off to the source, and use them as a funnel
-// to convert workers onto JobLop's own jobs. No money moves here.
+// to convert workers onto Joblop's own jobs. No money moves here.
 //
 // Network/storage live outside (apps/api). This file is just the transform + match logic so it can be
 // unit-tested without keys or a database.

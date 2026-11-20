@@ -5,8 +5,10 @@ export type FinanceInvoice = Readonly<{
   organizationId: string;
   invoiceNumber: string | null;
   status: string;
+  version: number;
   currency: string;
   totalMinor: number;
+  issuedAt: string | null;
   dueAt: string | null;
 }>;
 
@@ -40,8 +42,10 @@ export function parseFinanceInvoices(payload: unknown): readonly FinanceInvoice[
       organizationId: requiredText(item.organizationId),
       invoiceNumber: nullableText(item.invoiceNumber),
       status: requiredText(item.status),
+      version: safeInteger(item.version),
       currency: requiredText(item.currency),
       totalMinor: safeInteger(item.totalMinor),
+      issuedAt: nullableText(item.issuedAt),
       dueAt: nullableText(item.dueAt)
     };
   });

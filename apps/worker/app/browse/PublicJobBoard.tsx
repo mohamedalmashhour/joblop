@@ -3,8 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { JobScannerDemo } from "./JobScannerDemo";
 import { trackConversion } from "../analytics";
+import { useLocale, useT } from "../i18n/LocaleProvider";
+import { SiteHeader } from "../SiteHeader";
+import { JoblopJobBadge, OutsideApplyLink, OutsideSiteBadge } from "../JobSourceBadge";
+import { outsideApplyUrl } from "../jobSource";
+import { activeCountry } from "../country";
+import { publicJobPath } from "../safeReturnPath";
+import { leadPayLabel } from "../leadPay";
+import { appendUnique, nextCursorOf } from "../pagination";
 
-// Public, no-sign-in landing + job board for JobLop. Hero search, real categories, REAL featured
+// Public, no-sign-in landing + job board for Joblop. Hero search, real categories, REAL featured
 // jobs (from /public/jobs — never fabricated), job-seeker + employer sections, honest stats and
 // value props (no fake brand logos or invented reviews), CTA band, footer. Bilingual (Bill 96).
 // Privacy-safe: area-level job data only (city + province) — never address, client, or pay.
@@ -19,35 +27,26 @@ type Lead = {
   salaryMinMinor: number | null; salaryMaxMinor: number | null; salaryPeriod: string | null;
   category: string | null; postedAt: string | null; url: string; source: string;
 };
-type Lang = "en" | "fr";
+type Lang = "en" | "fr" | "ar";
 
-const PROVINCES: { code: string; en: string; fr: string }[] = [
-  { code: "AB", en: "Alberta", fr: "Alberta" }, { code: "BC", en: "British Columbia", fr: "Colombie-Britannique" },
-  { code: "MB", en: "Manitoba", fr: "Manitoba" }, { code: "NB", en: "New Brunswick", fr: "Nouveau-Brunswick" },
-  { code: "NL", en: "Newfoundland and Labrador", fr: "Terre-Neuve-et-Labrador" }, { code: "NS", en: "Nova Scotia", fr: "Nouvelle-Écosse" },
-  { code: "NT", en: "Northwest Territories", fr: "Territoires du Nord-Ouest" }, { code: "NU", en: "Nunavut", fr: "Nunavut" },
-  { code: "ON", en: "Ontario", fr: "Ontario" }, { code: "PE", en: "Prince Edward Island", fr: "Île-du-Prince-Édouard" },
-  { code: "QC", en: "Quebec", fr: "Québec" }, { code: "SK", en: "Saskatchewan", fr: "Saskatchewan" }, { code: "YT", en: "Yukon", fr: "Yukon" }
-];
-
-// JobLop's real work categories (not tech roles). `q` matches role/title/city server-side.
+// Joblop's real work categories (not tech roles). `q` matches role/title/city server-side.
 const CATEGORIES = [
-  { icon: "🩺", bg: "#e9f0ff", en: "Care & Nursing", fr: "Soins & infirmerie", q: "nurse" },
-  { icon: "🧑‍⚕️", bg: "#eafaf4", en: "Personal Support", fr: "Préposé aux bénéficiaires", q: "support" },
-  { icon: "🍳", bg: "#fff2e8", en: "Kitchen", fr: "Cuisine", q: "cook" },
-  { icon: "👨‍🍳", bg: "#fdeef3", en: "Chef", fr: "Chef", q: "chef" },
-  { icon: "🧹", bg: "#f0ecff", en: "Housekeeping", fr: "Entretien ménager", q: "housekeeping" },
-  { icon: "🍽️", bg: "#e7f7fb", en: "Dining Support", fr: "Service en salle", q: "dining" },
-  { icon: "🔧", bg: "#fff6e0", en: "Maintenance", fr: "Maintenance", q: "maintenance" },
-  { icon: "🧺", bg: "#eef7e8", en: "Laundry & Cleaning", fr: "Buanderie & nettoyage", q: "cleaner" }
+  { icon: "🩺", bg: "#fbf9f4", en: "Care & Nursing", fr: "Soins & infirmerie", ar: "الرعاية والتمريض", q: "nurse" },
+  { icon: "🧑‍⚕️", bg: "#eafaf4", en: "Personal Support", fr: "Préposé aux bénéficiaires", ar: "الدعم الشخصي", q: "support" },
+  { icon: "🍳", bg: "#fff2e8", en: "Kitchen", fr: "Cuisine", ar: "المطبخ", q: "cook" },
+  { icon: "👨‍🍳", bg: "#fdeef3", en: "Chef", fr: "Chef", ar: "طاهٍ", q: "chef" },
+  { icon: "🧹", bg: "#fbf9f4", en: "Housekeeping", fr: "Entretien ménager", ar: "التدبير المنزلي", q: "housekeeping" },
+  { icon: "🍽️", bg: "#fbf9f4", en: "Dining Support", fr: "Service en salle", ar: "خدمة الطعام", q: "dining" },
+  { icon: "🔧", bg: "#fff6e0", en: "Maintenance", fr: "Maintenance", ar: "الصيانة", q: "maintenance" },
+  { icon: "🧺", bg: "#eef7e8", en: "Laundry & Cleaning", fr: "Buanderie & nettoyage", ar: "الغسيل والتنظيف", q: "cleaner" }
 ];
 
-// Illustrative preview roles for the hero card — real JobLop categories, clearly flagged as a
+// Illustrative preview roles for the hero card — real Joblop categories, clearly flagged as a
 // preview (not live listings), mirroring how premium marketplace heroes show "a few possibilities".
 const PREVIEW = [
-  { icon: "🩺", en: "Care & Nursing", fr: "Soins & infirmerie", areaEn: "Montréal", areaFr: "Montréal", tagEn: "Hybrid", tagFr: "Hybride" },
-  { icon: "🍳", en: "Kitchen", fr: "Cuisine", areaEn: "Laval", areaFr: "Laval", tagEn: "On-site", tagFr: "Sur place" },
-  { icon: "🧑‍⚕️", en: "Personal Support", fr: "Préposé aux bénéficiaires", areaEn: "Across Canada", areaFr: "Partout au Canada", tagEn: "Flexible", tagFr: "Flexible" }
+  { icon: "🩺", en: "Care & Nursing", fr: "Soins & infirmerie", ar: "الرعاية والتمريض", areaEn: "Montréal", areaFr: "Montréal", areaAr: "مونتريال", tagEn: "Hybrid", tagFr: "Hybride", tagAr: "هجين" },
+  { icon: "🍳", en: "Kitchen", fr: "Cuisine", ar: "المطبخ", areaEn: "Laval", areaFr: "Laval", areaAr: "لافال", tagEn: "On-site", tagFr: "Sur place", tagAr: "في الموقع" },
+  { icon: "🧑‍⚕️", en: "Personal Support", fr: "Préposé aux bénéficiaires", ar: "الدعم الشخصي", areaEn: "Across Canada", areaFr: "Partout au Canada", areaAr: "في جميع أنحاء كندا", tagEn: "Flexible", tagFr: "Flexible", tagAr: "مرن" }
 ];
 
 const T = {
@@ -55,20 +54,20 @@ const T = {
     navJobs: "Find Jobs", navEmp: "For Employers", navRes: "Resources", navAbout: "About",
     signin: "Sign In", create: "Create Account",
     tabFind: "Find a Job", tabHire: "Hire Talent",
-    pathTag: "GET STARTED", pathTitle: "Choose your path", pathSub: "JobLop works for both sides of the shift — pick the one that's you.",
+    pathTag: "GET STARTED", pathTitle: "Choose your path", pathSub: "Joblop works for both sides of the shift — pick the one that's you.",
     pathWorkerTag: "WORKERS", pathWorkerTitle: "I'm looking for work",
     pathWorkerDesc: "Search the whole market in one place, apply 100% free, and get paid fairly for your hours.",
     pathWorkerBtn: "Find work",
     pathClientTag: "CLIENTS & EMPLOYERS", pathClientTitle: "I'm hiring",
-    pathClientDesc: "Post a staffing request and fill shifts with reliable local workers — governed and compliant.",
+    pathClientDesc: "Post a staffing request and fill shifts with reliable local workers, with clear contracts and by the rules.",
     pathClientBtn: "Hire & staff",
     magnetJobs: "jobs waiting right now", magnetProv: (n: number) => `across ${n} province${n === 1 ? "" : "s"}`,
     magnetSub: "Open a free account to see them all, apply in a tap, and get alerts the moment new ones land.",
     magnetBtn: "See all jobs — free",
-    heroA: "Your Next Opportunity", heroB: "Starts Here",
-    heroSub: "Search jobs from across Canada and apply — 100% free, always. JobLop brings the whole market to you, and never takes a cut of your pay.",
+    heroA: "Reliable People.", heroB: "Better Care.",
+    heroSub: "The trusted staffing marketplace for senior residences — verified local workers, fair pay, and secure matching. 100% free to apply, always.",
     heroBadge: "⚡ Powered by JobScanner — one search across the market",
-    freePill: "Free to apply",
+    freePill: "Trusted workforce for senior residences",
     trust1: "100% free to apply", trust2: "Never a cut of your pay",
     trust3: "The whole market, one search", trust4: "Across Canada · EN & FR",
     pcTag: "Preview", pcTitle: "A few good possibilities",
@@ -87,62 +86,62 @@ const T = {
     seek1: "Apply to shifts in a few taps", seek2: "Get matched to work near you", seek3: "Your hours recorded fairly",
     empTag: "FOR EMPLOYERS", empTitle: "Find and staff shifts faster",
     empSub: "Post a request, reach available local workers, and get coverage you can count on.",
-    empBtn: "Post a request", emp1: "Reach available local workers", emp2: "Governed, compliant staffing", emp3: "Fill urgent shifts fast",
+    empBtn: "Post a request", emp1: "Reach available local workers", emp2: "Clear contracts, by the rules", emp3: "Fill urgent shifts fast",
     trustTitle: "Trusted where people live and work",
-    trustSub: "Care homes, restaurants, and local employers across Canada staff with JobLop.",
-    st1: "open jobs", st2: "provinces hiring", st3: "worker fees", st4: "to browse",
+    trustSub: "Care homes, restaurants, and local employers across Canada staff with Joblop.",
+    st1: "open jobs", st2: "provinces hiring", st2One: "province hiring", st3: "worker fees", st4: "to browse",
     jsTag: "⚡ JOBSCANNER", jsTitle: "The deepest job search in Canada — and it's free",
-    jsSub: "JobScanner hunts the market for you: it continuously scans partner job feeds across Canada, ranks the best matches, and lets you apply free on JobLop. One search instead of ten tabs.",
+    jsSub: "JobScanner hunts the market for you: it continuously scans partner job feeds across Canada, ranks the best matches, and lets you apply free on Joblop. One search instead of ten tabs.",
     js1t: "Deep, real search", js1b: "The whole market scanned and refreshed around the clock.",
     js2t: "Ranked for you", js2b: "Sorted by fit and pay so the best jobs rise to the top.",
-    js3t: "Apply free", js3b: "Apply on JobLop at no cost — we never take a cut of your pay.",
+    js3t: "Apply free", js3b: "Apply on Joblop at no cost — we never take a cut of your pay.",
     jsBtn: "Search the market — free",
     leadsLive: "Live from across the web", leadsSrc: "External leads",
-    leadsApply: "Apply with JobLop", leadsApplyHint: "Create a free JobLop account to apply and get alerts",
-    leadsNote: "External roles — create a free JobLop account to apply and get alerts, all in one place.",
+    leadsApply: "Apply with Joblop", leadsApplyHint: "Create a free Joblop account to apply and get alerts",
+    leadsNote: "These jobs are on other websites. You apply on their site.",
     leadsCta: "See the full ranked scanner (free)",
-    alertTitle: "Get job alerts — from JobLop",
+    alertTitle: "Get job alerts — from Joblop",
     alertSub: "Leave your email and we'll alert you as matching jobs appear. Free, and we never take a cut of your pay.",
     alertPh: "you@email.com", alertBtn: "Alert me", alertSending: "Saving…",
-    alertOk: "You're on the list. We'll email you as JobLop alerts roll out.",
+    alertOk: "You're on the list. We'll email you as Joblop alerts roll out.",
     alertErr: "Please enter a valid email and try again.",
-    alertFine: "No spam. Unsubscribe anytime. Your email stays with JobLop.",
-    whyTitle: "Why workers choose JobLop",
+    alertFine: "No spam. Unsubscribe anytime. Your email stays with Joblop.",
+    whyTitle: "Why workers choose Joblop",
     why1t: "Trusted workplaces", why1b: "Clear terms before you accept — no surprises.",
     why2t: "Paid fairly", why2b: "Your hours come from your own clock-in / clock-out.",
-    why3t: "No cut of your pay", why3b: "JobLop never takes a fee from what you earn.",
+    why3t: "No cut of your pay", why3b: "Joblop never takes a fee from what you earn.",
     contactTag: "CONTACT", contactTitle: "Get in touch",
     contactSub: "Questions about a job, hiring, or your account? Send us a message and we'll get back to you.",
     cEmail: "Email us", cVisit: "Visit us", cResp: "We usually reply within one business day.",
     cName: "Your name", cEmailF: "Your email", cMsg: "How can we help?", cSend: "Send message",
-    ctaTitle: "Ready to start your next shift?", ctaSub: "Whether you're looking for work or the right people, JobLop is here to help.",
+    ctaTitle: "Ready to start your next shift?", ctaSub: "Whether you're looking for work or the right people, Joblop is here to help.",
     ctaFind: "Find work", ctaPost: "Post a request",
     fTag: "Connecting people with opportunities to build a brighter future.",
     fSeekers: "For Workers", fEmp: "For Employers", fCo: "Company", fLegal: "Legal",
     fBrowse: "Browse jobs", fCreate: "Create account", fAlerts: "Job alerts",
     fPost: "Post a request", fFind: "Find workers", fPricing: "Pricing",
-    fAbout: "About", fContact: "Contact", fCareers: "Careers",
-    fPrivacy: "Privacy", fTerms: "Terms", fCookie: "Cookies",
-    copyright: "JobLop. A brighter future, together."
+    fAbout: "About", fContact: "Contact",
+    fPrivacy: "Privacy", fTerms: "Terms",
+    copyright: "Joblop. A brighter future, together."
   },
   fr: {
     navJobs: "Offres", navEmp: "Employeurs", navRes: "Ressources", navAbout: "À propos",
     signin: "Se connecter", create: "Créer un compte",
     tabFind: "Trouver un emploi", tabHire: "Recruter",
-    pathTag: "COMMENCER", pathTitle: "Choisissez votre parcours", pathSub: "JobLop sert les deux côtés du quart — choisissez le vôtre.",
+    pathTag: "COMMENCER", pathTitle: "Choisissez votre parcours", pathSub: "Joblop sert les deux côtés du quart — choisissez le vôtre.",
     pathWorkerTag: "TRAVAILLEURS", pathWorkerTitle: "Je cherche du travail",
     pathWorkerDesc: "Cherchez tout le marché au même endroit, postulez 100 % gratuitement et soyez payé équitablement pour vos heures.",
     pathWorkerBtn: "Trouver du travail",
     pathClientTag: "CLIENTS & EMPLOYEURS", pathClientTitle: "Je recrute",
-    pathClientDesc: "Publiez une demande de dotation et comblez vos quarts avec des travailleurs locaux fiables — encadré et conforme.",
+    pathClientDesc: "Publiez une demande de dotation et comblez vos quarts avec des travailleurs locaux fiables, avec des contrats clairs et selon les règles.",
     pathClientBtn: "Recruter et doter",
     magnetJobs: "emplois disponibles en ce moment", magnetProv: (n: number) => `dans ${n} province${n === 1 ? "" : "s"}`,
     magnetSub: "Créez un compte gratuit pour tous les voir, postuler en un geste et être alerté dès qu'un nouvel emploi arrive.",
     magnetBtn: "Voir tous les emplois — gratuit",
-    heroA: "Votre prochaine occasion", heroB: "commence ici",
-    heroSub: "Cherchez des emplois partout au Canada et postulez — 100 % gratuit, toujours. JobLop vous apporte tout le marché et ne prend jamais de part de votre paie.",
+    heroA: "Des gens fiables.", heroB: "De meilleurs soins.",
+    heroSub: "La plateforme de dotation de confiance pour les résidences pour aînés — des travailleurs locaux vérifiés, une paie équitable et un jumelage sécuritaire. 100 % gratuit pour postuler.",
     heroBadge: "⚡ Propulsé par JobScanner — une seule recherche, tout le marché",
-    freePill: "Postuler gratuitement",
+    freePill: "Personnel de confiance pour les résidences pour aînés",
     trust1: "Postuler 100 % gratuit", trust2: "Jamais de commission sur votre paie",
     trust3: "Tout le marché, une seule recherche", trust4: "Partout au Canada · EN & FR",
     pcTag: "Aperçu", pcTitle: "Quelques bonnes possibilités",
@@ -161,57 +160,140 @@ const T = {
     seek1: "Postulez en quelques touches", seek2: "Jumelé à du travail près de vous", seek3: "Vos heures enregistrées équitablement",
     empTag: "POUR LES EMPLOYEURS", empTitle: "Comblez vos quarts plus vite",
     empSub: "Publiez une demande, rejoignez des travailleurs locaux disponibles et obtenez une couverture fiable.",
-    empBtn: "Publier une demande", emp1: "Rejoignez des travailleurs locaux", emp2: "Dotation encadrée et conforme", emp3: "Comblez les urgences vite",
+    empBtn: "Publier une demande", emp1: "Rejoignez des travailleurs locaux", emp2: "Contrats clairs, selon les règles", emp3: "Comblez les urgences vite",
     trustTitle: "La confiance, là où l'on vit et travaille",
-    trustSub: "Résidences, restaurants et employeurs locaux partout au Canada recrutent avec JobLop.",
-    st1: "offres ouvertes", st2: "provinces qui embauchent", st3: "frais travailleur", st4: "pour consulter",
+    trustSub: "Résidences, restaurants et employeurs locaux partout au Canada recrutent avec Joblop.",
+    st1: "offres ouvertes", st2: "provinces qui embauchent", st2One: "province qui embauche", st3: "frais travailleur", st4: "pour consulter",
     jsTag: "⚡ JOBSCANNER", jsTitle: "La recherche d'emploi la plus poussée au Canada — gratuite",
-    jsSub: "JobScanner cherche le marché pour vous : il analyse en continu des fils d'emplois partenaires partout au Canada, classe les meilleures correspondances et vous laisse postuler gratuitement sur JobLop. Une seule recherche au lieu de dix onglets.",
+    jsSub: "JobScanner cherche le marché pour vous : il analyse en continu des fils d'emplois partenaires partout au Canada, classe les meilleures correspondances et vous laisse postuler gratuitement sur Joblop. Une seule recherche au lieu de dix onglets.",
     js1t: "Recherche réelle et poussée", js1b: "Tout le marché analysé et rafraîchi en continu.",
     js2t: "Classé pour vous", js2b: "Triées par adéquation et salaire — les meilleures en premier.",
-    js3t: "Postuler gratuitement", js3b: "Postulez sur JobLop sans frais — jamais de part de votre paie.",
+    js3t: "Postuler gratuitement", js3b: "Postulez sur Joblop sans frais — jamais de part de votre paie.",
     jsBtn: "Chercher le marché — gratuit",
     leadsLive: "En direct du web", leadsSrc: "Offres externes",
-    leadsApply: "Postuler avec JobLop", leadsApplyHint: "Créez un compte JobLop gratuit pour postuler et recevoir des alertes",
-    leadsNote: "Offres externes — créez un compte JobLop gratuit pour postuler et recevoir des alertes, au même endroit.",
+    leadsApply: "Postuler avec Joblop", leadsApplyHint: "Créez un compte Joblop gratuit pour postuler et recevoir des alertes",
+    leadsNote: "Ces emplois sont sur d’autres sites. Vous postulez sur leur site.",
     leadsCta: "Voir le scanner complet et classé (gratuit)",
-    alertTitle: "Recevez des alertes d'emploi — de JobLop",
+    alertTitle: "Recevez des alertes d'emploi — de Joblop",
     alertSub: "Laissez votre courriel et nous vous alerterons dès qu'un emploi correspond. Gratuit, et nous ne prenons aucune part de votre paie.",
     alertPh: "vous@courriel.com", alertBtn: "M'alerter", alertSending: "Enregistrement…",
-    alertOk: "Vous êtes inscrit. Nous vous écrirons dès le lancement des alertes JobLop.",
+    alertOk: "Vous êtes inscrit. Nous vous écrirons dès le lancement des alertes Joblop.",
     alertErr: "Veuillez entrer un courriel valide et réessayer.",
-    alertFine: "Pas de pourriel. Désabonnement en tout temps. Votre courriel reste chez JobLop.",
-    whyTitle: "Pourquoi les travailleurs choisissent JobLop",
+    alertFine: "Pas de pourriel. Désabonnement en tout temps. Votre courriel reste chez Joblop.",
+    whyTitle: "Pourquoi les travailleurs choisissent Joblop",
     why1t: "Milieux de confiance", why1b: "Conditions claires avant d'accepter — sans surprise.",
     why2t: "Payé équitablement", why2b: "Vos heures proviennent de votre propre pointage.",
-    why3t: "Aucune part de votre paie", why3b: "JobLop ne prend jamais de frais sur ce que vous gagnez.",
+    why3t: "Aucune part de votre paie", why3b: "Joblop ne prend jamais de frais sur ce que vous gagnez.",
     contactTag: "CONTACT", contactTitle: "Nous joindre",
     contactSub: "Des questions sur un emploi, le recrutement ou votre compte ? Écrivez-nous et nous vous répondrons.",
     cEmail: "Écrivez-nous", cVisit: "Nos bureaux", cResp: "Nous répondons habituellement en un jour ouvrable.",
     cName: "Votre nom", cEmailF: "Votre courriel", cMsg: "Comment pouvons-nous aider ?", cSend: "Envoyer le message",
-    ctaTitle: "Prêt pour votre prochain quart ?", ctaSub: "Que vous cherchiez du travail ou les bonnes personnes, JobLop est là pour vous aider.",
+    ctaTitle: "Prêt pour votre prochain quart ?", ctaSub: "Que vous cherchiez du travail ou les bonnes personnes, Joblop est là pour vous aider.",
     ctaFind: "Trouver du travail", ctaPost: "Publier une demande",
     fTag: "Relier les gens aux occasions pour bâtir un avenir meilleur.",
     fSeekers: "Travailleurs", fEmp: "Employeurs", fCo: "Entreprise", fLegal: "Légal",
     fBrowse: "Parcourir les offres", fCreate: "Créer un compte", fAlerts: "Alertes d'emploi",
     fPost: "Publier une demande", fFind: "Trouver des travailleurs", fPricing: "Tarifs",
-    fAbout: "À propos", fContact: "Contact", fCareers: "Carrières",
-    fPrivacy: "Confidentialité", fTerms: "Conditions", fCookie: "Témoins",
-    copyright: "JobLop. Un avenir meilleur, ensemble."
+    fAbout: "À propos", fContact: "Contact",
+    fPrivacy: "Confidentialité", fTerms: "Conditions",
+    copyright: "Joblop. Un avenir meilleur, ensemble."
+  },
+  ar: {
+    navJobs: "الوظائف", navEmp: "لأصحاب العمل", navRes: "الموارد", navAbout: "من نحن",
+    signin: "تسجيل الدخول", create: "إنشاء حساب",
+    tabFind: "ابحث عن عمل", tabHire: "وظّف كفاءات",
+    pathTag: "ابدأ الآن", pathTitle: "اختر مسارك", pathSub: "جوب‑لوب يخدم طرفَي النوبة — اختر ما يناسبك.",
+    pathWorkerTag: "العمال", pathWorkerTitle: "أبحث عن عمل",
+    pathWorkerDesc: "ابحث في السوق كله من مكان واحد، وتقدّم مجانًا 100٪، واحصل على أجر عادل مقابل ساعاتك.",
+    pathWorkerBtn: "ابحث عن عمل",
+    pathClientTag: "العملاء وأصحاب العمل", pathClientTitle: "أنا أوظّف",
+    pathClientDesc: "انشر طلب توظيف واملأ النوبات بعمال محليين موثوقين، بعقود واضحة ووفق القواعد.",
+    pathClientBtn: "وظّف ودبّر",
+    magnetJobs: "وظيفة متاحة الآن", magnetProv: (n: number) => `في ${n} مقاطعة`,
+    magnetSub: "افتح حسابًا مجانيًا لرؤيتها كلها، وتقدّم بضغطة، واحصل على تنبيهات فور توفّر وظائف جديدة.",
+    magnetBtn: "اعرض كل الوظائف — مجانًا",
+    heroA: "أشخاص موثوقون.", heroB: "رعاية أفضل.",
+    heroSub: "سوق التوظيف الموثوق لدور المسنين — عمال محليون موثّقون، أجر عادل، ومطابقة آمنة. التقديم مجاني 100٪ دائمًا.",
+    heroBadge: "⚡ مدعوم بـ JobScanner — بحث واحد في السوق كله",
+    freePill: "قوة عاملة موثوقة لدور المسنين",
+    trust1: "التقديم مجاني 100٪", trust2: "لا نقتطع أبدًا من أجرك",
+    trust3: "السوق كله ببحث واحد", trust4: "في جميع أنحاء كندا · إنجليزي وفرنسي",
+    pcTag: "معاينة", pcTitle: "بعض الإمكانات الجيدة",
+    previewLive: "نتائج مباشرة", previewMore: "افتح السوق كله مع JobScanner — سجّل مجانًا",
+    previewEmpty: "اكتب دورًا أو اختر مقاطعة لرؤية نتائج مباشرة.",
+    phRole: "المسمى الوظيفي أو الدور أو كلمة مفتاحية", phLoc: "الموقع", searchBtn: "ابحث عن وظائف",
+    popular: "شائع:", allCanada: "كل كندا",
+    cStat1: "وظيفة متاحة", cStat2: "في كل مقاطعة", cBuild: "ابنِ مستقبلك",
+    catTitle: "استكشف الوظائف حسب الفئة", catSub: "ابدأ بالعمل الذي تتقنه، ثم ضيّق النطاق حسب المكان.",
+    featTitle: "فرص مميزة", featSub: "نوبات مفتوحة جديدة من أصحاب عمل قريبين منك.", viewAll: "عرض كل الوظائف ←",
+    openings: (n: number) => `${n} شاغر`, urgent: "عاجل", starts: "يبدأ", apply: "قدّم الآن",
+    none: "لا توجد وظائف مطابقة الآن — جرّب مقاطعة أخرى أو امسح البحث.", loading: "جارٍ البحث…",
+    seekTag: "للعمال", seekTitle: "اتخذ خطوتك التالية في العمل",
+    seekSub: "أنشئ ملفًا مجانيًا، واحصل على مطابقة لنوبات قريبة منك، ولا تفوّت أي فرصة.",
+    seekBtn: "أنشئ حسابك",
+    seek1: "تقدّم للنوبات بضغطات قليلة", seek2: "مطابقة لعمل قريب منك", seek3: "ساعاتك مسجّلة بإنصاف",
+    empTag: "لأصحاب العمل", empTitle: "املأ النوبات بسرعة أكبر",
+    empSub: "انشر طلبًا، وتواصل مع عمال محليين متاحين، واحصل على تغطية يمكنك الاعتماد عليها.",
+    empBtn: "انشر طلبًا", emp1: "تواصل مع عمال محليين متاحين", emp2: "عقود واضحة ووفق القواعد", emp3: "املأ النوبات العاجلة بسرعة",
+    trustTitle: "الثقة حيث نعيش ونعمل",
+    trustSub: "دور الرعاية والمطاعم وأصحاب العمل المحليون في جميع أنحاء كندا يوظّفون عبر جوب‑لوب.",
+    st1: "وظيفة متاحة", st2: "مقاطعة توظّف", st2One: "مقاطعة توظّف", st3: "رسوم على العامل", st4: "للتصفّح",
+    jsTag: "⚡ JOBSCANNER", jsTitle: "أعمق بحث عن عمل في كندا — ومجاني",
+    jsSub: "JobScanner يبحث في السوق نيابة عنك: يمسح باستمرار مصادر وظائف شريكة في جميع أنحاء كندا، ويرتّب أفضل المطابقات، ويتيح لك التقديم مجانًا عبر جوب‑لوب. بحث واحد بدل عشر نوافذ.",
+    js1t: "بحث حقيقي وعميق", js1b: "السوق كله يُمسح ويُحدَّث باستمرار.",
+    js2t: "مرتّب من أجلك", js2b: "مصنّفة حسب الملاءمة والأجر — الأفضل أولًا.",
+    js3t: "تقديم مجاني", js3b: "تقدّم عبر جوب‑لوب دون رسوم — لا اقتطاع من أجرك أبدًا.",
+    jsBtn: "ابحث في السوق — مجانًا",
+    leadsLive: "مباشر من الويب", leadsSrc: "وظائف خارجية",
+    leadsApply: "تقدّم عبر جوب‑لوب", leadsApplyHint: "أنشئ حساب جوب‑لوب مجاني للتقديم وتلقّي التنبيهات",
+    leadsNote: "هذه الوظائف على مواقع أخرى. تقدّم على موقعهم.",
+    leadsCta: "اعرض الماسح الكامل والمصنّف (مجانًا)",
+    alertTitle: "احصل على تنبيهات وظائف — من جوب‑لوب",
+    alertSub: "اترك بريدك الإلكتروني وسننبّهك فور توفّر وظيفة مطابقة. مجانًا، ولا نقتطع أي جزء من أجرك.",
+    alertPh: "you@email.com", alertBtn: "نبّهني", alertSending: "جارٍ الحفظ…",
+    alertOk: "تم تسجيلك. سنراسلك فور إطلاق تنبيهات جوب‑لوب.",
+    alertErr: "يرجى إدخال بريد إلكتروني صالح والمحاولة مجددًا.",
+    alertFine: "لا رسائل مزعجة. يمكنك إلغاء الاشتراك في أي وقت. بريدك يبقى لدى جوب‑لوب.",
+    whyTitle: "لماذا يختار العمال جوب‑لوب",
+    why1t: "بيئات موثوقة", why1b: "شروط واضحة قبل القبول — دون مفاجآت.",
+    why2t: "أجر عادل", why2b: "ساعاتك تأتي من تسجيل وصولك أنت.",
+    why3t: "لا اقتطاع من أجرك", why3b: "جوب‑لوب لا يأخذ أبدًا رسومًا مما تكسبه.",
+    contactTag: "تواصل", contactTitle: "تواصل معنا",
+    contactSub: "أسئلة عن وظيفة أو التوظيف أو حسابك؟ راسلنا وسنرد عليك.",
+    cEmail: "راسلنا", cVisit: "مكاتبنا", cResp: "نرد عادةً خلال يوم عمل واحد.",
+    cName: "اسمك", cEmailF: "بريدك الإلكتروني", cMsg: "كيف يمكننا المساعدة؟", cSend: "أرسل الرسالة",
+    ctaTitle: "جاهز لنوبتك التالية؟", ctaSub: "سواء كنت تبحث عن عمل أو عن الأشخاص المناسبين، جوب‑لوب هنا لمساعدتك.",
+    ctaFind: "ابحث عن عمل", ctaPost: "انشر طلبًا",
+    fTag: "نربط الناس بالفرص لبناء مستقبل أكثر إشراقًا.",
+    fSeekers: "للعمال", fEmp: "لأصحاب العمل", fCo: "الشركة", fLegal: "قانوني",
+    fBrowse: "تصفّح الوظائف", fCreate: "إنشاء حساب", fAlerts: "تنبيهات الوظائف",
+    fPost: "انشر طلبًا", fFind: "ابحث عن عمال", fPricing: "الأسعار",
+    fAbout: "من نحن", fContact: "تواصل",
+    fPrivacy: "الخصوصية", fTerms: "الشروط",
+    copyright: "جوب‑لوب. مستقبل أكثر إشراقًا، معًا."
   }
 } as const;
 
 // Employer app entry — set NEXT_PUBLIC_EMPLOYER_URL in production (https://employer.joblop.com).
 const EMPLOYER_URL = process.env.NEXT_PUBLIC_EMPLOYER_URL ?? "http://localhost:3100";
 const CONTACT_EMAIL = "contact@joblop.com"; // change to the live inbox when set up
-const CONTACT_ADDRESS = "207-805 boul. Chomedey, Laval, QC";
+const CONTACT_ADDRESS = activeCountry().contactAddress;
 
 export function PublicJobBoard() {
-  const [lang, setLang] = useState<Lang>("en");
+  // Follow the platform's chosen locale (cookie-driven, same control as the rest of the app) so the
+  // page language AND the server-set <html dir> always agree: ع ⇒ rtl + Arabic, EN/FR ⇒ ltr.
+  const locale = useLocale();
+  const lang: Lang = locale === "ar" ? "ar" : locale.startsWith("fr") ? "fr" : "en";
+  // Pick a localized string with en fallback for anything not yet translated.
+  const tr = (en: string, fr: string, ar?: string) =>
+    lang === "ar" ? ar ?? en : lang === "fr" ? fr : en;
   const [tab, setTab] = useState<"find" | "hire">("find");
   const [province, setProvince] = useState("");
   const [q, setQ] = useState("");
   const [jobs, setJobs] = useState<Job[] | null>(null);
+  // "Load more": the API pages the board 24 jobs at a time.
+  const [jobsCursor, setJobsCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [leads, setLeads] = useState<Lead[] | null>(null);
   const [leadsTotal, setLeadsTotal] = useState<number | null>(null);
   const [totalJobs, setTotalJobs] = useState<number | null>(null);
@@ -221,12 +303,15 @@ export function PublicJobBoard() {
   const [cForm, setCForm] = useState({ name: "", email: "", msg: "" });
   const gen = useRef(0);
   const t = T[lang];
+  const tm = useT();
+  // Arrows follow the reading direction: → in English/French, ← in Arabic.
+  const arrow = lang === "ar" ? "←" : "→";
 
   // Opens the visitor's own email client with the message pre-filled — a real, no-backend contact
   // path. We never collect or store the data ourselves.
   const sendContact = (e: React.FormEvent) => {
     e.preventDefault();
-    const subject = encodeURIComponent(`JobLop — ${cForm.name || "contact"}`);
+    const subject = encodeURIComponent(`Joblop — ${cForm.name || "contact"}`);
     const body = encodeURIComponent(`${cForm.msg}\n\n— ${cForm.name} <${cForm.email}>`);
     window.location.href = `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`;
   };
@@ -241,16 +326,58 @@ export function PublicJobBoard() {
     try {
       const res = await fetch(`/api/public/jobs?${params.toString()}`, { cache: "no-store" });
       const data = await res.json();
-      if (mine === gen.current) setJobs(Array.isArray(data.jobs) ? data.jobs : []);
+      if (mine === gen.current) {
+        setJobs(Array.isArray(data.jobs) ? data.jobs : []);
+        setJobsCursor(nextCursorOf(data));
+      }
     } catch {
-      if (mine === gen.current) setJobs([]);
+      if (mine === gen.current) {
+        setJobs([]);
+        setJobsCursor(null);
+      }
     }
   }, [province, q]);
+
+  const loadMore = useCallback(async () => {
+    if (jobsCursor === null) return;
+    const mine = gen.current;
+    setLoadingMore(true);
+    const params = new URLSearchParams();
+    if (province) params.set("province", province);
+    if (q.trim()) params.set("q", q.trim());
+    params.set("limit", "24");
+    params.set("cursor", jobsCursor);
+    try {
+      const res = await fetch(`/api/public/jobs?${params.toString()}`, { cache: "no-store" });
+      const data = await res.json();
+      if (mine === gen.current) {
+        setJobs((current) => appendUnique(current ?? [], Array.isArray(data.jobs) ? (data.jobs as Job[]) : [], (job) => job.jobCode));
+        setJobsCursor(nextCursorOf(data));
+      }
+    } catch {
+      /* keep what is shown; the button stays so the visitor can try again */
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [jobsCursor, province, q]);
 
   useEffect(() => {
     const h = setTimeout(load, q ? 300 : 0);
     return () => clearTimeout(h);
   }, [load, q]);
+
+  // Dark-first landing: paint the page canvas black end to end so the experience is one continuous
+  // black surface (behind the island and the app's global footer), then restore on leave.
+  useEffect(() => {
+    const body = document.body.style.background;
+    const html = document.documentElement.style.background;
+    document.body.style.background = "#000000";
+    document.documentElement.style.background = "#000000";
+    return () => {
+      document.body.style.background = body;
+      document.documentElement.style.background = html;
+    };
+  }, []);
 
   // Public JobScanner teaser — real external market leads (cached, read-only). Follows the same
   // role/province filters so the magnet reacts to the visitor's search. Empty until a scan has run.
@@ -274,7 +401,7 @@ export function PublicJobBoard() {
     return () => clearTimeout(h);
   }, [loadLeads, q]);
 
-  // TRUE total of jobs waiting (JobLop open jobs + scanned external leads) for the headline magnet.
+  // TRUE total of jobs waiting (Joblop open jobs + scanned external leads) for the headline magnet.
   // Pure count query on the API — no live scan. Reacts to province, not to every keystroke.
   const loadStats = useCallback(async () => {
     const params = new URLSearchParams();
@@ -293,7 +420,7 @@ export function PublicJobBoard() {
     void loadStats();
   }, [loadStats]);
 
-  // Capture a job-alert email for JobLop (not the external source). Carries the current role/province
+  // Capture a job-alert email for Joblop (not the external source). Carries the current role/province
   // so the subscription is pre-targeted. Honest: records the subscription; delivery rolls out later.
   const submitAlert = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -314,14 +441,8 @@ export function PublicJobBoard() {
     }
   };
 
-  const fmtPay = (l: Lead) => {
-    const toK = (minor: number | null) => (minor == null ? null : Math.round(minor / 100 / 1000));
-    const lo = toK(l.salaryMinMinor);
-    const hi = toK(l.salaryMaxMinor);
-    if (lo == null && hi == null) return null;
-    if (lo != null && hi != null) return lo === hi ? `$${lo}k` : `$${lo}–${hi}k`;
-    return `$${lo ?? hi}k`;
-  };
+  // Hourly listings used to show "$0k"; the shared formatter tells hourly from yearly pay.
+  const fmtPay = (l: Lead) => leadPayLabel(l, locale);
 
   const scrollToJobs = () => document.getElementById("jobs")?.scrollIntoView({ behavior: "smooth" });
   const fmtDate = (iso: string) => {
@@ -330,9 +451,12 @@ export function PublicJobBoard() {
   };
   const provinceCount = jobs ? new Set(jobs.map((j) => j.province).filter(Boolean)).size : 0;
   const jobCount = jobs ? jobs.length : null;
-  // Hero/stat headline count: prefer the TRUE total (JobLop open jobs + all scanned leads) from the
-  // stats endpoint; fall back to the live teaser total, then to JobLop's own public-job count.
+  // Hero/stat headline count: prefer the TRUE total (Joblop open jobs + all scanned leads) from the
+  // stats endpoint; fall back to the live teaser total, then to Joblop's own public-job count.
   const openCount = totalJobs ?? leadsTotal ?? jobCount;
+  // Province tally for the aggregate stats: prefer the stats endpoint (same source as openCount) so
+  // the trust-band figure isn't a bare "—" just because the live typeahead has no local matches yet.
+  const openProvinces = totalProvinces ?? (provinceCount || null);
   const fmtCount = (n: number | null) => (n == null ? "—" : n.toLocaleString(lang === "fr" ? "fr-CA" : "en-CA"));
 
   return (
@@ -340,113 +464,9 @@ export function PublicJobBoard() {
       <style>{CSS}</style>
 
       {/* NAV */}
-      <header className="jl-nav">
-        <div className="jl-nav-in">
-          <a href="/" className="jl-logo"><JobLopMark size={30} />Job<span>Lop</span></a>
-          <nav className="jl-links">
-            <a href="#jobs">{t.navJobs}</a>
-            <a href={EMPLOYER_URL}>{t.navEmp}</a>
-            <a href="#jobscanner">JobScanner</a>
-            <a href="#contact">{t.fContact}</a>
-          </nav>
-          <div className="jl-nav-cta">
-            <button className="jl-lang" onClick={() => setLang(lang === "en" ? "fr" : "en")}>{lang === "en" ? "FR" : "EN"}</button>
-            <a href="/" className="jl-btn-ghost">{t.signin}</a>
-            <a href="/" className="jl-btn-primary">{t.create}</a>
-          </div>
-        </div>
-      </header>
+      <SiteHeader />
 
-      {/* HERO */}
-      <section className="jl-hero">
-        <div className="jl-hero-in">
-          <div className="jl-hero-copy">
-            <span className="jl-free-pill">✓ {t.freePill}</span>
-            <h1>{t.heroA}<br /><span className="jl-hl-accent">{t.heroB}</span></h1>
-            <p>{t.heroSub}</p>
-            <div className="jl-tabs">
-              <button className={tab === "find" ? "on" : ""} onClick={() => setTab("find")}>🔍 {t.tabFind}</button>
-              <button className={tab === "hire" ? "on" : ""} onClick={() => setTab("hire")}>🧑‍💼 {t.tabHire}</button>
-            </div>
-            {tab === "find" ? (
-              <form className="jl-search" onSubmit={(e) => { e.preventDefault(); scrollToJobs(); void load(); }}>
-                <div className="jl-sf"><span>🔎</span><input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.phRole} aria-label={t.phRole} /></div>
-                <div className="jl-sf jl-sf-loc"><span>📍</span>
-                  <select value={province} onChange={(e) => setProvince(e.target.value)} aria-label={t.phLoc}>
-                    <option value="">{t.allCanada}</option>
-                    {PROVINCES.map((p) => <option key={p.code} value={p.code}>{lang === "fr" ? p.fr : p.en}</option>)}
-                  </select>
-                </div>
-                <button type="submit" className="jl-search-btn">{t.searchBtn}</button>
-              </form>
-            ) : (
-              <a href={EMPLOYER_URL} className="jl-hire-cta">{t.empBtn} →</a>
-            )}
-            {tab === "find" && (
-              <div className="jl-popular">
-                <span>{t.popular}</span>
-                {CATEGORIES.slice(0, 4).map((c) => (
-                  <button key={c.q} onClick={() => { setQ(c.q); scrollToJobs(); }}>{lang === "fr" ? c.fr : c.en}</button>
-                ))}
-              </div>
-            )}
-            <a href="#jobscanner" className="jl-hero-js">{t.heroBadge} →</a>
-
-            {/* Live search demo: real matches appear as the visitor types — proof of the deep search. */}
-            {tab === "find" && (
-              <div className="jl-preview">
-                <div className="jl-preview-head">
-                  <span className="jl-preview-dot" /> {t.previewLive}
-                  {jobs !== null ? <span className="jl-preview-n">{jobs.length} {t.st1}</span> : null}
-                </div>
-                {jobs === null ? (
-                  <div className="jl-preview-empty">{t.loading}</div>
-                ) : jobs.length === 0 ? (
-                  <div className="jl-preview-empty">{t.previewEmpty}</div>
-                ) : (
-                  <>
-                    {jobs.slice(0, 3).map((j) => (
-                      <a key={j.jobCode} href="/" className="jl-preview-row">
-                        <span className="jl-preview-ic">{iconFor(j.role)}</span>
-                        <span className="jl-preview-main"><strong>{j.role}</strong><em>📍 {j.areaLabel}</em></span>
-                        {(j.urgency === "urgent" || j.urgency === "immediate") ? <span className="jl-preview-u">{t.urgent}</span> : null}
-                      </a>
-                    ))}
-                    <a href="/" className="jl-preview-more">🔓 {t.previewMore} →</a>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-          <div className="jl-hero-art" aria-hidden="true">
-            <div className="jl-blob" />
-            <div className="jl-pcard">
-              <div className="jl-pcard-top"><span className="jl-pcard-tag">✦ {t.pcTag}</span></div>
-              <strong className="jl-pcard-h">{t.pcTitle}</strong>
-              {PREVIEW.map((p) => (
-                <div className="jl-pcard-row" key={p.en}>
-                  <span className="jl-pcard-ic">{p.icon}</span>
-                  <span className="jl-pcard-m"><b>{lang === "fr" ? p.fr : p.en}</b><em>{lang === "fr" ? p.areaFr : p.areaEn}</em></span>
-                  <span className="jl-pcard-t">{lang === "fr" ? p.tagFr : p.tagEn}</span>
-                </div>
-              ))}
-            </div>
-            <div className="jl-fc jl-fc-badge"><div className="jl-fc-ic">🗂️</div><div><strong>{openCount ?? "—"}</strong><span>{t.cStat1}</span></div></div>
-          </div>
-        </div>
-      </section>
-
-      {/* TRUST STRIP — honest, concrete differentiators (what sets JobLop apart) */}
-      <section className="jl-trust" aria-label="Why JobLop">
-        <div className="jl-trust-in">
-          <div className="jl-trust-i"><span className="jl-trust-ic">✓</span>{t.trust1}</div>
-          <div className="jl-trust-i"><span className="jl-trust-ic">✋</span>{t.trust2}</div>
-          <div className="jl-trust-i"><span className="jl-trust-ic">🔎</span>{t.trust3}</div>
-          <div className="jl-trust-i"><span className="jl-trust-ic">🍁</span>{t.trust4}</div>
-        </div>
-      </section>
-
-      {/* JOB-COUNT MAGNET + CHOOSE YOUR PATH — one clear fork for workers vs clients */}
+      {/* CHOOSE YOUR PATH — pulled to the very top (owner spec): the role fork is the first thing. */}
       <section className="jl-sec" id="paths">
         <div className="jl-wrap">
           <div className="jl-magnet">
@@ -470,8 +490,8 @@ export function PublicJobBoard() {
               <h3>{t.pathWorkerTitle}</h3>
               <p>{t.pathWorkerDesc}</p>
               <div className="jl-path-cta">
-                <a href="/" className="jl-btn-primary">{t.pathWorkerBtn}</a>
-                <button className="jl-link" onClick={() => { setTab("find"); scrollToJobs(); }}>{t.navJobs} →</button>
+                <a href="/" className="jl-btn-primary">{t.create}</a>
+                <a href="/" className="jl-link">{t.signin} {arrow}</a>
               </div>
             </div>
             <div className="jl-path jl-path-client">
@@ -479,10 +499,113 @@ export function PublicJobBoard() {
               <h3>{t.pathClientTitle}</h3>
               <p>{t.pathClientDesc}</p>
               <div className="jl-path-cta">
-                <a href={EMPLOYER_URL} className="jl-btn-primary">{t.pathClientBtn}</a>
-                <a href={EMPLOYER_URL} className="jl-link">{t.navEmp} →</a>
+                <a href={`${EMPLOYER_URL}/signup/employer`} className="jl-btn-primary">{t.create}</a>
+                <a href={`${EMPLOYER_URL}/signin`} className="jl-link">{t.signin} {arrow}</a>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* HERO */}
+      <section className="jl-hero">
+        <div className="jl-hero-in">
+          <div className="jl-hero-copy">
+            <span className="jl-free-pill">✓ {t.freePill}</span>
+            <h1>{t.heroA}<br /><span className="jl-hl-accent">{t.heroB}</span></h1>
+            <p>{t.heroSub}</p>
+            <div className="jl-tabs">
+              <button className={tab === "find" ? "on" : ""} onClick={() => setTab("find")}>🔍 {t.tabFind}</button>
+              <button className={tab === "hire" ? "on" : ""} onClick={() => setTab("hire")}>🧑‍💼 {t.tabHire}</button>
+            </div>
+            {/* Owner spec: hero search box removed (it read as "JobScanner"); the two role actions stay.
+                Find a job -> internal Joblop jobs on this page; Hire talent -> employer app. */}
+            {tab === "find" ? (
+              <a href="/browse#jobs" className="jl-hire-cta" onClick={(e) => { e.preventDefault(); scrollToJobs(); }}>{t.tabFind} {arrow}</a>
+            ) : (
+              <a href={EMPLOYER_URL} className="jl-hire-cta">{t.empBtn} {arrow}</a>
+            )}
+          </div>
+          <div className="jl-hero-art" aria-hidden="true">
+            <div className="jl-blob" />
+            <div className="jl-pcard">
+              <div className="jl-pcard-top"><span className="jl-pcard-tag">✦ {t.pcTag}</span></div>
+              <strong className="jl-pcard-h">{t.pcTitle}</strong>
+              {PREVIEW.map((p) => (
+                <div className="jl-pcard-row" key={p.en}>
+                  <span className="jl-pcard-ic">{p.icon}</span>
+                  <span className="jl-pcard-m"><b>{p[lang]}</b><em>{lang === "ar" ? p.areaAr : lang === "fr" ? p.areaFr : p.areaEn}</em></span>
+                  <span className="jl-pcard-t">{lang === "ar" ? p.tagAr : lang === "fr" ? p.tagFr : p.tagEn}</span>
+                </div>
+              ))}
+            </div>
+            <div className="jl-fc jl-fc-badge"><div className="jl-fc-ic">🗂️</div><div><strong>{openCount ?? "—"}</strong><span>{t.cStat1}</span></div></div>
+          </div>
+        </div>
+      </section>
+
+      {/* FEATURE BAND — four concrete, honest differentiators under the hero (reference layout) */}
+      <section className="jl-features" aria-label="Why Joblop">
+        <div className="jl-wrap jl-features-in">
+          {[
+            { ic: "🪪", t: tr("Documents on file", "Documents au dossier", "وثائق في الملف"), s: tr("Workers upload their certificates", "Les travailleurs ajoutent leurs certificats", "يرفع العمال شهاداتهم") },
+            { ic: "⚡", t: tr("Fast Matching", "Jumelage rapide", "مطابقة سريعة"), s: tr("Find staff in minutes", "Trouvez du personnel en minutes", "جد العمال في دقائق") },
+            { ic: "💸", t: tr("Free to apply", "Gratuit pour postuler", "التقديم مجاني"), s: tr("No fees for workers", "Aucuns frais pour les travailleurs", "بلا رسوم على العمال") },
+            { ic: "📍", t: tr("Local Workforce", "Main-d'œuvre locale", "قوة عاملة محلية"), s: tr("Across Canada", "Partout au Canada", "في جميع أنحاء كندا") }
+          ].map((f) => (
+            <div className="jl-feature" key={f.t}>
+              <span className="jl-feature-ic">{f.ic}</span>
+              <div className="jl-feature-txt">
+                <strong>{f.t}</strong>
+                <span>{f.s}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* COMMON STAFFING NEEDS — photo cards (senior-residence roles) */}
+      <section className="jl-sec jl-needs">
+        <div className="jl-wrap">
+          <h2>{tr("Common Staffing Needs", "Besoins de dotation courants", "احتياجات التوظيف الشائعة")}</h2>
+          <div className="jl-needs-grid">
+            {[
+              { img: "chef", en: "Chefs & Cooks", fr: "Chefs et cuisiniers", ar: "طهاة وطباخون", enS: "Qualified culinary staff for all shifts", frS: "Personnel culinaire qualifié, tous les quarts", arS: "طاقم طهي مؤهّل لكل النوبات" },
+              { img: "cleaning", en: "Cleaning Staff", fr: "Personnel d'entretien", ar: "طاقم التنظيف", enS: "Reliable and experienced cleaners", frS: "Préposés fiables et expérimentés", arS: "عمال تنظيف موثوقون وذوو خبرة" },
+              { img: "moving", en: "Moving & Delivery", fr: "Déménagement et livraison", ar: "النقل والتوصيل", enS: "Help with moving, setup and delivery", frS: "Aide au déménagement et à la livraison", arS: "مساعدة في النقل والتجهيز والتوصيل" },
+              { img: "handyman", en: "Handyman", fr: "Homme à tout faire", ar: "فنّي صيانة", enS: "Skilled workers for maintenance tasks", frS: "Travailleurs qualifiés pour l'entretien", arS: "عمال مهرة لمهام الصيانة" }
+            ].map((c) => (
+              <div className="jl-need" key={c.img}>
+                <div className="jl-need-img" style={{ backgroundImage: `url('/img/cat-${c.img}.png')` }} />
+                <div className="jl-need-b">
+                  <strong>{c[lang]}</strong>
+                  <span>{lang === "ar" ? c.arS : lang === "fr" ? c.frS : c.enS}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* HOW IT WORKS — numbered steps (reference layout) */}
+      <section className="jl-sec jl-how" aria-label="How Joblop works">
+        <div className="jl-wrap jl-center">
+          <span className="jl-eyebrow">{tr("HOW IT WORKS", "COMMENT ÇA MARCHE", "كيف يعمل")}</span>
+          <h2>{tr("How Joblop works", "Comment fonctionne Joblop", "كيف يعمل جوب‑لوب")}</h2>
+          <p className="jl-sub">{tr("From search to paid — four simple steps.", "De la recherche à la paie — quatre étapes simples.", "من البحث إلى الأجر — أربع خطوات بسيطة.")}</p>
+          <div className="jl-how-grid">
+            {[
+              { t: tr("Search the market", "Cherchez le marché", "ابحث في السوق"), d: tr("Browse every open shift in one place.", "Parcourez tous les quarts ouverts au même endroit.", "تصفّح كل النوبات المفتوحة في مكان واحد.") },
+              { t: tr("Apply 100% free", "Postulez 100 % gratuit", "تقدّم مجانًا 100٪"), d: tr("One tap, no fees, ever.", "Un geste, sans frais, jamais.", "بضغطة واحدة، دون رسوم أبدًا.") },
+              { t: tr("Get matched", "Soyez jumelé", "احصل على مطابقة"), d: tr("Verified roles matched to you.", "Des postes vérifiés jumelés à vous.", "وظائف موثّقة مطابقة لك.") },
+              { t: tr("Get hired & paid", "Soyez embauché et payé", "اقبل الوظيفة واحصل على أجرك"), d: tr("Start work and get paid fairly.", "Commencez à travailler et soyez payé équitablement.", "ابدأ العمل واحصل على أجر عادل.") }
+            ].map((s, i) => (
+              <div className="jl-how-step" key={s.t}>
+                <span className="jl-how-num">{i + 1}</span>
+                <strong>{s.t}</strong>
+                <p>{s.d}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -495,8 +618,8 @@ export function PublicJobBoard() {
           <div className="jl-cats">
             {CATEGORIES.map((c) => (
               <button key={c.q} className="jl-cat" onClick={() => { setQ(c.q); scrollToJobs(); }}>
-                <span className="jl-cat-ic" style={{ background: c.bg }}>{c.icon}</span>
-                <strong>{lang === "fr" ? c.fr : c.en}</strong>
+                <span className="jl-cat-ic">{c.icon}</span>
+                <strong>{c[lang]}</strong>
               </button>
             ))}
           </div>
@@ -522,6 +645,7 @@ export function PublicJobBoard() {
                   <div key={j.jobCode} className="jl-job">
                     <div className="jl-job-ic">{iconFor(j.role)}</div>
                     <div className="jl-job-main">
+                      <JoblopJobBadge />
                       <strong>{j.role}</strong>
                       <span className="jl-job-meta">📍 {j.areaLabel} · {t.starts} {fmtDate(j.startAt)}</span>
                     </div>
@@ -529,12 +653,17 @@ export function PublicJobBoard() {
                       {urgent ? <span className="jl-tag jl-tag-u">{t.urgent}</span> : null}
                       <span className="jl-tag">{t.openings(j.openings)}</span>
                     </div>
-                    <a href="/" className="jl-apply">{t.apply}</a>
+                    <a href={publicJobPath(j.jobCode)} className="jl-apply">{tm("src.applyHere")}</a>
                   </div>
                 );
               })}
             </div>
           )}
+          {jobs && jobs.length > 0 && jobsCursor !== null ? (
+            <button type="button" className="jl-link" onClick={() => void loadMore()} disabled={loadingMore}>
+              {loadingMore ? tm("common.loading") : tm("common.loadMore")}
+            </button>
+          ) : null}
         </div>
       </section>
 
@@ -545,7 +674,7 @@ export function PublicJobBoard() {
             <span className="jl-js-tag">📡 {t.jsTag}</span>
             <h2>{t.jsTitle}</h2>
             <p>{t.jsSub}</p>
-            <a href="/job-scanner" className="jl-js-btn">{t.jsBtn} →</a>
+            <a href="/job-scanner" className="jl-js-btn">{t.jsBtn} {arrow}</a>
           </div>
           <div className="jl-js-demo"><JobScannerDemo lang={lang} /></div>
         </div>
@@ -558,22 +687,31 @@ export function PublicJobBoard() {
             <div className="jl-leads-grid">
               {leads.map((l, i) => {
                 const pay = fmtPay(l);
-                // Funnel into JobLop first: clicking opens free sign-up (then Assisted Apply to the
-                // source), so JobLop — not the external site — owns the worker relationship.
+                // Outside listing: said plainly, and the button applies on the outside site in a new tab.
                 return (
-                  <a key={`${l.source}-${i}`} href="/" className="jl-lead" title={t.leadsApplyHint}>
+                  <div key={`${l.source}-${i}`} className="jl-lead-cell">
+                  <div className="jl-lead">
                     <span className="jl-lead-ic">{iconFor(l.title)}</span>
                     <span className="jl-lead-main">
-                      <strong>{l.title}</strong>
-                      <em>{l.employer ? `${l.employer} · ` : ""}📍 {l.areaLabel}</em>
+                      <OutsideSiteBadge />
+                      <strong dir="auto">{l.title}</strong>
+                      <em>{l.employer ? <bdi>{l.employer}</bdi> : null}{l.employer ? " · " : ""}📍 <bdi>{l.areaLabel}</bdi></em>
                     </span>
-                    {pay ? <span className="jl-lead-pay">{pay}</span> : null}
-                    <span className="jl-lead-go">{t.leadsApply} →</span>
-                  </a>
+                    {pay ? <span className="jl-lead-pay" dir="ltr">{pay}</span> : null}
+                  </div>
+                  {outsideApplyUrl(l.url) ? (
+                    <OutsideApplyLink url={l.url} source={l.source} className="jl-lead-apply" />
+                  ) : (
+                    <a href="/job-scanner" className="jl-lead-apply">{t.leadsCta} {arrow}</a>
+                  )}
+                  {l.source === "adzuna" ? (
+                    <a className="jl-adzuna" href="https://www.adzuna.ca" target="_blank" rel="noreferrer">Adzuna</a>
+                  ) : null}
+                  </div>
                 );
               })}
             </div>
-            <p className="jl-leads-note">{t.leadsNote} <a href="/job-scanner">{t.leadsCta} →</a></p>
+            <p className="jl-leads-note">{t.leadsNote} <a href="/job-scanner">{t.leadsCta} {arrow}</a></p>
           </div>
         )}
         <div className="jl-wrap jl-alert">
@@ -604,7 +742,7 @@ export function PublicJobBoard() {
       </section>
 
       {/* FOR WORKERS */}
-      <section className="jl-split jl-split-blue">
+      <section className="jl-split jl-split-a">
         <div className="jl-wrap jl-split-in">
           <div className="jl-split-copy">
             <span className="jl-eyebrow">{t.seekTag}</span>
@@ -616,36 +754,19 @@ export function PublicJobBoard() {
             </ul>
           </div>
           <div className="jl-split-card">
-            <div className="jl-mini"><span>🎯</span> {lang === "fr" ? "Jumelage pour vous" : "Matches just for you"}</div>
+            <div className="jl-mini"><span>🎯</span> {tr("Matches just for you", "Jumelage pour vous", "مطابقات لك وحدك")}</div>
             <ul className="jl-mini-list">
-              <li>✓ {lang === "fr" ? "Créer un profil" : "Create profile"}</li>
-              <li>✓ {lang === "fr" ? "Être jumelé" : "Get matched"}</li>
-              <li>✓ {lang === "fr" ? "Postuler" : "Apply to shifts"}</li>
-              <li>○ {lang === "fr" ? "Commencer" : "Get hired"}</li>
+              <li>✓ {tr("Create profile", "Créer un profil", "أنشئ ملفًا")}</li>
+              <li>✓ {tr("Get matched", "Être jumelé", "احصل على مطابقة")}</li>
+              <li>✓ {tr("Apply to shifts", "Postuler", "تقدّم للنوبات")}</li>
+              <li>○ {tr("Get hired", "Commencer", "ابدأ العمل")}</li>
             </ul>
           </div>
         </div>
       </section>
 
-      {/* FOR EMPLOYERS */}
-      <section className="jl-split jl-split-peach">
-        <div className="jl-wrap jl-split-in">
-          <div className="jl-split-copy">
-            <span className="jl-eyebrow jl-eyebrow-o">{t.empTag}</span>
-            <h2>{t.empTitle}</h2>
-            <p>{t.empSub}</p>
-            <a href={EMPLOYER_URL} className="jl-btn-orange jl-btn-lg">{t.empBtn}</a>
-            <ul className="jl-checks jl-checks-o">
-              <li>✓ {t.emp1}</li><li>✓ {t.emp2}</li><li>✓ {t.emp3}</li>
-            </ul>
-          </div>
-          <div className="jl-split-card">
-            <div className="jl-mini"><span>👥</span> {lang === "fr" ? "Travailleurs qualifiés" : "Qualified workers"}</div>
-            <div className="jl-avatars">{["🧑‍⚕️","👨‍🍳","🧹","🔧","🧑‍⚕️"].map((a, i) => <span key={i}>{a}</span>)}</div>
-            <div className="jl-mini jl-mini-2"><span>📊</span> {lang === "fr" ? "Couverture fiable" : "Coverage you can count on"}</div>
-          </div>
-        </div>
-      </section>
+      {/* (Removed from landing per owner spec #12: the "For employers — find & staff faster"
+          section is being rewritten as an ADVANCED SEARCH inside the employer site.) */}
 
       {/* TRUST (honest) + STATS */}
       <section className="jl-sec" id="about">
@@ -654,7 +775,7 @@ export function PublicJobBoard() {
           <p className="jl-sub">{t.trustSub}</p>
           <div className="jl-stats">
             <div><strong>{openCount ?? "—"}</strong><span>{t.st1}</span></div>
-            <div><strong>{provinceCount || "—"}</strong><span>{t.st2}</span></div>
+            <div><strong>{openProvinces ?? "—"}</strong><span>{openProvinces === 1 ? t.st2One : t.st2}</span></div>
             <div><strong>$0</strong><span>{t.st3}</span></div>
             <div><strong>$0</strong><span>{t.st4}</span></div>
           </div>
@@ -699,14 +820,19 @@ export function PublicJobBoard() {
         </div>
       </section>
 
-      {/* CTA BAND */}
+      {/* REFER A FRIEND (owner spec #13) — invite others; the personal invite link is generated
+          in your account after sign-up (reuses the existing ?ref= referral attribution). */}
       <section className="jl-cta">
         <div className="jl-wrap jl-center">
-          <h2>{t.ctaTitle}</h2>
-          <p>{t.ctaSub}</p>
+          <h2>{tr("Refer your friends", "Parrainez vos amis", "ادعُ أصدقاءك")}</h2>
+          <p>{tr(
+            "Know someone looking for work? Create your free account to get a personal invite link — share it and help them find shifts faster on Joblop.",
+            "Vous connaissez quelqu'un qui cherche du travail ? Créez votre compte gratuit pour obtenir un lien d'invitation personnel — partagez-le et aidez vos proches à trouver des quarts plus vite sur Joblop.",
+            "تعرف شخصًا يبحث عن عمل؟ أنشئ حسابك المجاني للحصول على رابط دعوة شخصي — شاركه وساعد أصدقاءك على إيجاد نوبات أسرع على جوب‑لوب."
+          )}</p>
           <div className="jl-cta-btns">
-            <a href="/" className="jl-cta-white">{t.ctaFind}</a>
-            <a href={EMPLOYER_URL} className="jl-cta-outline">{t.ctaPost}</a>
+            <a href="/" className="jl-cta-white">{tr("Create account & get your invite link", "Créer un compte et obtenir votre lien", "أنشئ حسابًا واحصل على رابط دعوتك")}</a>
+            <a href="/how-it-works" className="jl-cta-outline">{tr("How referrals work", "Comment fonctionne le parrainage", "كيف تعمل الدعوات")}</a>
           </div>
         </div>
       </section>
@@ -715,49 +841,22 @@ export function PublicJobBoard() {
       <footer className="jl-foot">
         <div className="jl-wrap jl-foot-in">
           <div className="jl-foot-brand">
-            <a href="/" className="jl-logo jl-logo-w"><JobLopMark size={30} />Job<span>Lop</span></a>
+            <a href="/" className="jl-logo jl-logo-w"><img src="/img/joblop-logo.png" alt="Joblop" style={{ height: 28, width: "auto", display: "block", borderRadius: 6 }} /></a>
             <p>{t.fTag}</p>
           </div>
           <div className="jl-foot-cols">
             <div><h5>{t.fSeekers}</h5><a href="#jobs">{t.fBrowse}</a><a href="/">{t.fCreate}</a><a href="#jobs">{t.fAlerts}</a></div>
             <div><h5>{t.fEmp}</h5><a href={EMPLOYER_URL}>{t.fPost}</a><a href={EMPLOYER_URL}>{t.fFind}</a><a href={EMPLOYER_URL}>{t.fPricing}</a></div>
-            <div><h5>{t.fCo}</h5><a href="#about">{t.fAbout}</a><a href="#contact">{t.fContact}</a><a href="#about">{t.fCareers}</a></div>
-            <div><h5>{t.fLegal}</h5><a href="/privacy">{t.fPrivacy}</a><a href="/privacy">{t.fTerms}</a><a href="/privacy">{t.fCookie}</a></div>
+            <div><h5>{t.fCo}</h5><a href="#about">{t.fAbout}</a><a href="#contact">{t.fContact}</a></div>
+            <div><h5>{t.fLegal}</h5><a href="/privacy">{t.fPrivacy}</a><a href="/terms">{t.fTerms}</a></div>
           </div>
         </div>
-        <div className="jl-foot-bar">© {new Date().getFullYear()} {t.copyright}</div>
+        <div className="jl-foot-bar">© {new Date().getFullYear()} {t.copyright} · {activeCountry().legalEntityName}</div>
       </footer>
     </div>
   );
 }
 
-// JobLop brand mark — the app icon recreated as a crisp, scalable SVG: blue rounded-square badge,
-// a white briefcase whose body sweeps into a "J", and an upward arrow (growth).
-function JobLopMark({ size = 30 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" aria-hidden="true" style={{ flex: "0 0 auto", display: "block" }}>
-      <defs>
-        <linearGradient id="jlbg" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#2b6cf0" />
-          <stop offset="1" stopColor="#1546c8" />
-        </linearGradient>
-        <linearGradient id="jlar" x1="0" y1="1" x2="1" y2="0">
-          <stop offset="0" stopColor="#2b6cf0" />
-          <stop offset="1" stopColor="#58c6ff" />
-        </linearGradient>
-      </defs>
-      <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#jlbg)" />
-      {/* briefcase handle */}
-      <path d="M26 17a6 6 0 0 1 12 0v4h-4v-4a2 2 0 0 0-4 0v4h-4z" fill="#fff" />
-      {/* briefcase + J body */}
-      <path d="M21 23h22a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6v-6h-4v14a9 9 0 0 1-18 0 3 3 0 0 1 6 0 3 3 0 0 0 6 0V25a2 2 0 0 1 2-2z" fill="#fff" />
-      {/* clasp */}
-      <rect x="34" y="28" width="7" height="6" rx="2" fill="#2b6cf0" />
-      {/* upward arrow */}
-      <path d="M24 48c6-1 12-6 16-12l3 3 2-11-11 2 3 3c-3 5-9 10-16 11z" fill="url(#jlar)" />
-    </svg>
-  );
-}
 
 function iconFor(role: string): string {
   const r = role.toLowerCase();
@@ -772,278 +871,328 @@ function iconFor(role: string): string {
 }
 
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;1,600&display=swap');
-.jl{--ink:#101a2b;--muted:#5a6a82;--line:#e7ecf4;--blue:#2563eb;--blue2:#1d4ed8;--sky:#eef4ff;--orange:#f97316;--peach:#fff2e8;--navy:#0f1b2d;--bg:#fff;--gold:#a8741a;--gold2:#c08a2a;
-  color:var(--ink);background:var(--bg);min-height:100vh;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;line-height:1.45;}
+/* Dark-first premium brand experience — one continuous BLACK canvas, top to bottom. Cream body,
+   gold accents used sparingly, serif headings, dark-raised panels with thin gold hairline borders.
+   Built on the shared --jl-* tokens. */
+.jl{
+  --ink:#f4efe4;            /* cream body text on black */
+  --muted:#b3a894;          /* warm secondary text */
+  --faint:#8a8070;          /* tertiary */
+  --bg:#000000;             /* page canvas */
+  --card:#0c0c0c;           /* raised panel */
+  --card-2:#131110;         /* slightly higher raise / chips */
+  --chip:#161310;           /* icon tiles */
+  --line:rgba(248, 184, 8,.16);   /* gold hairline */
+  --line-2:rgba(248, 184, 8,.34); /* gold hairline on hover */
+  --gold:#f8b808;           /* primary accent — pops on black */
+  --gold-pri:#f8b808;--gold-pri-2:#e0a500;--gold-2:#9a7122;--accent-warm:#f8b808;--tint:#161310;--ink-dark:#000000;
+  --shadow:0 24px 60px -34px rgba(0,0,0,.8),0 2px 8px rgba(0,0,0,.5);
+  /* Side margin that lines boxed bands up with the 1084px content column (18px minimum on phones). */
+  --jl-col-gutter:max(18px,calc((100% - 1084px) / 2));
+  color:var(--ink);background:var(--bg);min-height:100vh;font-family:var(--jl-font-sans);-webkit-font-smoothing:antialiased;line-height:1.5;}
 .jl *{box-sizing:border-box;}
-.jl a{color:inherit;text-decoration:none;}
-.jl h2{font-family:'Playfair Display',Georgia,'Times New Roman',serif;font-size:clamp(24px,3.5vw,34px);letter-spacing:-.01em;margin:0 0 8px;font-weight:800;text-wrap:balance;}
-.jl .jl-sub{color:var(--muted);margin:0 0 26px;font-size:15.5px;}
+:where(.jl) a{color:inherit;text-decoration:none;}
+.jl h2{font-family:var(--jl-font-serif);font-size:clamp(26px,3.6vw,38px);letter-spacing:-.015em;margin:0 0 10px;font-weight:800;color:#fbf7ee;text-wrap:balance;}
+.jl .jl-sub{color:var(--muted);margin:0 0 28px;font-size:16px;max-width:60ch;}
 .jl-wrap{max-width:1120px;margin:0 auto;padding:0 max(18px,env(safe-area-inset-left)) 0 max(18px,env(safe-area-inset-right));}
 .jl-center{text-align:center;}
+.jl-center .jl-sub{margin-inline-start:auto;margin-right:auto;}
 .jl-muted{color:var(--muted);}
+:where(.jl) a:focus-visible,:where(.jl) button:focus-visible,:where(.jl) input:focus-visible,:where(.jl) select:focus-visible{outline:2px solid var(--gold);outline-offset:2px;border-radius:6px;}
 /* NAV */
-.jl-nav{position:sticky;top:0;z-index:30;background:rgba(255,255,255,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);}
-.jl-nav-in{max-width:1120px;margin:0 auto;display:flex;align-items:center;gap:18px;padding:12px max(18px,env(safe-area-inset-left));}
+.jl-nav{position:sticky;top:env(safe-area-inset-top,0);z-index:30;background:rgba(0,0,0,.7);-webkit-backdrop-filter:blur(14px) saturate(1.2);backdrop-filter:blur(14px) saturate(1.2);border-bottom:1px solid var(--line);}
+.jl-nav-in{max-width:1120px;margin:0 auto;display:flex;align-items:center;gap:20px;padding:12px max(18px,env(safe-area-inset-left));min-height:64px;}
 .jl-logo{display:inline-flex;align-items:center;gap:9px;font-weight:800;font-size:21px;color:var(--ink);letter-spacing:-.02em;}
-.jl-logo span{color:var(--blue);}
-.jl-links{display:flex;gap:22px;margin-left:12px;}
-.jl-links a{color:var(--muted);font-weight:600;font-size:14.5px;}
+.jl-logo span{color:var(--gold);}
+.jl-links{display:flex;gap:26px;margin-left:12px;}
+.jl-links a{color:var(--muted);font-weight:600;font-size:14.5px;transition:color .15s;}
 .jl-links a:hover{color:var(--ink);}
-.jl-nav-cta{margin-left:auto;display:flex;align-items:center;gap:10px;}
-.jl-lang{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 11px;font-weight:700;font-size:13px;cursor:pointer;color:var(--ink);}
-.jl-btn-ghost{border:1px solid var(--line);padding:9px 16px;border-radius:9px;font-weight:700;font-size:14px;}
-.jl-btn-ghost:hover{background:#f6f8fc;}
-.jl-btn-primary{background:var(--blue);color:#fff;padding:9px 17px;border-radius:9px;font-weight:700;font-size:14px;}
-.jl-btn-primary:hover{background:var(--blue2);}
-.jl-btn-lg{display:inline-block;padding:13px 24px;font-size:15.5px;border-radius:11px;}
+.jl-nav-cta{margin-inline-start:auto;display:flex;align-items:center;gap:12px;}
+.jl-btn-ghost{border:1px solid var(--line-2);color:var(--ink);padding:9px 16px;border-radius:10px;font-weight:700;font-size:14px;transition:background .15s,border-color .15s;}
+.jl-btn-ghost:hover{background:rgba(248, 184, 8,.08);border-color:var(--gold);}
+.jl-btn-primary{background:var(--gold);color:#000;padding:9px 18px;border-radius:10px;font-weight:800;font-size:14px;transition:background .15s,transform .12s;}
+.jl-btn-primary:hover{background:var(--gold-pri-2);transform:translateY(-1px);}
+.jl-btn-lg{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 26px;font-size:15.5px;border-radius:12px;}
 /* HERO */
-.jl-hero{background:radial-gradient(900px 420px at 85% -5%,rgba(37,99,235,.14),transparent),linear-gradient(180deg,var(--sky),#fff);border-bottom:1px solid var(--line);}
-.jl-hero-in{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:1.1fr .9fr;gap:28px;align-items:center;padding:clamp(34px,6vw,64px) max(18px,env(safe-area-inset-left));}
-.jl-free-pill{display:inline-block;background:#e7f9ef;color:#0a7a46;font-weight:800;font-size:12.5px;letter-spacing:.02em;padding:6px 13px;border-radius:999px;margin-bottom:14px;}
-.jl a.jl-hero-js{display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px 8px;line-height:1.4;margin-top:16px;background:linear-gradient(90deg,#0f1b3a,#13224a);color:#eaf7ff;-webkit-text-fill-color:#eaf7ff;font-weight:700;font-size:13px;padding:10px 16px;border-radius:18px;border:1px solid rgba(88,198,255,.3);max-width:100%;}
-.jl a.jl-hero-js:hover{filter:brightness(1.12);}
-.jl-hero-copy h1{font-family:'Playfair Display',Georgia,'Times New Roman',serif;font-size:clamp(34px,5.4vw,56px);line-height:1.06;letter-spacing:-.01em;margin:0 0 14px;font-weight:800;}
-.jl-hl-accent{color:var(--gold);font-style:italic;font-weight:700;}
-.jl-hero-copy>p{color:var(--muted);font-size:clamp(15px,1.9vw,18px);max-width:520px;margin:0 0 20px;}
-.jl-tabs{display:inline-flex;gap:4px;background:#fff;border:1px solid var(--line);border-radius:11px;padding:4px;margin-bottom:12px;}
-.jl-tabs button{border:0;background:transparent;padding:9px 16px;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;color:var(--muted);}
-.jl-tabs button.on{background:var(--sky);color:var(--blue);}
-.jl-search{display:flex;gap:8px;flex-wrap:wrap;background:#fff;border:1px solid var(--line);border-radius:14px;padding:7px;box-shadow:0 14px 40px -22px rgba(16,26,43,.4);max-width:560px;}
-.jl-sf{display:flex;align-items:center;gap:8px;background:#f3f6fb;border-radius:10px;padding:0 12px;flex:1 1 190px;min-width:0;}
+.jl-hero{background:linear-gradient(100deg,#000 0%,#000 36%,rgba(0,0,0,.72) 58%,rgba(0,0,0,.34) 100%),radial-gradient(1100px 560px at 92% -12%,rgba(248, 184, 8,.22),transparent),url('/img/hero.png') right center/cover no-repeat,#000;border-bottom:1px solid var(--line);color:#f4efe4;}
+.jl-hero .jl-hero-copy h1{color:#fbf7ee;}
+.jl-hero .jl-hero-copy>p{color:#cdc3ae;}
+.jl-hero-in{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:1.1fr .9fr;gap:36px;align-items:center;padding:clamp(40px,7vw,76px) max(18px,env(safe-area-inset-left));}
+.jl-free-pill{display:inline-flex;align-items:center;background:rgba(248, 184, 8,.1);border:1px solid var(--line);color:#e8c87a;font-weight:800;font-size:11px;letter-spacing:.16em;text-transform:uppercase;padding:6px 12px;border-radius:999px;margin-bottom:18px;}
+.jl a.jl-hero-js{display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px 8px;line-height:1.4;margin-top:18px;background:linear-gradient(90deg,#141210,#1f1a12);color:#f4efe4;-webkit-text-fill-color:#f4efe4;font-weight:700;font-size:13px;padding:10px 16px;border-radius:999px;border:1px solid var(--line-2);max-width:100%;}
+.jl a.jl-hero-js:hover{filter:brightness(1.14);}
+.jl-hero-copy h1{font-family:var(--jl-font-serif);font-size:clamp(38px,5.6vw,60px);line-height:1.04;letter-spacing:-.015em;margin:0 0 16px;font-weight:800;}
+.jl-hl-accent{color:var(--gold);font-style:normal;font-weight:800;}
+.jl-hero-copy>p{color:#cdc3ae;font-size:clamp(15px,1.9vw,18px);max-width:520px;margin:0 0 22px;line-height:1.6;}
+.jl-tabs{display:inline-flex;gap:4px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px;margin-bottom:14px;}
+.jl-tabs button{border:0;background:transparent;min-height:40px;padding:0 18px;border-radius:9px;font-weight:700;font-size:14px;cursor:pointer;color:var(--muted);transition:background .15s,color .15s;}
+.jl-tabs button.on{background:rgba(248, 184, 8,.14);color:var(--gold);}
+.jl-search{display:flex;gap:8px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line-2);border-radius:16px;padding:8px;box-shadow:var(--shadow);max-width:560px;}
+.jl-sf{display:flex;align-items:center;gap:8px;background:var(--chip);border:1px solid var(--line);border-radius:11px;padding:0 12px;flex:1 1 190px;min-width:0;}
 .jl-sf-loc{flex:0 0 auto;}
-.jl-sf span{opacity:.65;font-size:14px;}
-.jl-sf input,.jl-sf select{border:0;background:transparent;outline:none;font-size:15px;color:var(--ink);padding:12px 2px;width:100%;min-width:0;font-family:inherit;}
+.jl-sf span{opacity:.7;font-size:14px;}
+.jl-sf input,.jl-sf select{border:0;background:transparent;outline:none;font-size:15px;color:var(--ink);padding:13px 2px;width:100%;min-width:0;font-family:inherit;}
 .jl-sf select{cursor:pointer;}
-.jl-search-btn{border:0;background:var(--blue);color:#fff;font-weight:700;font-size:14.5px;border-radius:10px;padding:0 22px;min-height:46px;cursor:pointer;flex:0 0 auto;}
-.jl-search-btn:hover{background:var(--blue2);}
-.jl-hire-cta{display:inline-block;background:var(--orange);color:#fff;font-weight:700;padding:14px 24px;border-radius:12px;}
-.jl-popular{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:16px;font-size:13px;}
-.jl-popular span{color:var(--muted);font-weight:700;}
-.jl-popular button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 12px;font-size:12.5px;cursor:pointer;color:var(--muted);}
-.jl-popular button:hover{border-color:var(--blue);color:var(--blue);}
-.jl-preview{margin-top:16px;max-width:560px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:8px;box-shadow:0 14px 40px -24px rgba(16,26,43,.4);}
-.jl-preview-head{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;letter-spacing:.03em;color:var(--muted);padding:6px 8px 8px;text-transform:uppercase;}
-.jl-preview-dot{width:8px;height:8px;border-radius:50%;background:#1fbf6b;box-shadow:0 0 0 0 rgba(31,191,107,.5);animation:jlpulse 1.8s infinite;}
-@keyframes jlpulse{0%{box-shadow:0 0 0 0 rgba(31,191,107,.5);}70%{box-shadow:0 0 0 7px rgba(31,191,107,0);}100%{box-shadow:0 0 0 0 rgba(31,191,107,0);}}
-.jl-preview-n{margin-left:auto;color:var(--blue);}
+.jl-sf select option{color:#111;}
+.jl-search-btn{border:0;background:var(--gold);color:#000;font-weight:800;font-size:14.5px;border-radius:11px;padding:0 24px;min-height:48px;cursor:pointer;flex:0 0 auto;transition:background .15s;}
+.jl-search-btn:hover{background:var(--gold-pri-2);}
+.jl-hire-cta{display:inline-flex;align-items:center;min-height:48px;background:var(--gold);color:#000;font-weight:800;padding:0 24px;border-radius:12px;}
+.jl-popular{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:18px;font-size:13px;}
+.jl-hero .jl-popular span,.jl-popular span{color:var(--muted);font-weight:700;}
+.jl-popular button{border:1px solid var(--line);background:rgba(255,255,255,.03);border-radius:999px;padding:6px 13px;font-size:12.5px;cursor:pointer;color:var(--muted);transition:border-color .15s,color .15s;}
+.jl-popular button:hover{border-color:var(--gold);color:var(--gold);}
+.jl-preview{margin-top:18px;max-width:560px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:8px;box-shadow:var(--shadow);}
+.jl-preview-head{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;letter-spacing:.04em;color:var(--muted);padding:8px 8px 8px;text-transform:uppercase;}
+.jl-preview-dot{width:8px;height:8px;border-radius:50%;background:#35e08a;box-shadow:0 0 0 0 rgba(53,224,138,.5);animation:jlpulse 1.8s infinite;}
+@keyframes jlpulse{0%{box-shadow:0 0 0 0 rgba(53,224,138,.5);}70%{box-shadow:0 0 0 7px rgba(53,224,138,0);}100%{box-shadow:0 0 0 0 rgba(53,224,138,0);}}
+.jl-preview-n{margin-inline-start:auto;color:var(--gold);}
 .jl-preview-empty{padding:10px 8px 12px;color:var(--muted);font-size:13.5px;}
-.jl-preview-row{display:flex;align-items:center;gap:10px;padding:9px 8px;border-radius:9px;}
-.jl-preview-row:hover{background:#f3f6fb;}
-.jl-preview-ic{width:34px;height:34px;border-radius:9px;background:var(--sky);display:grid;place-items:center;font-size:17px;flex:0 0 auto;}
+.jl-preview-row{display:flex;align-items:center;gap:10px;padding:10px 8px;border-radius:10px;transition:background .15s;}
+.jl-preview-row:hover{background:rgba(255,255,255,.04);}
+.jl-preview-ic{width:34px;height:34px;border-radius:10px;background:var(--chip);border:1px solid var(--line);display:grid;place-items:center;font-size:17px;flex:0 0 auto;}
 .jl-preview-main{display:flex;flex-direction:column;min-width:0;flex:1;}
-.jl-preview-main strong{font-size:14px;}
+.jl-preview-main strong{font-size:14px;color:var(--ink);}
 .jl-preview-main em{font-style:normal;color:var(--muted);font-size:12.5px;}
-.jl-preview-u{background:#fdece5;color:var(--orange);font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:999px;text-transform:uppercase;flex:0 0 auto;}
-.jl-preview-more{display:block;text-align:center;margin-top:4px;background:linear-gradient(90deg,#0f1b3a,#13224a);color:#dbf1ff;font-weight:700;font-size:13px;padding:11px;border-radius:10px;}
-.jl-preview-more:hover{filter:brightness(1.12);}
-.jl-hero-art{position:relative;min-height:300px;display:flex;align-items:center;justify-content:center;}
-.jl-blob{position:absolute;inset:8% 6%;background:linear-gradient(135deg,rgba(37,99,235,.18),rgba(14,165,163,.16));border-radius:44% 56% 62% 38%/48% 42% 58% 52%;filter:blur(2px);}
-.jl-fc{position:absolute;background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 16px;box-shadow:0 18px 48px -24px rgba(16,26,43,.55);display:flex;align-items:center;gap:10px;}
-.jl-fc-ic{width:36px;height:36px;border-radius:9px;background:var(--sky);display:grid;place-items:center;font-size:18px;}
-.jl-fc strong{display:block;font-size:17px;font-weight:800;letter-spacing:-.01em;}
+.jl-preview-u{background:rgba(248, 184, 8,.16);color:#e8c87a;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:999px;text-transform:uppercase;flex:0 0 auto;}
+.jl-preview-more{display:block;text-align:center;margin-top:4px;background:rgba(248, 184, 8,.1);border:1px solid var(--line);color:var(--gold);font-weight:700;font-size:13px;padding:12px;border-radius:11px;transition:background .15s;}
+.jl-preview-more:hover{background:rgba(248, 184, 8,.18);}
+.jl-hero-art{position:relative;min-height:320px;display:flex;align-items:center;justify-content:center;}
+.jl-blob{position:absolute;inset:8% 6%;background:radial-gradient(circle at 40% 35%,rgba(248, 184, 8,.22),rgba(248, 184, 8,.05) 70%);border-radius:44% 56% 62% 38%/48% 42% 58% 52%;filter:blur(6px);}
+.jl-fc{position:absolute;background:var(--card);border:1px solid var(--line-2);border-radius:14px;padding:12px 16px;box-shadow:var(--shadow);display:flex;align-items:center;gap:10px;}
+.jl-fc-ic{width:36px;height:36px;border-radius:10px;background:var(--chip);border:1px solid var(--line);display:grid;place-items:center;font-size:18px;}
+.jl-fc strong{display:block;font-size:17px;font-weight:800;letter-spacing:-.01em;color:var(--ink);}
 .jl-fc span{font-size:12px;color:var(--muted);}
 .jl-fc1{top:8%;left:2%;}
 .jl-fc2{top:44%;right:0;}
 .jl-fc3{bottom:10%;left:12%;}
-/* Hero preview card — an illustrative "a few possibilities" showcase (borrowed from the premium ref) */
-.jl-pcard{position:relative;z-index:2;width:min(100%,380px);background:var(--bg);border:1px solid var(--line);border-radius:18px;box-shadow:0 34px 80px -40px rgba(16,26,43,.55);padding:16px;}
+/* Hero preview card */
+.jl-pcard{position:relative;z-index:2;width:min(100%,380px);background:var(--card);border:1px solid var(--line-2);border-radius:18px;box-shadow:var(--shadow);padding:16px;}
 .jl-pcard-top{display:flex;align-items:center;justify-content:flex-end;margin-bottom:10px;min-height:22px;}
-.jl-pcard-tag{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--gold);background:#fbf3e3;border:1px solid #f0e0bf;padding:4px 10px;border-radius:999px;}
-.jl-pcard-h{display:block;font-family:'Playfair Display',Georgia,serif;font-size:19px;font-weight:800;margin:0 0 12px;letter-spacing:-.01em;}
-.jl-pcard-row{display:flex;align-items:center;gap:11px;padding:10px 11px;border:1px solid var(--line);border-radius:12px;margin-bottom:8px;background:var(--bg);}
+.jl-pcard-tag{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#e8c87a;background:rgba(248, 184, 8,.14);border:1px solid var(--line);padding:4px 10px;border-radius:999px;}
+.jl-pcard-h{display:block;font-family:var(--jl-font-serif);font-size:19px;font-weight:800;margin:0 0 12px;letter-spacing:-.01em;color:#fbf7ee;}
+.jl-pcard-row{display:flex;align-items:center;gap:11px;padding:10px 11px;border:1px solid var(--line);border-radius:12px;margin-bottom:8px;background:var(--card-2);}
 .jl-pcard-row:last-child{margin-bottom:0;}
-.jl-pcard-ic{width:34px;height:34px;border-radius:9px;background:var(--sky);display:grid;place-items:center;font-size:17px;flex:0 0 auto;}
+.jl-pcard-ic{width:34px;height:34px;border-radius:10px;background:var(--chip);border:1px solid var(--line);display:grid;place-items:center;font-size:17px;flex:0 0 auto;}
 .jl-pcard-m{display:flex;flex-direction:column;min-width:0;flex:1;}
-.jl-pcard-m b{font-size:13.5px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.jl-pcard-m b{font-size:13.5px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink);}
 .jl-pcard-m em{font-size:12px;color:var(--muted);font-style:normal;}
-.jl-pcard-t{font-size:10.5px;font-weight:800;color:var(--blue);background:var(--sky);padding:4px 9px;border-radius:999px;flex:0 0 auto;}
+.jl-pcard-t{font-size:10.5px;font-weight:800;color:#e8c87a;background:rgba(248, 184, 8,.14);padding:4px 9px;border-radius:999px;flex:0 0 auto;}
 .jl-fc-badge{position:absolute;top:-16px;left:-12px;z-index:3;}
-/* SECTIONS */
-.jl-sec{padding:clamp(34px,5.5vw,64px) 0;}
-.jl-sec-alt{background:#f7f9fc;}
-.jl-row-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px;}
+/* SECTIONS — one continuous black canvas */
+.jl-sec{padding:clamp(40px,6vw,76px) 0;}
+.jl-sec-alt{background:#060606;border-top:1px solid var(--line);border-bottom:1px solid var(--line);}
+.jl-row-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:24px;}
 .jl-row-head h2,.jl-row-head p{margin:0;}
-.jl-link{border:0;background:transparent;color:var(--blue);font-weight:700;font-size:14.5px;cursor:pointer;}
+.jl-link{border:0;background:transparent;color:var(--gold);font-weight:700;font-size:14.5px;cursor:pointer;}
+.jl-link:hover{color:var(--gold-soft,#f0d9a0);}
+/* TRUST STRIP */
+/* FEATURE BAND (4 icon differentiators under the hero) */
+.jl-features{border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:linear-gradient(180deg,rgba(248, 184, 8,.05),transparent);}
+.jl-features-in{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;padding:26px max(18px,env(safe-area-inset-left));}
+.jl-feature{display:flex;align-items:center;gap:13px;}
+.jl-feature-ic{width:44px;height:44px;flex:0 0 auto;border-radius:12px;display:grid;place-items:center;font-size:21px;background:rgba(248, 184, 8,.12);border:1px solid var(--line);}
+.jl-feature-txt{display:flex;flex-direction:column;min-width:0;}
+.jl-feature-txt strong{font-size:14.5px;color:var(--ink);letter-spacing:-.01em;}
+.jl-feature-txt span{font-size:12.5px;color:var(--muted);}
+/* HOW IT WORKS (numbered steps) */
+.jl-how-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:30px;text-align:center;}
+.jl-how-step{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:26px 20px;display:flex;flex-direction:column;align-items:center;gap:8px;transition:border-color .14s,transform .14s;}
+.jl-how-step:hover{border-color:var(--line-2);transform:translateY(-2px);}
+.jl-how-num{width:40px;height:40px;border-radius:999px;display:grid;place-items:center;font-weight:800;font-size:17px;color:#000;background:var(--gold);font-variant-numeric:tabular-nums;margin-bottom:4px;}
+.jl-how-step strong{font-family:var(--jl-font-serif);font-size:18px;font-weight:800;color:#fbf7ee;}
+.jl-how-step p{margin:0;color:var(--muted);font-size:14px;line-height:1.5;}
 /* CATEGORIES */
-.jl-trust{border-bottom:1px solid var(--line);background:linear-gradient(180deg,var(--bg),var(--sky));}
-.jl-trust-in{max-width:1120px;margin:0 auto;display:flex;flex-wrap:wrap;gap:14px 34px;justify-content:center;align-items:center;padding:18px max(18px,env(safe-area-inset-left));}
-.jl-trust-i{display:inline-flex;align-items:center;gap:9px;font-size:14px;font-weight:700;color:var(--ink);}
-.jl-trust-ic{width:26px;height:26px;border-radius:999px;display:grid;place-items:center;background:var(--sky);color:var(--blue);font-size:13px;flex:0 0 auto;border:1px solid var(--line);}
-.jl-cats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;}
-.jl-cat{display:flex;flex-direction:column;gap:12px;align-items:flex-start;background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;cursor:pointer;text-align:left;transition:transform .12s,box-shadow .12s,border-color .12s;}
-.jl-cat:hover{transform:translateY(-2px);box-shadow:0 16px 36px -22px rgba(16,26,43,.4);border-color:#cfdaec;}
-.jl-cat-ic{width:48px;height:48px;border-radius:12px;display:grid;place-items:center;font-size:24px;}
-.jl-cat strong{font-size:14.5px;}
+.jl-cats{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(240px,100%),1fr));gap:14px;}
+.jl-cat{display:flex;flex-direction:column;gap:12px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;cursor:pointer;text-align:start;transition:transform .14s,box-shadow .14s,border-color .14s;}
+.jl-cat:hover{transform:translateY(-3px);box-shadow:var(--shadow);border-color:var(--line-2);}
+.jl-cat-ic{width:48px;height:48px;border-radius:13px;display:grid;place-items:center;font-size:24px;background:var(--chip);border:1px solid var(--line);}
+.jl-cat strong{font-size:14.5px;color:var(--ink);}
 /* JOBS */
 .jl-jobs{display:flex;flex-direction:column;gap:10px;}
-.jl-job{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid var(--line);border-radius:13px;padding:14px 16px;transition:box-shadow .12s,border-color .12s;flex-wrap:wrap;}
-.jl-job:hover{box-shadow:0 14px 34px -24px rgba(16,26,43,.45);border-color:#cfdaec;}
-.jl-job-ic{width:44px;height:44px;border-radius:11px;background:var(--sky);display:grid;place-items:center;font-size:21px;flex:0 0 auto;}
+.jl-job{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;transition:box-shadow .14s,border-color .14s,transform .14s;flex-wrap:wrap;}
+.jl-job:hover{box-shadow:var(--shadow);border-color:var(--line-2);transform:translateY(-1px);}
+.jl-job-ic{width:44px;height:44px;border-radius:12px;background:var(--chip);border:1px solid var(--line);display:grid;place-items:center;font-size:21px;flex:0 0 auto;}
 .jl-job-main{display:flex;flex-direction:column;gap:3px;min-width:140px;flex:1 1 200px;}
-.jl-job-main strong{font-size:15.5px;}
+.jl-job-main strong{font-size:15.5px;color:var(--ink);}
 .jl-job-meta{color:var(--muted);font-size:13px;}
 .jl-job-tags{display:flex;gap:7px;flex-wrap:wrap;}
-.jl-tag{background:#eef3fb;color:#1f4e8f;font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;}
-.jl-tag-u{background:#fdece5;color:var(--orange);}
-.jl-apply{background:var(--blue);color:#fff;font-weight:700;font-size:13.5px;padding:9px 16px;border-radius:9px;flex:0 0 auto;}
-.jl-apply:hover{background:var(--blue2);}
+.jl-tag{background:rgba(248, 184, 8,.12);color:#e8c87a;font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;border:1px solid var(--line);}
+.jl-tag-u{background:rgba(224,107,15,.16);color:#f0a96a;border-color:rgba(224,107,15,.3);}
+.jl-apply{background:var(--gold);color:#000;font-weight:800;font-size:13.5px;padding:10px 16px;border-radius:10px;flex:0 0 auto;transition:background .15s;}
+.jl-apply:hover{background:var(--gold-pri-2);}
 /* JOB-COUNT MAGNET + CHOOSE YOUR PATH */
-.jl-magnet{display:flex;align-items:center;gap:20px;flex-wrap:wrap;background:linear-gradient(135deg,#0b2b57,#14407f);color:#fff;border-radius:20px;padding:clamp(22px,3vw,34px);margin-bottom:clamp(28px,4vw,44px);}
-.jl-magnet-num{font-size:clamp(44px,8vw,76px);font-weight:800;line-height:1;letter-spacing:-.02em;}
+.jl-magnet{display:flex;align-items:center;gap:24px;flex-wrap:wrap;background:radial-gradient(600px 240px at 85% -30%,rgba(248, 184, 8,.22),transparent),linear-gradient(135deg,#0c0a08,#17120b);border:1px solid var(--line-2);color:#f4efe4;border-radius:22px;padding:clamp(24px,3vw,36px);margin-bottom:clamp(30px,4vw,48px);}
+.jl-magnet-num{font-size:clamp(46px,8vw,78px);font-weight:800;line-height:1;letter-spacing:-.02em;color:var(--gold);font-variant-numeric:tabular-nums;}
 .jl-magnet-copy{flex:1 1 240px;min-width:0;}
-.jl-magnet-copy strong{display:block;font-size:clamp(17px,2.4vw,22px);font-weight:700;}
-.jl-magnet-prov{display:inline-block;margin-top:2px;font-size:13px;color:#bcd4f5;font-weight:600;}
-.jl-magnet-copy p{margin:8px 0 0;color:#d6e4f8;font-size:14.5px;max-width:52ch;}
-.jl-paths-head{text-align:center;margin-bottom:22px;}
+.jl-magnet-copy strong{display:block;font-size:clamp(17px,2.4vw,22px);font-weight:700;color:#fbf7ee;}
+.jl-magnet-prov{display:inline-block;margin-top:2px;font-size:13px;color:var(--muted);font-weight:600;}
+.jl-magnet-copy p{margin:8px 0 0;color:#d6cbb2;font-size:14.5px;max-width:52ch;}
+.jl-paths-head{text-align:center;margin-bottom:24px;}
 .jl-paths-head .jl-tag{display:inline-block;margin-bottom:10px;}
+.jl-paths-head .jl-sub{margin-inline-start:auto;margin-right:auto;}
 .jl-paths{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;}
-.jl-path{background:#fff;border:1px solid var(--line);border-radius:18px;padding:clamp(20px,2.6vw,30px);display:flex;flex-direction:column;gap:10px;}
-.jl-path-worker{border-top:4px solid var(--blue);}
-.jl-path-client{border-top:4px solid var(--orange);}
-.jl-path-tag{font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--muted);}
-.jl-path h3{margin:2px 0 0;font-size:clamp(20px,2.6vw,25px);}
-.jl-path p{color:var(--muted);font-size:15px;margin:0;flex:1 1 auto;}
+.jl-path{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:clamp(22px,2.6vw,32px);display:flex;flex-direction:column;gap:10px;transition:transform .14s,border-color .14s,box-shadow .14s;}
+.jl-path:hover{transform:translateY(-3px);border-color:var(--line-2);box-shadow:var(--shadow);}
+.jl-path-worker{border-top:3px solid var(--gold);}
+.jl-path-client{border-top:3px solid var(--gold);}
+.jl-path-tag{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
+.jl-path h3{margin:2px 0 0;font-family:var(--jl-font-serif);font-weight:800;font-size:clamp(20px,2.6vw,26px);color:#fbf7ee;}
+.jl-path p{color:var(--muted);font-size:15px;margin:0;flex:1 1 auto;line-height:1.6;}
 .jl-path-cta{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:6px;}
+.jl-path-cta .jl-btn-primary,.jl-path-cta .jl-link{display:inline-flex;align-items:center;min-height:44px;}
+.jl-path-cta .jl-btn-primary{padding:0 18px;}
 /* SPLIT (workers / employers) */
-.jl-split{padding:clamp(30px,5vw,56px) 0;}
-.jl-split-blue{background:var(--sky);}
-.jl-split-peach{background:var(--peach);}
-.jl-split-in{display:grid;grid-template-columns:1.05fr .95fr;gap:28px;align-items:center;}
-.jl-eyebrow{font-size:12px;font-weight:800;letter-spacing:.08em;color:var(--blue);}
-.jl-eyebrow-o{color:var(--orange);}
-.jl-split-copy h2{margin:10px 0;}
-.jl-split-copy>p{color:var(--muted);max-width:440px;margin:0 0 18px;}
-.jl-checks{list-style:none;padding:0;margin:18px 0 0;display:flex;flex-direction:column;gap:9px;color:var(--ink);font-weight:600;font-size:14.5px;}
+.jl-split{padding:clamp(34px,5vw,64px) 0;}
+.jl-split-a,.jl-split-b{background:#060606;border-top:1px solid var(--line);border-bottom:1px solid var(--line);}
+.jl-split-in{display:grid;grid-template-columns:1.05fr .95fr;gap:36px;align-items:center;}
+.jl-eyebrow{font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--gold);}
+.jl-eyebrow-o{color:var(--gold);}
+.jl-split-copy h2{margin:12px 0;}
+.jl-split-copy>p{color:var(--muted);max-width:440px;margin:0 0 18px;line-height:1.6;}
+.jl-checks{list-style:none;padding:0;margin:18px 0 0;display:flex;flex-direction:column;gap:11px;color:var(--ink);font-weight:600;font-size:14.5px;}
+.jl-checks li{display:flex;align-items:center;gap:10px;}
 .jl-checks li::marker{content:"";}
 .jl-checks-o li{color:var(--ink);}
-.jl-btn-orange{background:var(--orange);color:#fff;font-weight:700;border-radius:11px;}
-.jl-btn-orange:hover{background:#ea6a0f;}
-.jl-split-card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:0 24px 60px -34px rgba(16,26,43,.5);display:flex;flex-direction:column;gap:14px;}
-.jl-mini{display:flex;align-items:center;gap:9px;font-weight:700;font-size:14.5px;}
+.jl-btn-orange{background:var(--gold);color:#000;font-weight:800;border-radius:12px;}
+.jl-btn-orange:hover{background:var(--gold-pri-2);}
+.jl-split-card{background:var(--card);border:1px solid var(--line-2);border-radius:18px;padding:24px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:14px;}
+.jl-mini{display:flex;align-items:center;gap:9px;font-weight:700;font-size:14.5px;color:var(--ink);}
 .jl-mini span{font-size:18px;}
 .jl-mini-2{color:var(--muted);}
-.jl-mini-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px;color:var(--muted);font-size:14px;}
+.jl-mini-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:9px;color:var(--muted);font-size:14px;}
 .jl-avatars{display:flex;gap:6px;}
-.jl-avatars span{width:38px;height:38px;border-radius:50%;background:var(--sky);display:grid;place-items:center;font-size:19px;border:2px solid #fff;}
+.jl-avatars span{width:38px;height:38px;border-radius:50%;background:var(--chip);display:grid;place-items:center;font-size:19px;border:2px solid #000;}
 /* JOBSCANNER */
-.jl-js{padding:clamp(32px,5vw,58px) 0;}
-.jl-js-in{background:radial-gradient(600px 300px at 12% 0%,rgba(88,198,255,.22),transparent),linear-gradient(120deg,#0f1b3a,#13224a 55%,#0a2f3a);
-  border-radius:22px;padding:clamp(28px,5vw,44px);color:#eaf1ff;display:grid;grid-template-columns:1.05fr .95fr;gap:28px;align-items:center;
-  margin-left:max(18px,env(safe-area-inset-left));margin-right:max(18px,env(safe-area-inset-right));}
-.jl-js-tag{display:inline-block;font-size:12px;font-weight:800;letter-spacing:.09em;color:#7fd3ff;background:rgba(127,211,255,.12);padding:5px 11px;border-radius:999px;}
-.jl-js-copy h2{color:#fff;margin:12px 0 10px;}
-.jl-js-copy>p{color:#b9c9e6;max-width:460px;margin:0 0 20px;}
-.jl-js-btn{display:inline-block;background:linear-gradient(90deg,#2b6cf0,#58c6ff);color:#06122b;font-weight:800;padding:13px 22px;border-radius:12px;}
+.jl-js{padding:clamp(34px,5vw,64px) 0;}
+.jl-js-in{background:radial-gradient(600px 300px at 12% 0%,rgba(248, 184, 8,.22),transparent),linear-gradient(120deg,#0b0906,#16110a 60%,#000);border:1px solid var(--line-2);
+  border-radius:24px;padding:clamp(28px,5vw,46px);color:#f4efe4;display:grid;grid-template-columns:1.05fr .95fr;gap:36px;align-items:center;
+  max-width:none;margin-left:var(--jl-col-gutter);margin-right:var(--jl-col-gutter);}
+.jl-js-tag{display:inline-block;font-size:12px;font-weight:800;letter-spacing:.1em;color:#e8c87a;background:rgba(248, 184, 8,.14);border:1px solid var(--line);padding:5px 12px;border-radius:999px;}
+.jl-js-copy h2{color:#fbf7ee;margin:14px 0 12px;}
+.jl-js-copy>p{color:#cabfa8;max-width:460px;margin:0 0 22px;line-height:1.6;}
+.jl-js-btn{display:inline-flex;align-items:center;min-height:48px;background:var(--gold);color:#000;font-weight:800;padding:0 24px;border-radius:12px;}
 .jl-js-btn:hover{filter:brightness(1.06);}
 .jl-js-demo{display:flex;justify-content:center;}
-.jl-leads{margin-top:18px;background:radial-gradient(600px 300px at 88% 0%,rgba(88,198,255,.18),transparent),linear-gradient(120deg,#0f1b3a,#13224a 55%,#0a2f3a);border-radius:22px;padding:clamp(22px,4vw,34px);margin-left:max(18px,env(safe-area-inset-left));margin-right:max(18px,env(safe-area-inset-right));}
-.jl-leads-head{display:flex;align-items:center;gap:9px;color:#dce7fb;font-weight:800;font-size:13px;letter-spacing:.04em;text-transform:uppercase;margin-bottom:14px;}
+.jl-leads{margin-top:18px;background:radial-gradient(600px 300px at 88% 0%,rgba(248, 184, 8,.18),transparent),linear-gradient(120deg,#0b0906,#16110a 60%,#000);border:1px solid var(--line);border-radius:24px;padding:clamp(18px,4vw,36px);margin-left:var(--jl-col-gutter);margin-right:var(--jl-col-gutter);}
+.jl-leads-head{display:flex;align-items:center;gap:9px;color:#ece0c4;font-weight:800;font-size:13px;letter-spacing:.05em;text-transform:uppercase;margin-bottom:16px;}
 .jl-leads-dot{width:9px;height:9px;border-radius:50%;background:#35e08a;box-shadow:0 0 0 4px rgba(53,224,138,.22);animation:jlpulse 1.8s ease-in-out infinite;}
-.jl-leads-src{margin-left:auto;font-weight:700;font-size:11px;letter-spacing:.03em;color:#9fb3d6;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:3px 10px;}
+.jl-leads-src{margin-inline-start:auto;font-weight:700;font-size:11px;letter-spacing:.03em;color:var(--muted);background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:999px;padding:3px 10px;}
 .jl-leads-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
-.jl-lead{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:13px;padding:13px 14px;transition:background .15s,border-color .15s,transform .15s;min-width:0;}
-.jl-lead:hover{background:rgba(255,255,255,.1);border-color:rgba(88,198,255,.5);transform:translateY(-1px);}
+.jl-lead-cell{display:flex;flex-direction:column;gap:6px;min-width:0;}
+.jl-adzuna{align-self:flex-start;display:inline-flex;align-items:center;justify-content:center;min-width:116px;min-height:24px;padding:0 10px;border-radius:6px;background:rgba(255,255,255,.1);color:#fff;font-size:14px;font-weight:700;}
+.jl-lead{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:14px;padding:13px 14px;transition:background .15s,border-color .15s,transform .15s;min-width:0;}
+.jl-lead:hover{background:rgba(255,255,255,.07);border-color:var(--line-2);transform:translateY(-1px);}
 .jl-lead-ic{font-size:22px;flex:none;}
 .jl-lead-main{display:flex;flex-direction:column;gap:2px;min-width:0;}
-.jl-lead-main strong{color:#fff;font-size:14.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.jl-lead-main em{color:#aebfdd;font-size:12.5px;font-style:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.jl-lead-pay{margin-left:auto;flex:none;color:#35e08a;font-weight:800;font-size:13px;}
-.jl-leads-note{margin:16px 0 0;color:#aebfdd;font-size:13px;}
-.jl-leads-note a{color:#8fd0ff;font-weight:700;}
-.jl-lead-go{flex:none;margin-left:10px;color:#8fd0ff;font-weight:800;font-size:12px;opacity:0;transform:translateX(-4px);transition:opacity .15s,transform .15s;white-space:nowrap;}
+.jl-lead-main strong{color:var(--ink);font-size:14.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.jl-lead-main em{color:var(--muted);font-size:12.5px;font-style:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.jl-lead-pay{margin-inline-start:auto;flex:none;color:var(--gold);font-weight:800;font-size:13px;unicode-bidi:isolate;}
+.jl-leads-note{margin:16px 0 0;color:var(--muted);font-size:13px;}
+.jl-leads-note a{color:var(--gold);font-weight:700;}
+.jl-lead-go{flex:none;margin-inline-start:10px;color:var(--gold);font-weight:800;font-size:12px;opacity:0;transform:translateX(-4px);transition:opacity .15s,transform .15s;white-space:nowrap;}
 .jl-lead:hover .jl-lead-go{opacity:1;transform:translateX(0);}
-.jl-alert{margin-top:18px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:22px;padding:clamp(22px,4vw,32px);display:flex;flex-wrap:wrap;align-items:center;gap:16px 24px;margin-left:max(18px,env(safe-area-inset-left));margin-right:max(18px,env(safe-area-inset-right));}
+.jl-alert{margin-top:18px;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:22px;padding:clamp(20px,4vw,32px);display:flex;flex-wrap:wrap;align-items:center;gap:16px 24px;max-width:none;margin-left:var(--jl-col-gutter);margin-right:var(--jl-col-gutter);}
 .jl-alert-copy{flex:1 1 280px;min-width:0;}
-.jl-alert-copy h3{margin:0 0 6px;color:#fff;font-size:19px;}
-.jl-alert-copy p{margin:0;color:#aebfdd;font-size:13.5px;max-width:460px;}
+.jl-alert-copy h3{margin:0 0 6px;color:#fbf7ee;font-size:19px;font-family:var(--jl-font-serif);font-weight:800;}
+.jl-alert-copy p{margin:0;color:var(--muted);font-size:13.5px;max-width:460px;}
 .jl-alert-form{flex:1 1 300px;display:flex;gap:9px;min-width:0;}
-.jl-alert-form input{flex:1 1 auto;min-width:0;background:rgba(255,255,255,.95);border:1px solid rgba(255,255,255,.2);border-radius:11px;padding:12px 14px;font-size:14.5px;color:#0b1322;}
-.jl-alert-form button{flex:none;background:linear-gradient(90deg,#2b6cf0,#58c6ff);color:#06122b;font-weight:800;font-size:14px;padding:12px 20px;border:none;border-radius:11px;cursor:pointer;}
-.jl-alert-form button:hover{filter:brightness(1.06);}
+.jl-alert-form input{flex:1 1 auto;min-width:0;min-height:48px;background:var(--chip);border:1px solid var(--line-2);border-radius:11px;padding:0 14px;font-size:14.5px;color:var(--ink);}
+.jl-alert-form input::placeholder{color:var(--faint);}
+.jl-alert-form button{flex:none;min-height:48px;background:var(--gold);color:#000;font-weight:800;font-size:14px;padding:0 22px;border:none;border-radius:11px;cursor:pointer;transition:background .15s;}
+.jl-alert-form button:hover{background:var(--gold-pri-2);}
 .jl-alert-form button:disabled{opacity:.6;cursor:default;}
-.jl-alert-ok{flex:1 1 300px;margin:0;color:#35e08a;font-weight:700;font-size:15px;}
+.jl-alert-ok{flex:1 1 300px;margin:0;color:var(--gold);font-weight:700;font-size:15px;}
 .jl-alert-err{flex:1 1 100%;margin:2px 0 0;color:#ff9b9b;font-size:13px;}
-.jl-alert-fine{flex:1 1 100%;margin:2px 0 0;color:#8597b8;font-size:12px;}
+.jl-alert-fine{flex:1 1 100%;margin:2px 0 0;color:var(--faint);font-size:12px;}
 .jl-js-feats{display:flex;flex-direction:column;gap:12px;}
-.jl-js-feat{display:flex;gap:13px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:13px;padding:15px;}
+.jl-js-feat{display:flex;gap:13px;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:14px;padding:16px;}
 .jl-js-feat span{font-size:22px;}
-.jl-js-feat strong{display:block;font-size:15px;color:#fff;}
-.jl-js-feat p{margin:3px 0 0;color:#aebfdd;font-size:13.5px;}
+.jl-js-feat strong{display:block;font-size:15px;color:#fbf7ee;}
+.jl-js-feat p{margin:3px 0 0;color:var(--muted);font-size:13.5px;}
 /* STATS */
-.jl-stats{display:flex;gap:34px;flex-wrap:wrap;justify-content:center;margin-top:26px;}
+.jl-stats{display:flex;gap:40px;flex-wrap:wrap;justify-content:center;margin-top:28px;}
 .jl-stats div{display:flex;flex-direction:column;align-items:center;}
-.jl-stats strong{font-size:30px;font-weight:800;color:var(--blue);letter-spacing:-.02em;}
-.jl-stats span{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+.jl-stats strong{font-size:clamp(30px,4vw,38px);font-weight:800;color:var(--gold);letter-spacing:-.02em;font-variant-numeric:tabular-nums;}
+.jl-stats span{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:4px;}
 /* WHY */
-.jl-why{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;margin-top:22px;text-align:left;}
-.jl-why-c{background:#fff;border:1px solid var(--line);border-radius:14px;padding:22px;}
-.jl-why-ic{font-size:24px;}
-.jl-why-c h4{margin:10px 0 6px;font-size:16.5px;}
-.jl-why-c p{margin:0;color:var(--muted);font-size:14.5px;}
+.jl-why{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr));gap:16px;margin-top:24px;text-align:start;}
+.jl-why-c{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px;transition:border-color .14s,transform .14s;}
+.jl-why-c:hover{border-color:var(--line-2);transform:translateY(-2px);}
+.jl-why-ic{font-size:26px;}
+.jl-why-c h4{margin:12px 0 6px;font-size:16.5px;color:#fbf7ee;}
+.jl-why-c p{margin:0;color:var(--muted);font-size:14.5px;line-height:1.6;}
 /* CONTACT */
-.jl-contact{display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:start;}
+.jl-contact{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:start;}
 .jl-contact-copy .jl-eyebrow{display:block;margin-bottom:6px;}
-.jl-contact-row{display:flex;gap:12px;align-items:flex-start;margin-top:16px;}
-.jl-contact-ic{width:40px;height:40px;border-radius:11px;background:var(--sky);display:grid;place-items:center;font-size:18px;flex:0 0 auto;}
+.jl-contact-row{display:flex;gap:12px;align-items:flex-start;margin-top:18px;}
+.jl-contact-ic{width:40px;height:40px;border-radius:12px;background:var(--chip);border:1px solid var(--line);display:grid;place-items:center;font-size:18px;flex:0 0 auto;}
 .jl-contact-row strong{display:block;font-size:13px;color:var(--muted);}
 .jl-contact-row a,.jl-contact-row span{color:var(--ink);font-weight:600;}
-.jl-contact-row a:hover{color:var(--blue);}
+.jl-contact-row a:hover{color:var(--gold);}
 .jl-contact-note{margin-top:18px;color:var(--muted);font-size:13.5px;}
-.jl-contact-form{display:flex;flex-direction:column;gap:10px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:0 18px 50px -30px rgba(16,26,43,.4);}
-.jl-contact-form input,.jl-contact-form textarea{border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:15px;font-family:inherit;color:var(--ink);background:#f7f9fc;outline:none;resize:vertical;}
-.jl-contact-form input:focus,.jl-contact-form textarea:focus{border-color:var(--blue);background:#fff;}
+.jl-contact-form{display:flex;flex-direction:column;gap:12px;background:var(--card);border:1px solid var(--line-2);border-radius:18px;padding:24px;box-shadow:var(--shadow);}
+.jl-contact-form input,.jl-contact-form textarea{border:1px solid var(--line-2);border-radius:11px;padding:13px 14px;font-size:15px;font-family:inherit;color:var(--ink);background:var(--chip);outline:none;resize:vertical;}
+.jl-contact-form input::placeholder,.jl-contact-form textarea::placeholder{color:var(--faint);}
+.jl-contact-form input:focus,.jl-contact-form textarea:focus{border-color:var(--gold);}
 .jl-contact-form .jl-btn-lg{text-align:center;border:0;cursor:pointer;}
 /* CTA */
-.jl-cta{padding:clamp(30px,5vw,56px) 0;}
-.jl-cta .jl-wrap{background:linear-gradient(120deg,#1d4ed8,#2563eb 55%,#0ea5a3);border-radius:22px;padding:clamp(32px,6vw,54px) 24px;color:#fff;}
-.jl-cta h2{color:#fff;}
-.jl-cta p{opacity:.92;max-width:520px;margin:0 auto 20px;}
+.jl-cta{padding:clamp(34px,5vw,64px) 0;}
+.jl-cta .jl-wrap{max-width:none;margin-left:var(--jl-col-gutter);margin-right:var(--jl-col-gutter);background:radial-gradient(700px 300px at 85% -20%,rgba(248, 184, 8,.24),transparent),linear-gradient(120deg,#0c0a08,#17120b 55%,#1f1810);border:1px solid var(--line-2);border-radius:24px;padding:clamp(36px,6vw,58px) 24px;color:#f4efe4;}
+.jl-cta h2{color:#fbf7ee;}
+.jl-cta p{opacity:.92;max-width:520px;margin:0 auto 22px;color:#d6cbb2;}
 .jl-cta-btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
-.jl-cta-white{background:#fff;color:#13224a;font-weight:800;padding:13px 26px;border-radius:11px;}
-.jl-cta-outline{border:1.5px solid rgba(255,255,255,.7);color:#fff;font-weight:800;padding:13px 26px;border-radius:11px;}
-.jl-cta-outline:hover{background:rgba(255,255,255,.12);}
+.jl-cta-white{display:inline-flex;align-items:center;justify-content:center;min-height:48px;background:var(--gold);color:#000;font-weight:800;padding:0 28px;border-radius:12px;transition:background .15s;}
+.jl-cta-white:hover{background:var(--gold-pri-2);}
+.jl-cta-outline{display:inline-flex;align-items:center;justify-content:center;min-height:48px;border:1.5px solid var(--line-2);color:#f4efe4;font-weight:800;padding:0 28px;border-radius:12px;transition:background .15s,border-color .15s;}
+.jl-cta-outline:hover{background:rgba(248, 184, 8,.1);border-color:var(--gold);}
 /* FOOTER */
-.jl-foot{background:var(--navy);color:#c6d2e4;padding:clamp(32px,5vw,52px) 0 0;}
+.jl-foot{background:#000;border-top:1px solid var(--line);color:var(--muted);padding:clamp(34px,5vw,54px) 0 0;}
 .jl-foot-in{display:grid;grid-template-columns:1.2fr 2fr;gap:28px;padding-bottom:28px;}
-.jl-logo-w{color:#fff;}
-.jl-foot-brand p{color:#8da2c0;font-size:14px;max-width:280px;margin:12px 0 0;}
+.jl-logo-w{color:#fbf7ee;}
+.jl-foot-brand p{color:var(--muted);font-size:14px;max-width:280px;margin:12px 0 0;line-height:1.6;}
 .jl-foot-cols{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;}
-.jl-foot-cols h5{color:#fff;font-size:13.5px;margin:0 0 12px;}
-.jl-foot-cols a{display:block;color:#9fb2cd;font-size:13.5px;margin-bottom:9px;}
-.jl-foot-cols a:hover{color:#fff;}
-.jl-foot-bar{border-top:1px solid #1e2d44;padding:18px max(18px,env(safe-area-inset-left));text-align:center;color:#7f93b2;font-size:13px;max-width:1120px;margin:0 auto;}
+.jl-foot-cols h5{color:#fbf7ee;font-size:13.5px;margin:0 0 12px;}
+.jl-foot-cols a{display:block;color:var(--muted);font-size:13.5px;margin-bottom:9px;transition:color .15s;}
+.jl-foot-cols a:hover{color:var(--gold);}
+.jl-foot-bar{border-top:1px solid var(--line);padding:18px max(18px,env(safe-area-inset-left));text-align:center;color:var(--faint);font-size:13px;max-width:1120px;margin:0 auto;}
 /* RESPONSIVE */
 @media (max-width:860px){
   .jl-hero-in,.jl-split-in,.jl-foot-in,.jl-js-in,.jl-contact{grid-template-columns:1fr;}
-  /* floating cards become a tidy, uniform row of 3 equal cards above the copy on phones */
-  /* preview card stacks full-width above the copy; the count shows as a small chip above it */
   .jl-hero-art{min-height:auto;order:-1;display:block;margin:2px 0 16px;}
   .jl-blob{display:none;}
-  .jl-pcard{width:100%;box-shadow:0 20px 48px -30px rgba(16,26,43,.5);}
+  .jl-pcard{width:100%;}
   .jl-fc-badge{position:static;display:inline-flex;margin-bottom:10px;padding:9px 14px;}
   .jl-fc-badge .jl-fc-ic{width:32px;height:32px;font-size:16px;}
   .jl-fc-badge strong{font-size:16px;}
   .jl-links{display:none;}
   .jl-foot-cols{grid-template-columns:repeat(2,1fr);}
-  .jl-trust-in{justify-content:flex-start;gap:11px 18px;}
-  .jl-trust-i{font-size:13px;}
-}
-@media (max-width:860px){
+  .jl-features-in{grid-template-columns:repeat(2,1fr);gap:16px 20px;}
+  .jl-how-grid{grid-template-columns:repeat(2,1fr);}
   .jl-leads-grid{grid-template-columns:1fr;}
+}
+@media (max-width:600px){
+  /* Live leads on phones: the title gets the full row; salary sits under it (W-B3). */
+  .jl-lead{flex-wrap:wrap;align-items:flex-start;}
+  .jl-lead-main{flex:1 1 calc(100% - 40px);}
+  .jl-lead-main strong{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;}
+  .jl-lead-pay{margin-inline-start:34px;}
+  .jl-lead-go{display:none;}
+  .jl-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 12px;}
+  .jl-alert-form{flex-wrap:wrap;}
+  .jl-alert-form input,.jl-alert-form button{flex:1 1 100%;}
+  .jl-cats{grid-template-columns:repeat(2,minmax(0,1fr));}
 }
 @media (max-width:520px){
   .jl-sf,.jl-sf-loc,.jl-search-btn{flex:1 1 100%;}
   .jl-nav-cta .jl-btn-ghost{display:none;}
 }
-@media (prefers-color-scheme:dark){
-  .jl{--ink:#eef3fb;--muted:#9fb0c9;--line:#243247;--sky:#111f38;--peach:#241a12;--bg:#0b1322;}
-  .jl-nav{background:rgba(11,19,34,.9);}
-  .jl-lang,.jl-btn-ghost,.jl-cat,.jl-job,.jl-why-c,.jl-split-card,.jl-search,.jl-tabs{background:#111c30;}
-  .jl-sf{background:#0e1829;}
-  .jl-sec-alt{background:#0e1627;}
-  .jl-fc{background:#111c30;}
-  .jl-tag{background:#13244a;color:#9ec1ff;}
-  .jl-hero{background:radial-gradient(900px 420px at 85% -5%,rgba(37,99,235,.22),transparent),linear-gradient(180deg,#0e1829,var(--bg));}
-}
+.jl-needs-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:4px;}
+.jl-need{background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:var(--shadow);transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease;}
+.jl-need:hover{transform:translateY(-3px);border-color:var(--line-2);}
+.jl-need-img{height:152px;background-size:cover;background-position:center;border-bottom:1px solid var(--line);}
+.jl-need-b{padding:14px 16px 18px;}
+.jl-need-b strong{display:block;font-size:16px;color:var(--ink);letter-spacing:-.01em;}
+.jl-need-b span{display:block;color:var(--muted);font-size:13px;margin-top:4px;line-height:1.4;}
+@media(max-width:860px){.jl-needs-grid{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:480px){.jl-needs-grid,.jl-how-grid{grid-template-columns:1fr;}}
 `;

@@ -1,9 +1,9 @@
 import type { PrismaClient } from "@rwos/database";
-import type { ExternalJobLead, ExternalJobSource } from "@rwos/shared";
+import { matchingPlaceNames, type ExternalJobLead, type ExternalJobSource } from "@rwos/shared";
 
 // JobScanner persistence. Leads are upserted by (source, sourceId) on each scan so a re-scan refreshes
 // lastSeenAt and any changed fields without duplicating. firstSeenAt is preserved across re-scans.
-// External leads only — no money, no JobLop governance.
+// External leads only — no money, no Joblop governance.
 
 type LeadRow = {
   source: string;
@@ -96,13 +96,82 @@ export async function upsertLeads(prisma: PrismaClient, leads: readonly External
 export type QueryLeadsOptions = Readonly<{ province?: string; city?: string; query?: string; limit?: number }>;
 export type StoredLead = ExternalJobLead & Readonly<{ id: string }>;
 
-/** Split a free-text role/keyword query into up to 8 search tokens (whitespace- or comma-separated). */
+// Stopwords dropped from role queries. Common EN/FR function words — especially short ones like "de"
+// that otherwise substring-match almost every French QC listing (e.g. "chef de cuisine" would match
+// "Aide-soignante", "CIUSSS de l'Estrie", "Directeur de succursale" via the "de" token), returning
+// unrelated jobs. Removing them makes the search return the actual trade.
+const LEAD_QUERY_STOPWORDS = new Set([
+  "de", "des", "du", "la", "le", "les", "l", "un", "une", "et", "en", "au", "aux", "à", "d",
+  "of", "the", "and", "a", "an", "or", "for", "in", "on", "to", "with"
+]);
+
+/** Split a free-text role/keyword query into up to 8 meaningful search tokens (stopwords removed). */
 export function leadQueryTokens(query: string | undefined): string[] {
   return (query ?? "")
     .split(/[\s,]+/)
     .map((t) => t.trim())
-    .filter((t) => t.length > 0)
+    .filter((t) => t.length > 0 && !LEAD_QUERY_STOPWORDS.has(t.toLowerCase()))
     .slice(0, 8);
+}
+
+// Québec listings are often titled in French, so an English search word also matches its common
+// French job-title words (and the reverse). Keys and values are lower-case substrings.
+const LEAD_QUERY_SYNONYMS: Record<string, readonly string[]> = {
+  driver: ["chauffeur", "livreur", "livraison"],
+  delivery: ["livreur", "livraison"],
+  cleaner: ["entretien", "ménage", "nettoyage", "concierge"],
+  cleaning: ["entretien", "ménage", "nettoyage"],
+  housekeeping: ["ménage", "entretien ménager"],
+  warehouse: ["entrepôt", "entrepot", "manutention", "magasinier"],
+  labourer: ["journalier", "manoeuvre", "manœuvre"],
+  laborer: ["journalier", "manoeuvre", "manœuvre"],
+  retail: ["vente", "caissier", "caissière", "commis"],
+  cashier: ["caissier", "caissière"],
+  cook: ["cuisinier", "cuisinière", "cuisine"],
+  kitchen: ["cuisine", "plongeur"],
+  dishwasher: ["plongeur"],
+  security: ["sécurité", "gardien", "agent de sécurité"],
+  guard: ["gardien", "sécurité"],
+  construction: ["chantier", "journalier", "menuisier"],
+  nurse: ["infirmier", "infirmière"],
+  "personal support worker": ["préposé", "préposée", "aide-soignant", "pab"],
+  psw: ["préposé", "préposée", "pab"],
+  caregiver: ["préposé", "aidant", "soignant"],
+  event: ["événement", "evenement", "banquet"],
+  server: ["serveur", "serveuse"],
+  chauffeur: ["driver"],
+  entretien: ["cleaner", "cleaning"],
+  cuisinier: ["cook"],
+  entrepôt: ["warehouse"]
+};
+
+/** Add French/English job-title equivalents to the search words (bounded). */
+export function expandLeadQueryTokens(query: string | undefined, tokens: readonly string[]): string[] {
+  const out = new Set(tokens.map((t) => t.toLowerCase()));
+  const whole = (query ?? "").trim().toLowerCase();
+  for (const key of [whole, ...out]) {
+    for (const alt of LEAD_QUERY_SYNONYMS[key] ?? []) out.add(alt);
+  }
+  return [...out].slice(0, 16);
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * True when one of the search words appears as a whole word (allowing simple plural/-ing
+ * endings) in the title, employer or category. Stops "cook" from matching the employer "Cooke".
+ */
+export function leadMatchesWholeWord(
+  lead: Readonly<{ title?: string | null; employer?: string | null; category?: string | null }>,
+  tokens: readonly string[]
+): boolean {
+  if (tokens.length === 0) return true;
+  const text = [lead.title, lead.employer, lead.category].filter(Boolean).join(" | ");
+  return tokens.some((tok) =>
+    new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(tok)}(s|es|ing)?($|[^\\p{L}\\p{N}])`, "iu").test(text)
+  );
 }
 
 /**
@@ -112,11 +181,24 @@ export function leadQueryTokens(query: string | undefined): string[] {
  * with chef merely ranked higher. Without a query the behaviour is unchanged.
  */
 export async function queryStoredLeads(prisma: PrismaClient, opts: QueryLeadsOptions = {}): Promise<StoredLead[]> {
-  const tokens = leadQueryTokens(opts.query);
+  const tokens = expandLeadQueryTokens(opts.query, leadQueryTokens(opts.query));
+  // City: accent- and case-insensitive ("Montreal" finds "Montréal"). Postgres `contains` keeps
+  // accents, so the distinct stored city names are folded in code and then matched exactly.
+  let cityIn: string[] | null = null;
+  if (opts.city && opts.city.trim()) {
+    const cities = await prisma.externalJobLead.findMany({
+      where: { ...(opts.province ? { province: opts.province } : {}), city: { not: null } },
+      distinct: ["city"],
+      select: { city: true },
+      take: 5000
+    });
+    cityIn = matchingPlaceNames(cities.map((c) => c.city), opts.city);
+    if (cityIn.length === 0) return [];
+  }
   const rows = await prisma.externalJobLead.findMany({
     where: {
       ...(opts.province ? { province: opts.province } : {}),
-      ...(opts.city ? { city: { contains: opts.city, mode: "insensitive" } } : {}),
+      ...(cityIn ? { city: { in: cityIn } } : {}),
       ...(tokens.length > 0
         ? {
             OR: tokens.flatMap((tok) => [
@@ -130,5 +212,6 @@ export async function queryStoredLeads(prisma: PrismaClient, opts: QueryLeadsOpt
     orderBy: { lastSeenAt: "desc" },
     take: opts.limit ?? 100
   });
-  return rows.map((r) => ({ id: r.id, ...toLead(r) }));
+  const leads = rows.map((r) => ({ id: r.id, ...toLead(r) }));
+  return tokens.length > 0 ? leads.filter((l) => leadMatchesWholeWord(l, tokens)) : leads;
 }

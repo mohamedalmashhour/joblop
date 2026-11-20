@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { SignedOut } from "../shared/SignedOut";
 
 type DistanceSurcharge = Readonly<{ billableKm: number; gasMinor: number; travelTimeMinor: number; totalMinor: number }>;
 type Quote = Readonly<{
@@ -30,6 +31,7 @@ export function VariablePriceQuotePanel() {
   });
   const [quote, setQuote] = useState<Quote | null>(null);
   const [message, setMessage] = useState("");
+  const [signedOut, setSignedOut] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const set = (k: keyof typeof form) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
@@ -60,7 +62,7 @@ export function VariablePriceQuotePanel() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body)
       });
-      if (res.status === 401 || res.status === 403) { setMessage("Administrator access required."); return; }
+      if (res.status === 401 || res.status === 403) { setMessage(""); setSignedOut(true); return; }
       if (!res.ok) { setMessage("The quote could not be computed."); return; }
       setQuote(((await res.json()) as { quote: Quote }).quote);
     } catch {
@@ -70,6 +72,7 @@ export function VariablePriceQuotePanel() {
     }
   }, [form]);
 
+  if (signedOut) return <SignedOut compact />;
   return (
     <section style={styles.wrap}>
       <article style={styles.card}>
@@ -131,19 +134,19 @@ export function VariablePriceQuotePanel() {
 
 const styles = {
   wrap: { padding: "32px clamp(18px, 5vw, 64px)" },
-  card: { background: "#fff", border: "1px solid #dbe4f0", borderRadius: 14, boxShadow: "0 12px 30px rgba(6,27,65,.08)", marginBottom: 18, padding: 22 },
-  h2: { color: "#061b41", fontSize: 22, marginTop: 0 },
+  card: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 14, boxShadow: "0 12px 30px rgba(0,0,0,.4)", marginBottom: 18, padding: 22 },
+  h2: { color: "#f4efe4", fontSize: 22, marginTop: 0 },
   formRow: { alignItems: "flex-end", display: "flex", flexWrap: "wrap" as const, gap: 12 },
-  label: { color: "#10233f", display: "flex", flexDirection: "column" as const, fontSize: 13, fontWeight: 700, gap: 4 },
-  input: { border: "1px solid #c3d0e4", borderRadius: 8, minHeight: 40, padding: "0 10px", width: 150 },
-  button: { alignItems: "center", background: "#0f7f78", border: "none", borderRadius: 8, color: "#fff", cursor: "pointer", display: "inline-flex", fontWeight: 800, minHeight: 44, padding: "0 16px" },
+  label: { color: "#f4efe4", display: "flex", flexDirection: "column" as const, fontSize: 13, fontWeight: 700, gap: 4 },
+  input: { border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, minHeight: 40, padding: "0 10px", width: 150 },
+  button: { alignItems: "center", background: "#171511", border: "none", borderRadius: 8, color: "#fff", cursor: "pointer", display: "inline-flex", fontWeight: 800, minHeight: 44, padding: "0 16px" },
   notice: { color: "#b23b2e", fontSize: 14, fontWeight: 700, marginBottom: 0 },
-  table: { background: "#fff", borderCollapse: "collapse" as const, width: "100%" },
-  td: { borderBottom: "1px solid #eef3f9", color: "#10233f", fontSize: 14, padding: 10 },
-  tdNum: { borderBottom: "1px solid #eef3f9", color: "#10233f", fontSize: 14, fontWeight: 700, padding: 10, textAlign: "right" as const, whiteSpace: "nowrap" as const },
-  tdNote: { borderBottom: "1px solid #eef3f9", color: "#5a6b85", fontSize: 12, padding: 10 },
-  tdKept: { borderBottom: "1px solid #eef3f9", color: "#0f7f78", fontSize: 12, fontWeight: 800, padding: 10 },
-  tdTotal: { borderTop: "2px solid #061b41", color: "#061b41", fontSize: 15, fontWeight: 800, padding: 10 },
-  tdNumTotal: { borderTop: "2px solid #061b41", color: "#061b41", fontSize: 15, fontWeight: 800, padding: 10, textAlign: "right" as const, whiteSpace: "nowrap" as const },
-  gate: { color: "#5a6b85", fontSize: 12, fontStyle: "italic" as const, marginBottom: 0, marginTop: 14 }
+  table: { background: "#0c0c0c", borderCollapse: "collapse" as const, width: "100%" },
+  td: { borderBottom: "1px solid rgba(248, 184, 8, 0.16)", color: "#f4efe4", fontSize: 14, padding: 10 },
+  tdNum: { borderBottom: "1px solid rgba(248, 184, 8, 0.16)", color: "#f4efe4", fontSize: 14, fontWeight: 700, padding: 10, textAlign: "right" as const, whiteSpace: "nowrap" as const },
+  tdNote: { borderBottom: "1px solid rgba(248, 184, 8, 0.16)", color: "#f4efe4", fontSize: 12, padding: 10 },
+  tdKept: { borderBottom: "1px solid rgba(248, 184, 8, 0.16)", color: "#f4efe4", fontSize: 12, fontWeight: 800, padding: 10 },
+  tdTotal: { borderTop: "2px solid rgba(248, 184, 8, 0.16)", color: "#f4efe4", fontSize: 15, fontWeight: 800, padding: 10 },
+  tdNumTotal: { borderTop: "2px solid rgba(248, 184, 8, 0.16)", color: "#f4efe4", fontSize: 15, fontWeight: 800, padding: 10, textAlign: "right" as const, whiteSpace: "nowrap" as const },
+  gate: { color: "#f4efe4", fontSize: 12, fontStyle: "italic" as const, marginBottom: 0, marginTop: 14 }
 } as const;

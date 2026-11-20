@@ -40,7 +40,10 @@ suite("HR-2 concurrency", () => {
   it("two reviewers changing the same standing → both audited, deterministic final", async () => {
     const req = (standing: string, reason: string) => app.inject({ method: "POST", url: `/platform/hr/workers/${workerId}/standing`, headers: auth(hrToken), payload: { standing, reason } });
     const before = await prisma.hrEvent.count({ where: { workerIdentityId: workerId, eventType: "standing_changed" } });
-    await Promise.all([req("restricted", "A"), req("suspended", "B")]);
+    // This is the worker's FIRST HR touch, so both requests race to create the HR profile lazily.
+    // Both must succeed: the loser of the create reuses the winner's profile.
+    const responses = await Promise.all([req("restricted", "A"), req("suspended", "B")]);
+    expect(responses.map((r) => r.statusCode)).toEqual([200, 200]);
     const after = await prisma.hrEvent.count({ where: { workerIdentityId: workerId, eventType: "standing_changed" } });
     expect(after - before).toBe(2); // no lost transition
     const final = (await prisma.hrProfile.findUniqueOrThrow({ where: { workerIdentityId: workerId } })).standing;

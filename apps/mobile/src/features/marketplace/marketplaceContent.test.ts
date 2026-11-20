@@ -1,0 +1,52 @@
+import { describe, expect, it } from "vitest";
+import { formatDistance, formatJobPay, formatOpenings, formatShiftWindow, formatWorkerRate, payOfferedText } from "./marketplaceContent";
+
+describe("marketplace formatters", () => {
+  it("formats a shift window from two ISO instants on Québec time, not UTC", () => {
+    // Summer (EDT, UTC-4).
+    expect(formatShiftWindow("2026-07-01T12:00:00.000Z", "2026-07-01T20:00:00.000Z")).toBe("Wed, Jul 1 · 08:00–16:00");
+    // Winter (EST, UTC-5): an 08:00–14:00 shift in Laval.
+    expect(formatShiftWindow("2026-11-12T13:00:00.000Z", "2026-11-12T19:00:00.000Z")).toBe("Thu, Nov 12 · 08:00–14:00");
+    // An evening start keeps the Québec date even when UTC is already the next day.
+    expect(formatShiftWindow("2026-11-13T00:30:00.000Z", "2026-11-13T04:00:00.000Z")).toBe("Thu, Nov 12 · 19:30–23:00");
+  });
+
+  it("degrades gracefully on unparseable instants", () => {
+    expect(formatShiftWindow("not-a-date", "also-bad")).toBe("Scheduled time to be confirmed");
+  });
+
+  it("never invents a rate — null (policy-gated) shows an honest placeholder", () => {
+    expect(formatWorkerRate(null, "CAD")).toBe("Hourly pay: confirmed before you're offered the shift");
+    expect(formatWorkerRate(0, "CAD", "fr")).toBe("Salaire horaire : confirmé avant qu'on vous offre le quart");
+    expect(formatWorkerRate(null, "CAD", "ar")).toBe("الأجر بالساعة: يُؤكَّد قبل أن تُعرض عليك المناوبة");
+    // Same format as the website ("$25.00/h"), the worker's own pay only.
+    expect(formatWorkerRate(2500, "CAD")).toBe("$25.00/h");
+  });
+
+  it("formats distance and openings", () => {
+    expect(formatDistance(null)).toBe("");
+    expect(formatDistance(0.4)).toBe("Less than 1 km away");
+    expect(formatDistance(3.24)).toBe("3.2 km away");
+    expect(formatDistance(12.9)).toBe("13 km away");
+    expect(formatOpenings(1)).toBe("1 opening");
+    expect(formatOpenings(4)).toBe("4 openings");
+  });
+});
+
+describe("long-term listing pay (employer plans flag)", () => {
+  const plain = (s: string | null) => (s ?? "").replace(/[\u00a0\u202f]/g, " ");
+  const offer = { minMinor: 2_200, maxMinor: 2_500, unit: "hour" as const, currency: "CAD", paidBy: "employer" as const };
+
+  it("shows the employer's pay offer, paid directly, never $0", () => {
+    expect(payOfferedText(offer, "en")).toBe("$22–$25/h · paid directly by the employer");
+    expect(plain(payOfferedText(offer, "fr"))).toBe("22 $–25 $/h · payé directement par l'employeur");
+    expect(payOfferedText(null, "en")).toBe("Pay set and paid directly by the employer");
+    expect(formatJobPay({ workerRateMinor: null, currency: "CAD", payOffered: offer }, "en")).not.toMatch(/0\.00/);
+  });
+
+  it("a job without payOffered (short-term, or flag off) keeps today's rate line", () => {
+    expect(payOfferedText(undefined, "en")).toBeNull();
+    expect(formatJobPay({ workerRateMinor: 2_150, currency: "CAD" }, "en")).toBe(formatWorkerRate(2_150, "CAD"));
+    expect(formatJobPay({ workerRateMinor: null, currency: "CAD" }, "en")).toBe(formatWorkerRate(null, "CAD"));
+  });
+});

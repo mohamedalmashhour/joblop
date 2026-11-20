@@ -35,6 +35,7 @@ function candidate(over?: Partial<MarketplaceJobDetailCandidate>): MarketplaceJo
     currency: "CAD",
     description: "Busy dinner service.",
     duties: "Prep, plating, cleanup.",
+    safetyNotes: "Closed shoes required.",
     qualifications: ["Food handler certificate"],
     ...over
   };
@@ -54,6 +55,11 @@ describe("marketplace job detail serialization", () => {
     expect(serialized).not.toContain("addressLine");
     expect(detail).not.toHaveProperty("latitude");
     expect(detail).not.toHaveProperty("longitude");
+  });
+
+  it("passes the employer's safety notes through to the worker", () => {
+    const detail = toMarketplaceJobDetail({ candidate: candidate(), origin: null, regionNames: canadaRegionNames });
+    expect(detail.safetyNotes).toBe("Closed shoes required.");
   });
 
   it("omits distance when no origin is supplied", () => {

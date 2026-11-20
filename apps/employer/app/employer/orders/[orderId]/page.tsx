@@ -1,19 +1,22 @@
 import { EmployerShell } from "../../EmployerShell";
 import { styles } from "../../employerStyles";
 import { OrderDetailPanel } from "./OrderDetailPanel";
+import { serverLang } from "../../../i18n/serverLang";
+import { pageHeaders } from "../../pageHeaderText";
 
 export default async function EmployerOrderDetailPage({ params }: { params: Promise<{ orderId: string }> }) {
   const { orderId } = await params;
+  const h = pageHeaders[await serverLang()].orderDetail;
   return (
     <EmployerShell
       currentRoute="/employer/orders"
-      eyebrow="Orders / Detail"
-      title="Order detail"
-      lede="Review the order's role lines and status. You can submit a draft order for review or cancel the whole order; cancelling cascades to every role line."
+      eyebrow={h.eyebrow}
+      title={h.title}
+      lede={h.lede}
       mode="authenticated"
       actions={
         <a href="/employer/orders" style={styles.secondaryButton}>
-          Back to orders
+          {h.back}
         </a>
       }
     >

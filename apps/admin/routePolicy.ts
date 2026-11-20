@@ -4,6 +4,12 @@ const dispatchDetail =
 // Transaction Control Room + per-transaction audit report (read-only).
 const controlRoom = /^\/control-room(?:\/[A-Za-z0-9._-]+(?:\/report(?:\/(?:worker|employer))?)?)?$/;
 
+// One worker's HR record.
+const hrWorker = /^\/hr\/workers\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+// One employer order (admin order review).
+const orderDetail = /^\/orders\/[A-Za-z0-9._-]+$/;
+
 // Public, signed share links (party-scoped transaction statements).
 const shareLink = /^\/s\/[A-Za-z0-9._-]+$/;
 
@@ -14,15 +20,33 @@ export function isProductionAdminRouteAllowed(pathname: string) {
   if (path.startsWith("/_next/") || isStaticAsset(path)) return true;
   return (
     path === "/health" ||
+    path === "/manifest.webmanifest" ||
     path === "/ready" ||
-    path === "/forgot-password" ||
-    path === "/reset-password" ||
     path === "/signin" ||
     path === "/signup" ||
     path === "/calendar" ||
     path === "/calendar/request" ||
+    path === "/calendar/job-coverage" ||
+    path === "/contact-desk" ||
     path === "/dispatches" ||
+    path === "/disputes" ||
+    path === "/contracts" ||
+    path === "/payouts" ||
+    path === "/invoices" ||
+    path === "/payroll" ||
+    path === "/hr" ||
+    path === "/employer-plan-orders" ||
+    path === "/late-cancellations" ||
+    path === "/unfilled-shifts" ||
+    path === "/brain" ||
+    path === "/orders" ||
+    path === "/timesheets" ||
+    path === "/market-wages" ||
+    path === "/escalations" ||
+    path === "/greetings" ||
+    orderDetail.test(path) ||
     dispatchDetail.test(path) ||
+    hrWorker.test(path) ||
     controlRoom.test(path) ||
     shareLink.test(path)
   );

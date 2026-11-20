@@ -411,6 +411,53 @@ describe("authenticated invoice routes", () => {
     expect(response.json()).toMatchObject({ error: "RWOS_RESOURCE_UNAVAILABLE" });
   });
 
+  describe("employer visibility", () => {
+    const withStatus = (status: "issued" | "sent") => ({ ...invoice, status });
+    const repositoryHolding = (status: "issued" | "sent") => ({
+      ...repository(),
+      get: async () => withStatus(status),
+      list: async () => [withStatus(status)]
+    });
+    const app = (status: "issued" | "sent", role: "finance_reviewer" | "platform_admin") => {
+      const server = Fastify();
+      registerInvoiceRoutes(server, {
+        repository: repositoryHolding(status),
+        authorize: async () => ({ actorId: "synthetic-actor", role })
+      });
+      return server;
+    };
+
+    it("hides an invoice staff have not sent from the employer", async () => {
+      const server = app("issued", "finance_reviewer");
+      const list = await server.inject({ method: "GET", url: `/organizations/${organizationId}/invoices` });
+      expect(list.json().invoices).toEqual([]);
+      for (const suffix of ["", "/pdf"]) {
+        const response = await server.inject({
+          method: "GET",
+          url: `/organizations/${organizationId}/invoices/${invoice.id}${suffix}`
+        });
+        expect(response.statusCode).toBe(404);
+      }
+    });
+
+    it("shows a sent invoice to the employer", async () => {
+      const server = app("sent", "finance_reviewer");
+      const list = await server.inject({ method: "GET", url: `/organizations/${organizationId}/invoices` });
+      expect(list.json().invoices).toHaveLength(1);
+      const detail = await server.inject({
+        method: "GET",
+        url: `/organizations/${organizationId}/invoices/${invoice.id}`
+      });
+      expect(detail.statusCode).toBe(200);
+    });
+
+    it("keeps an unsent invoice visible to staff", async () => {
+      const server = app("issued", "platform_admin");
+      const list = await server.inject({ method: "GET", url: `/organizations/${organizationId}/invoices` });
+      expect(list.json().invoices).toHaveLength(1);
+    });
+  });
+
   it("serves the bilingual PDF only through an authorized organization scope", async () => {
     const app = Fastify();
     registerInvoiceRoutes(app, {
@@ -450,5 +497,48 @@ describe("authenticated invoice routes", () => {
         documentDigest: expect.stringMatching(/^[a-f0-9]{64}$/u)
       })
     );
+  });
+
+  describe("employer notice on send", () => {
+    const send = (app: ReturnType<typeof Fastify>) =>
+      app.inject({
+        method: "POST",
+        url: `/organizations/${organizationId}/invoices/${invoice.id}/deliveries`,
+        payload: { expectedVersion: 3, recipientAlias: "employer-contact", idempotencyKey: "send-key" }
+      });
+    const firstSendRepository = () => {
+      const target = repository();
+      vi.mocked(target.recordFakeDelivery).mockImplementation(async (input) => ({
+        invoice: { ...invoice, status: "sent", version: 4 },
+        receipt: { id: input.id } as Awaited<ReturnType<InvoiceRepository["recordFakeDelivery"]>>["receipt"]
+      }));
+      return target;
+    };
+    const authorize = async () => ({ actorId: "synthetic-finance", role: "finance_reviewer" as const });
+
+    it("emails the employer on the first send and reports the result", async () => {
+      const app = Fastify();
+      const notifyInvoiceSent = vi.fn(async () => "sent");
+      registerInvoiceRoutes(app, { repository: firstSendRepository(), authorize, notifyInvoiceSent });
+      const response = await send(app);
+      expect(response.json().employerNotice).toBe("sent");
+      expect(notifyInvoiceSent).toHaveBeenCalledOnce();
+    });
+
+    it("does not email again when the same send is repeated", async () => {
+      const app = Fastify();
+      const notifyInvoiceSent = vi.fn(async () => "sent");
+      registerInvoiceRoutes(app, { repository: repository(), authorize, notifyInvoiceSent });
+      expect((await send(app)).statusCode).toBe(201);
+      expect(notifyInvoiceSent).not.toHaveBeenCalled();
+    });
+
+    it("keeps the send when the email fails", async () => {
+      const app = Fastify();
+      registerInvoiceRoutes(app, { repository: firstSendRepository(), authorize, notifyInvoiceSent: async () => { throw new Error("mail down"); } });
+      const response = await send(app);
+      expect(response.statusCode).toBe(201);
+      expect(response.json().employerNotice).toBe("error");
+    });
   });
 });

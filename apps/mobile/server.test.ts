@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { createWorkerWebServer } from "./server.mjs";
+import { createWorkerWebServer, parseRange } from "./server.mjs";
 
 const temporaryDirectories: string[] = [];
 
@@ -110,6 +110,18 @@ describe("worker web production server", () => {
     await new Promise<void>((resolve, reject) =>
       server.close((error?: Error) => (error ? reject(error) : resolve()))
     );
+  });
+
+  it("reads one byte range so browsers can play the bundled landing videos", () => {
+    expect(parseRange(undefined, 100)).toBeNull();
+    expect(parseRange("bytes=0-", 100)).toEqual({ start: 0, end: 99 });
+    expect(parseRange("bytes=0-1", 100)).toEqual({ start: 0, end: 1 });
+    expect(parseRange("bytes=10-500", 100)).toEqual({ start: 10, end: 99 });
+    expect(parseRange("bytes=-10", 100)).toEqual({ start: 90, end: 99 });
+    expect(parseRange("bytes=100-", 100)).toBe("invalid");
+    expect(parseRange("bytes=5-2", 100)).toBe("invalid");
+    expect(parseRange("bytes=0-1,4-5", 100)).toBe("invalid");
+    expect(parseRange("items=0-1", 100)).toBe("invalid");
   });
 
   it("rejects an unsafe or non-origin worker API value", () => {

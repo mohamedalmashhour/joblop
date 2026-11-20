@@ -1,5 +1,6 @@
 import { parseAdminCalendarDto } from "@rwos/shared";
 import { sessionBoundary, sessionFailure } from "../../../sessionBoundary";
+import { parseRequestSummary } from "../../../../calendar/requestSummary";
 
 export async function GET(
   _request: Request,
@@ -14,14 +15,15 @@ export async function GET(
   );
   if (result.status !== "ok") return sessionFailure(result.status);
   try {
-    const payload = result.payload as { request?: unknown };
+    const payload = result.payload as { request?: unknown; summary?: unknown };
     const calendarRequest = parseAdminCalendarDto(payload.request);
     // The admin list links by request number (JR-...), while the API returns the
     // record keyed by its UUID id; accept a match on either so lookup by number works.
     if (calendarRequest.id !== requestId && calendarRequest.requestNumber !== requestId)
       return sessionFailure("error");
     return Response.json(
-      { request: calendarRequest },
+      // summary: staff-only "what the employer asked for" (null when the API could not build it).
+      { request: calendarRequest, summary: parseRequestSummary(payload.summary) },
       { headers: { "cache-control": "private, no-store" } }
     );
   } catch {

@@ -1,11 +1,30 @@
 import {
   isSameOriginMutation,
   organizationContextCookieName,
+  parseOrganizationChoices,
   selectClientOrganizationId,
   sessionBoundary,
   sessionCookieOptions,
   sessionFailure
 } from "../sessionBoundary";
+
+// The name of the company the employer is working in, for the home page greeting.
+export async function GET() {
+  const { gateway, organizationId, token } = await sessionBoundary();
+  if (!token) return sessionFailure("denied");
+  const result = await gateway.request("/memberships", "GET", token);
+  if (result.status !== "ok") return sessionFailure(result.status);
+  const organizations = parseOrganizationChoices(result.payload);
+  const current = organizationId
+    ? organizations.find((organization) => organization.id === organizationId)
+    : organizations.length === 1
+      ? organizations[0]
+      : undefined;
+  return Response.json(
+    { displayName: current?.displayName ?? null },
+    { headers: { "cache-control": "private, no-store" } }
+  );
+}
 
 // Round 2c: self-serve employer org creation. Creates the organization (the caller becomes its owner
 // via the auto-created membership) and AUTO-SELECTS it as the active context so the rest of onboarding

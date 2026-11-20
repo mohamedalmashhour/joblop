@@ -2,7 +2,7 @@
 //
 // The base money model (platformPricing.ts) is margin-NEUTRAL: the urgent premium and the funded
 // allowances pass through to the worker, so the platform's cut is unchanged. This capsule adds the
-// three ways JobLop charges the CLIENT more and KEEPS it as platform revenue, per the owner model
+// three ways Joblop charges the CLIENT more and KEEPS it as platform revenue, per the owner model
 // ("some clients will pay more — emergency, far from our place"):
 //
 //   1. Emergency surcharge — an urgent/immediate job costs the client a % of labour that the worker

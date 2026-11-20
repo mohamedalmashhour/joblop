@@ -78,7 +78,7 @@ class FakeJurisdictionResolver implements PayrollJurisdictionResolver {
   async resolve(input: { residenceId: string }) { return this.byResidence[input.residenceId] ?? null; }
 }
 
-type WT = { timesheetId: string; scheduledStartAt: Date; scheduledEndAt: Date; payableMinutes: number; residenceId: string };
+type WT = { timesheetId: string; scheduledStartAt: Date; scheduledEndAt: Date; payableMinutes: number; residenceId: string; bonusMinor?: number };
 
 class FakePayrollRepository implements PayrollRepository {
   period: StoredPayrollPeriod;
@@ -90,7 +90,7 @@ class FakePayrollRepository implements PayrollRepository {
   constructor(period: StoredPayrollPeriod, workedTime: WT[]) { this.period = period; this.workedTime = workedTime; }
   async findPeriodById(id: string) { return id === this.period.id ? this.period : null; }
   async listApprovedWorkedTime() {
-    return this.workedTime.map((w) => ({ timesheetId: w.timesheetId, timesheetVersion: 1, timesheetStatus: "approved", payableMinutes: w.payableMinutes, billableMinutes: w.payableMinutes, scheduledStartAt: w.scheduledStartAt, scheduledEndAt: w.scheduledEndAt, assignmentId: `a-${w.timesheetId}`, workGroupId: "wg", roleDefinitionId: "role", residenceId: w.residenceId }));
+    return this.workedTime.map((w) => ({ timesheetId: w.timesheetId, timesheetVersion: 1, timesheetStatus: "approved", payableMinutes: w.payableMinutes, billableMinutes: w.payableMinutes, scheduledStartAt: w.scheduledStartAt, scheduledEndAt: w.scheduledEndAt, assignmentId: `a-${w.timesheetId}`, workGroupId: "wg", roleDefinitionId: "role", residenceId: w.residenceId, ...(w.bonusMinor !== undefined ? { bonusMinor: w.bonusMinor } : {}) }));
   }
   async findActiveCalculation(periodId: string, workerId: string) {
     return this.calcs.filter((c) => c.payrollPeriodId === periodId && c.workerIdentityId === workerId && c.status !== "superseded").sort((a, b) => b.revision - a.revision)[0] ?? null;
@@ -129,7 +129,7 @@ class FakePayrollRepository implements PayrollRepository {
       id, payrollPeriodId: input.payrollPeriodId, organizationId: input.organizationId, workerIdentityId: input.workerIdentityId,
       jurisdiction: { country: input.jurisdictionCountry, region: input.jurisdictionRegion }, ruleProviderKey: input.ruleProviderKey, ruleProviderVersion: input.ruleProviderVersion,
       calculationPolicyVersion: input.calculationPolicyVersion, workerClassification: input.workerClassification as PayrollReplaySnapshot["workerClassification"], currency: input.currency, calculationFingerprint: input.calculationFingerprint,
-      workedTime: input.workedTimeRefs.map((w) => ({ timesheetId: w.timesheetId, timesheetVersion: w.timesheetVersion, payableMinutes: w.payableMinutes, contractId: w.contractId, contractVersion: w.contractVersion, appliedHourlyRateMinor: w.appliedHourlyRateMinor, contractEffectiveFrom: w.contractEffectiveFrom, sourceEffectiveInstant: w.sourceEffectiveInstant })),
+      workedTime: input.workedTimeRefs.map((w) => ({ timesheetId: w.timesheetId, timesheetVersion: w.timesheetVersion, payableMinutes: w.payableMinutes, contractId: w.contractId, contractVersion: w.contractVersion, appliedHourlyRateMinor: w.appliedHourlyRateMinor, contractEffectiveFrom: w.contractEffectiveFrom, sourceEffectiveInstant: w.sourceEffectiveInstant, bonusMinor: w.bonusMinor ?? 0 })),
       earnings: input.earnings.map((e) => ({ classification: e.classification, amountMinor: e.amount.amountMinor, sourceContractVersion: e.sourceContractVersion })),
       deductions: input.deductions.map((d) => ({ category: d.category, code: d.code, amountMinor: d.amount.amountMinor })),
       employerCosts: input.employerCosts.map((c) => ({ category: c.category, code: c.code, amountMinor: c.amount.amountMinor })),
@@ -415,4 +415,58 @@ describe("payroll bulk calculation (Chunk 5)", () => {
 
 describe("payroll jurisdiction key", () => {
   it("formats country/region", () => { expect(payrollJurisdictionKey({ country: "CA", region: "QC" })).toBe("CA/QC"); });
+});
+
+describe("payroll — job bonus earnings", () => {
+  const shifts = (bonus?: number): WT[] => [
+    { timesheetId: "t-aug10", scheduledStartAt: aug10, scheduledEndAt: aug10End, payableMinutes: 480, residenceId: "res-qc", ...(bonus !== undefined ? { bonusMinor: bonus } : {}) },
+    { timesheetId: "t-aug20", scheduledStartAt: aug20, scheduledEndAt: aug20End, payableMinutes: 480, residenceId: "res-qc" }
+  ];
+  const calc = async (repo: FakePayrollRepository) =>
+    service(repo, twoContracts).calculate({ actorUserId: "u", payrollPeriodId: "period-1", workerIdentityId: "w", correlationId: "c" });
+
+  it("adds a taxable bonus line before vacation pay and deductions", () => {
+    const result = provider.evaluate({ jurisdiction: { country: "CA", region: "QC" }, currency: "CAD", segments: [seg("c1", "v1", 3000, 480)], workerClassification: "employee", bonus: cad(1_600) });
+    const kinds = result.earnings.map((e) => e.classification);
+    expect(kinds).toEqual(["regular", "bonus", "vacation_pay"]);
+    const bonus = result.earnings.find((e) => e.classification === "bonus")!;
+    expect(bonus).toMatchObject({ quantityMinutes: null, rate: null, sourceContractId: null });
+    expect(bonus.amount.amountMinor).toBe(1_600);
+    // Vacation pay (6% synthetic QC) is computed on regular + bonus: (24,000 + 1,600) x 6% = 1,536.
+    expect(result.earnings.find((e) => e.classification === "vacation_pay")!.amount.amountMinor).toBe(1_536);
+    const gross = computePayrollTotals(result, "CAD").gross.amountMinor;
+    expect(result.deductions.find((d) => d.code === "federal_tax")!.amount.amountMinor).toBe(Math.floor((gross * 1500) / 10000));
+  });
+
+  it("contractor receives the bonus through gross with no deductions", () => {
+    const result = provider.evaluate({ jurisdiction: { country: "CA", region: "QC" }, currency: "CAD", segments: [seg("c1", "v1", 3000, 480)], workerClassification: "contractor", bonus: cad(1_000) });
+    const totals = computePayrollTotals(result, "CAD");
+    expect(totals.net.amountMinor).toBe(totals.gross.amountMinor);
+    expect(result.earnings.some((e) => e.classification === "bonus")).toBe(true);
+  });
+
+  it("a zero or missing bonus produces no line and the exact pre-bonus fingerprint", async () => {
+    // Pinned: the fingerprint this scenario had before job bonuses existed. Stored calculations must
+    // keep verifying, so a zero bonus must never change it.
+    // (Value checked against the payroll engine as it was before this change.)
+    const PRE_BONUS_FINGERPRINT = "5b2ea665f0da5f7e379a505d56af6226a7caea7a94106df35fd1c615f8180dd9";
+    expect((await calc(new FakePayrollRepository(makePeriod(), shifts()))).calculationFingerprint).toBe(PRE_BONUS_FINGERPRINT);
+    const zeroRepo = new FakePayrollRepository(makePeriod(), shifts(0));
+    const zero = await calc(zeroRepo);
+    expect(zero.calculationFingerprint).toBe(PRE_BONUS_FINGERPRINT);
+    expect(zeroRepo.replay.get(zero.id)!.earnings.some((e) => e.classification === "bonus")).toBe(false);
+  });
+
+  it("a bonus changes the fingerprint and gross, and replay/verify reproduces it from the snapshot", async () => {
+    const base = await calc(new FakePayrollRepository(makePeriod(), shifts()));
+    const repo = new FakePayrollRepository(makePeriod(), shifts(1_500));
+    const withBonus = await calc(repo);
+    expect(withBonus.calculationFingerprint).not.toBe(base.calculationFingerprint);
+    // +1,500 bonus +6% vacation pay on it (90).
+    expect(withBonus.grossPayMinor - base.grossPayMinor).toBe(1_590);
+    expect(repo.replay.get(withBonus.id)!.workedTime.find((w) => w.timesheetId === "t-aug10")!.bonusMinor).toBe(1_500);
+    const verify = await service(repo, twoContracts).verifyCalculation({ calculationId: withBonus.id });
+    expect(verify.ok).toBe(true);
+    expect(verify.totalsMatch).toBe(true);
+  });
 });

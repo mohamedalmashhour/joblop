@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import { colors, spacing } from "@rwos/design-system";
+import { colors, spacing } from "../../theme";
+import { useLocale } from "../../i18n/LocaleContext";
 import { formatRwosDateTime, type WorkerCalendarDto } from "@rwos/shared";
 import type { createMobileSessionTransport, WorkerAssignmentDto } from "../../auth/secureSession";
 import {
@@ -13,7 +14,6 @@ import {
   Section,
   SmallText
 } from "../../ui/primitives";
-import { validateWorkerSignInInput } from "./signInValidation";
 
 type WorkerTransport = ReturnType<typeof createMobileSessionTransport>;
 type WorkerState =
@@ -153,31 +153,49 @@ function WorkerSignIn({
   onSignedIn: () => Promise<void>;
   initialMessage: string | null;
 }>) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [phone, setPhone] = useState("");
+  const [code, setCode] = useState("");
+  const [step, setStep] = useState<"phone" | "code">("phone");
   const [message, setMessage] = useState(
-    initialMessage ?? "Sign in to access this worker-authorized offer."
+    initialMessage ?? "Sign in with your mobile number to see this offer."
   );
   const [needsSignOut, setNeedsSignOut] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const signIn = async () => {
-    const validationMessage = validateWorkerSignInInput(email, password);
-    if (validationMessage) {
-      setNeedsSignOut(false);
-      setMessage(validationMessage);
-      return;
-    }
+  const { t } = useLocale();
+  const sendCode = async () => {
+    if (phone.replace(/\D/g, "").length < 10) return setMessage(t("auth.msg.shortNumber"));
     setSubmitting(true);
     setNeedsSignOut(false);
     try {
-      const result = await transport.signIn({ email: email.trim(), password });
-      setPassword("");
+      const result = await transport.requestPhoneCode(phone.trim());
+      if (result === "offline") return setMessage(t("auth.msg.offline"));
+      if (result === "rate_limited") return setMessage(t("auth.msg.rateLimited"));
+      if (result !== "requested") return setMessage(t("auth.msg.serverDown"));
+      setStep("code");
+      setCode("");
+      setMessage(t("auth.msg.codeSent"));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  const signIn = async () => {
+    if (!/^\d{6}$/.test(code.trim())) return setMessage(t("auth.msg.enterCode"));
+    setSubmitting(true);
+    setNeedsSignOut(false);
+    try {
+      const result = await transport.verifyPhoneCode(phone.trim(), code.trim());
       if (result.status !== "authenticated") {
         setNeedsSignOut(result.status === "sign_out_required");
         return setMessage(
           result.status === "sign_out_required"
             ? "Sign out before changing accounts."
-            : "Sign-in failed."
+            : result.status === "offline"
+              ? t("auth.msg.offline")
+              : result.status === "rate_limited"
+                ? t("auth.msg.rateLimited")
+                : result.status === "denied"
+                  ? t("auth.msg.badCode")
+                  : t("auth.msg.serverDown")
         );
       }
       await onSignedIn();
@@ -207,34 +225,54 @@ function WorkerSignIn({
         <View accessibilityLiveRegion="polite">
           <SmallText>{message}</SmallText>
         </View>
-        <Text style={styles.label}>Email</Text>
-        <TextInput
-          accessibilityLabel="Email"
-          autoCapitalize="none"
-          autoComplete="email"
-          editable={!submitting}
-          keyboardType="email-address"
-          onChangeText={setEmail}
-          placeholder="worker@example.com"
-          style={styles.input}
-          value={email}
-        />
-        <Text style={styles.label}>Password</Text>
-        <TextInput
-          accessibilityLabel="Password"
-          autoComplete="current-password"
-          editable={!submitting}
-          onChangeText={setPassword}
-          placeholder="Enter password"
-          secureTextEntry
-          style={styles.input}
-          value={password}
-        />
-        <Button
-          disabled={submitting}
-          label={submitting ? "Checking account…" : "Sign in securely"}
-          onPress={() => void signIn()}
-        />
+        {step === "phone" ? (
+          <>
+            <Text style={styles.label}>Mobile number</Text>
+            <TextInput
+              accessibilityLabel="Mobile number"
+              autoComplete="tel"
+              editable={!submitting}
+              keyboardType="phone-pad"
+              onChangeText={setPhone}
+              placeholder="514 555 0199"
+              placeholderTextColor={colors.muted}
+              style={styles.input}
+              value={phone}
+            />
+            <Button
+              disabled={submitting}
+              label={submitting ? "Sending…" : "Text me a code"}
+              onPress={() => void sendCode()}
+            />
+          </>
+        ) : (
+          <>
+            <Text style={styles.label}>6-digit code</Text>
+            <TextInput
+              accessibilityLabel="6-digit code"
+              autoComplete="one-time-code"
+              editable={!submitting}
+              keyboardType="number-pad"
+              maxLength={6}
+              onChangeText={setCode}
+              placeholder="123456"
+              placeholderTextColor={colors.muted}
+              style={styles.input}
+              value={code}
+            />
+            <Button
+              disabled={submitting}
+              label={submitting ? "Checking…" : "Sign in"}
+              onPress={() => void signIn()}
+            />
+            <Button
+              disabled={submitting}
+              label="Send a new code"
+              onPress={() => void sendCode()}
+              variant="secondary"
+            />
+          </>
+        )}
         {needsSignOut ? (
           <Button
             disabled={submitting}

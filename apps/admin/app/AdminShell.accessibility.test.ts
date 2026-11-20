@@ -31,6 +31,10 @@ describe("admin shell accessibility", () => {
     expect(styles).toContain(".admin-page-list");
   });
 
+  it("keeps the numbered review stepper out of deployed staff pages", () => {
+    expect(shell).toContain("{!connectedEnvironment && currentIndex >= 0 ? (");
+  });
+
   it("builds the client navigation with the same connected boundary as middleware", () => {
     expect(shell).toContain('["production", "staging"].includes');
     expect(packageJson).toContain(
@@ -39,8 +43,9 @@ describe("admin shell accessibility", () => {
   });
 
   it("labels staging without weakening the production navigation boundary", () => {
-    expect(layout).toContain('process.env.RWOS_ENV === "staging"');
-    expect(layout).toContain("<AdminShell staging={staging}>");
+    expect(layout).toContain("process.env.RWOS_ENV");
+    expect(layout).toContain('rwosEnv === "staging"');
+    expect(layout).toContain("staging={staging}");
     expect(shell).toContain("staging: boolean");
     expect(shell).toContain('process.env.NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER === "staging"');
     expect(shell).toContain("STAGING");

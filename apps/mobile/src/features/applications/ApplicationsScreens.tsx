@@ -7,7 +7,7 @@ import type {
   WorkerApplicationRepository,
   WorkerApplicationSummary
 } from "@rwos/shared";
-import { colors, spacing } from "@rwos/design-system";
+import { colors, spacing } from "../../theme";
 import {
   Badge,
   BodyText,
@@ -761,7 +761,7 @@ const styles = StyleSheet.create({
     padding: spacing.md
   },
   changedTermRow: {
-    backgroundColor: "#fff8ea",
+    backgroundColor: "#2a1f0a",
     borderColor: colors.warning
   }
 });

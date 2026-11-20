@@ -4,6 +4,7 @@ import { buildApi } from "../../apps/api/src/app";
 import { createPrismaClient } from "@rwos/database";
 import { createPrismaAssignmentRepository } from "@rwos/auth";
 import type { FastifyInstance } from "fastify";
+import { priceJob, repriceOrganizationJobs, type FixtureContract } from "./payrollPricingFixture";
 
 // HR-5.1 Chunk 3 — governed corrections, revision lineage, post-lock adjustments, idempotency, DB
 // immutability, and REAL PostgreSQL concurrency (correction-vs-lock, approve-vs-correct,
@@ -34,6 +35,7 @@ suite("HR-5.1 payroll corrections & concurrency", () => {
 
   async function makeAssignmentAndTimesheet() {
     const job = await prisma.jobRequest.create({ data: { jobRequestNumber: `JR-CX-${randomUUID().slice(0, 10)}`, ...scope, creatorUserId: payrollAdminId, title: "Shift", numberOfWorkers: 1, requestType: "single_day", timezone: "America/Toronto", startAt: start, endAt: end, status: "approved_for_dispatch", createdByUserId: payrollAdminId } });
+    await priceJob(prisma, { jobRequestId: job.id, organizationId: scope.organizationId, contract: currentContract, capturedByUserId: payrollAdminId });
     const review = await prisma.dispatchReview.create({ data: { jobRequestId: job.id, ...scope, state: "offer_preparation", priority: "normal", requiredWorkerCount: 1, createdByUserId: payrollAdminId } });
     const offer = await prisma.workerOffer.create({ data: { dispatchReviewId: review.id, jobRequestId: job.id, organizationId: scope.organizationId, residenceId: scope.residenceId, departmentId: scope.departmentId, workerIdentityId: workerId, status: "accepted", expiresAt: new Date(NOW.getTime() + 24 * 3_600_000), approvedAt: NOW, sentAt: NOW, respondedAt: NOW, createdByUserId: payrollAdminId } });
     const terms = await prisma.workerOfferTermsVersion.create({ data: { workerOfferId: offer.id, versionNumber: 1, workerVisibleTitle: job.title, timezone: "America/Toronto", startAt: start, endAt: end, workGroupId: scope.workGroupId, roleDefinitionId: scope.roleDefinitionId, createdByUserId: payrollAdminId } });
@@ -46,15 +48,19 @@ suite("HR-5.1 payroll corrections & concurrency", () => {
     await prisma.$executeRawUnsafe(`INSERT INTO timesheets (id, assignment_id, attendance_record_id, job_request_id, worker_identity_id, organization_id, residence_id, department_id, work_group_id, role_definition_id, status, attendance_version_snapshot, assignment_version_snapshot, scheduled_start_at, scheduled_end_at, timezone, payable_minutes, billable_minutes, break_minutes, approved_at, created_by_user_id, version, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'approved',1,1,$11,$12,'America/Toronto',480,480,0,$13,$14,1,$13,$13)`, tsId, assignmentId, attId, job.id, workerId, scope.organizationId, scope.residenceId, scope.departmentId, scope.workGroupId, scope.roleDefinitionId, s, e, n, payrollAdminId);
   }
 
+  let currentContract: FixtureContract;
   async function setContractRate(rateMinor: number) {
-    // supersede the current active contract and activate a new one (effective Jul 1, so it governs
-    // the Aug 10 shift). This is the governed authoritative-input change that a correction consumes.
+    // supersede the current active contract and activate a new one, then move the job's frozen pay
+    // rate onto it. This is the governed authoritative-input change that a correction consumes.
     await prisma.$executeRawUnsafe(`UPDATE employer_contracts SET status='superseded' WHERE organization_id=$1 AND status='active'`, orgId);
     // effective_from stays Jul 1 (governs the Aug 10 shift); activated_at/created_at use real
     // monotonic now() so the newest contract wins the effective-date tie deterministically.
     const cid = randomUUID();
-    await prisma.$executeRawUnsafe(`INSERT INTO employer_contracts (id, organization_id, version, status, currency, activated_at, effective_from, created_by_user_id, created_at, updated_at) VALUES ($1,$2,$3,'active','CAD',now(),'2026-07-01T00:00:00Z',$4,now(),now())`, cid, orgId, `v-${rateMinor}-${randomUUID().slice(0, 8)}`, payrollAdminId);
+    const version = `v-${rateMinor}-${randomUUID().slice(0, 8)}`;
+    await prisma.$executeRawUnsafe(`INSERT INTO employer_contracts (id, organization_id, version, status, currency, activated_at, effective_from, created_by_user_id, created_at, updated_at) VALUES ($1,$2,$3,'active','CAD',now(),'2026-07-01T00:00:00Z',$4,now(),now())`, cid, orgId, version, payrollAdminId);
     await prisma.$executeRawUnsafe(`INSERT INTO contract_role_rates (id, contract_id, work_group_id, role_definition_id, hourly_rate_minor, created_at) VALUES (gen_random_uuid(),$1,$2,$3,$4,now())`, cid, scope.workGroupId, scope.roleDefinitionId, rateMinor);
+    currentContract = { id: cid, version, effectiveFrom: new Date("2026-07-01T00:00:00Z"), rateMinor };
+    await repriceOrganizationJobs(prisma, orgId, currentContract);
   }
 
   let periodSeq = 0;

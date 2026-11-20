@@ -1,5 +1,8 @@
+import { parsePayOffered, type PayOffered } from "@rwos/shared";
+
 export type EmployerRequestContext = Readonly<{
-  residences: readonly Readonly<{ id: string; name: string }>[];
+  // address: the employer's own site address, used to pre-fill the request's "Site address" box.
+  residences: readonly Readonly<{ id: string; name: string; address: string | null }>[];
   departments: readonly Readonly<{ id: string; name: string; residenceId: string }>[];
   workGroups: readonly Readonly<{ id: string; slug: string; displayLabel: string }>[];
   roleDefinitions: readonly Readonly<{
@@ -28,7 +31,48 @@ export type EmployerJobRequestDraft = Readonly<{
   startAt: string;
   endAt: string;
   informationRequestReason: string | null;
+  // Present when the API sent them: what the "Edit draft" form needs to open fully pre-filled.
+  edit?: EmployerDraftEditFields;
 }>;
+
+export type EmployerAllowanceEntry = Readonly<{
+  provision: "none" | "provided" | "allowance";
+  amountMinor: number | null;
+  note: string | null;
+}>;
+
+export type EmployerDraftEditFields = Readonly<{
+  residenceId: string | null;
+  departmentId: string | null;
+  workGroupId: string | null;
+  roleDefinitionId: string | null;
+  requiredCertificates: readonly string[];
+  requiredCertificateOther: string | null;
+  allowances: Readonly<{
+    transport: EmployerAllowanceEntry;
+    meal: EmployerAllowanceEntry;
+    lodging: EmployerAllowanceEntry;
+  }> | null;
+  // The employer's own shift conditions, when the API sent them.
+  conditions?: EmployerShiftConditions;
+}>;
+
+export type EmployerShiftConditions = Readonly<{
+  breakMinutes: number | null;
+  dressCode: string | null;
+  equipmentToBring: string | null;
+  arrivalInstructions: string | null;
+  workerNotes: string | null;
+}>;
+
+/** The employer's shift conditions from an API record (unknown values dropped). */
+export function parseShiftConditions(input: unknown): EmployerShiftConditions | null {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return null;
+  const c = input as Record<string, unknown>;
+  const text = (value: unknown) => (typeof value === "string" && value.trim() ? value : null);
+  const breakMinutes = Number.isInteger(c.breakMinutes) && (c.breakMinutes as number) >= 0 && (c.breakMinutes as number) <= 240 ? (c.breakMinutes as number) : null;
+  return { breakMinutes, dressCode: text(c.dressCode), equipmentToBring: text(c.equipmentToBring), arrivalInstructions: text(c.arrivalInstructions), workerNotes: text(c.workerNotes) };
+}
 
 export type EmployerDispatchStatus = Readonly<{
   jobRequestId: string;
@@ -106,7 +150,7 @@ export function parseEmployerRequestContext(input: {
     residences: parseList(input.residences, "residences").flatMap((value) => {
       const record = asRecord(value);
       return isString(record.id) && isString(record.name)
-        ? [{ id: record.id, name: record.name }]
+        ? [{ id: record.id, name: record.name, address: residenceAddress(record) }]
         : [];
     }),
     departments: parseList(input.departments, "departments").flatMap((value) => {
@@ -144,6 +188,19 @@ export function parseEmployerRequestContext(input: {
       ];
     })
   };
+}
+
+// One line for a site's address ("901 Avenue du Parc, Laval, QC H7N 0A1"), or null when none is on file.
+function residenceAddress(record: Readonly<Record<string, unknown>>): string | null {
+  const text = (key: string) => (typeof record[key] === "string" ? (record[key] as string).trim() : "");
+  const street = text("addressSummary") || [text("addressLine1"), text("addressLine2")].filter(Boolean).join(" ");
+  const regionPostal = [text("province") || text("region"), text("postalCode")].filter(Boolean).join(" ");
+  const parts: string[] = [];
+  for (const part of [street, text("city"), regionPostal]) {
+    if (part && !parts.some((existing) => existing.toLowerCase().includes(part.toLowerCase()))) parts.push(part);
+  }
+  const line = parts.join(", ").slice(0, 500);
+  return line || null;
 }
 
 // Reads the active contract payload ({ contract: { roleRates: [...] } }) into a
@@ -207,13 +264,87 @@ export function parseEmployerJobRequest(input: unknown): EmployerJobRequestDraft
     informationRequestReason:
       record.status === "information_required" && isString(record.adminReviewReason)
         ? record.adminReviewReason
-        : null
+        : null,
+    ...draftEditFields(record)
   };
+}
+
+function draftEditFields(record: Readonly<Record<string, unknown>>): { edit?: EmployerDraftEditFields } {
+  if (!isString(record.residenceId) && !isString(record.roleDefinitionId)) return {};
+  const allowances = asRecord(record.allowances);
+  const hasAllowances = record.allowances !== null && typeof record.allowances === "object";
+  return {
+    edit: {
+      residenceId: isString(record.residenceId) ? record.residenceId : null,
+      departmentId: isString(record.departmentId) ? record.departmentId : null,
+      workGroupId: isString(record.workGroupId) ? record.workGroupId : null,
+      roleDefinitionId: isString(record.roleDefinitionId) ? record.roleDefinitionId : null,
+      requiredCertificates: Array.isArray(record.requiredCertificates)
+        ? record.requiredCertificates.filter((value): value is string => typeof value === "string").slice(0, 20)
+        : [],
+      requiredCertificateOther: isString(record.requiredCertificateOther) ? record.requiredCertificateOther : null,
+      allowances: hasAllowances
+        ? {
+            transport: allowanceEntry(allowances.transport),
+            meal: allowanceEntry(allowances.meal),
+            lodging: allowanceEntry(allowances.lodging)
+          }
+        : null,
+      ...(parseShiftConditions(record.conditions) ? { conditions: parseShiftConditions(record.conditions)! } : {})
+    }
+  };
+}
+
+function allowanceEntry(input: unknown): EmployerAllowanceEntry {
+  const entry = asRecord(input);
+  const provision = entry.provision === "provided" || entry.provision === "allowance" ? entry.provision : "none";
+  const amount = entry.amountMinor;
+  return {
+    provision,
+    amountMinor: provision === "allowance" && Number.isInteger(amount) && (amount as number) >= 0 ? (amount as number) : null,
+    note: provision !== "none" && isString(entry.note) ? entry.note : null
+  };
+}
+
+// Optional full-form fields an "Edit draft" save may change (location, role, dates, certificates).
+// Each is forwarded only when present and well formed; the API re-checks every one of them.
+function draftUpdateExtras(record: Readonly<Record<string, unknown>>) {
+  const strings = ["residenceId", "departmentId", "workGroup", "roleDefinition", "timezone"] as const;
+  const extras: Record<string, unknown> = {};
+  for (const key of strings) {
+    if (record[key] === undefined) continue;
+    if (!isString(record[key]) || (record[key] as string).length > 200) return null;
+    extras[key] = (record[key] as string).trim();
+  }
+  if (record.requestType !== undefined) {
+    if (!["single_day", "multi_day"].includes(String(record.requestType))) return null;
+    extras.requestType = record.requestType;
+  }
+  if (record.startAt !== undefined || record.endAt !== undefined) {
+    if (!validDate(record.startAt) || !validDate(record.endAt)) return null;
+    const startAt = new Date(record.startAt as string);
+    const endAt = new Date(record.endAt as string);
+    if (endAt <= startAt) return null;
+    extras.startAt = startAt.toISOString();
+    extras.endAt = endAt.toISOString();
+  }
+  if (record.requiredCertificates !== undefined) {
+    if (!Array.isArray(record.requiredCertificates)) return null;
+    extras.requiredCertificates = record.requiredCertificates
+      .filter((value): value is string => typeof value === "string")
+      .slice(0, 20);
+    if (typeof record.requiredCertificateOther === "string") {
+      extras.requiredCertificateOther = record.requiredCertificateOther.slice(0, 200);
+    }
+  }
+  return extras;
 }
 
 export function readEmployerJobRequestUpdate(input: unknown) {
   const record = asRecord(input);
+  const extras = draftUpdateExtras(record);
   if (
+    !extras ||
     !Number.isInteger(record.expectedVersion) ||
     (record.expectedVersion as number) < 0 ||
     !isString(record.title) ||
@@ -235,7 +366,8 @@ export function readEmployerJobRequestUpdate(input: unknown) {
         ? record.description.trim()
         : null,
     numberOfWorkers: record.numberOfWorkers as number,
-    urgency: record.urgency as EmployerJobRequestDraft["urgency"]
+    urgency: record.urgency as EmployerJobRequestDraft["urgency"],
+    ...extras
   };
 }
 
@@ -277,8 +409,31 @@ export function readEmployerJobRequestInput(input: unknown) {
     requestType: record.requestType as "single_day" | "multi_day" | "recurring_intent",
     timezone: record.timezone as string,
     startAt: startAt.toISOString(),
-    endAt: endAt.toISOString()
+    endAt: endAt.toISOString(),
+    // Employer plans: job length is forwarded only when the form sent a valid one (the API ignores it
+    // unless EMPLOYER_PLANS_ENABLED is on).
+    ...(record.jobLength === "short_term" || record.jobLength === "long_term"
+      ? { jobLength: record.jobLength as "short_term" | "long_term" }
+      : {}),
+    // Long-term only: the pay the employer offers (paid directly to the worker). Forwarded as a clean
+    // { minMinor, maxMinor, unit } when valid; the API refuses a long-term job without one.
+    ...(record.jobLength === "long_term" && parsePayOffered(record.payOffered)
+      ? { payOffered: payOfferedBody(parsePayOffered(record.payOffered)!) }
+      : {}),
+    // Required certificates, forwarded as sent (the API refuses an unknown key or an empty "other").
+    ...requiredCertificatesBody(record)
   };
+}
+
+function requiredCertificatesBody(record: Readonly<Record<string, unknown>>) {
+  if (!Array.isArray(record.requiredCertificates) || record.requiredCertificates.length === 0) return {};
+  const keys = record.requiredCertificates.filter((value): value is string => typeof value === "string").slice(0, 20);
+  const other = typeof record.requiredCertificateOther === "string" ? record.requiredCertificateOther.slice(0, 200) : undefined;
+  return { requiredCertificates: keys, ...(other !== undefined ? { requiredCertificateOther: other } : {}) };
+}
+
+function payOfferedBody(pay: PayOffered) {
+  return { minMinor: pay.minMinor, maxMinor: pay.maxMinor, unit: pay.unit };
 }
 
 export function readEmployerCalendarProfileInput(input: unknown) {
@@ -297,13 +452,71 @@ export function readEmployerCalendarProfileInput(input: unknown) {
   ) {
     return null;
   }
+  const conditions = readShiftConditionsInput(record.conditions);
+  const allowances = readAllowancesForward(record.allowances);
+  if (conditions === "invalid" || allowances === "invalid") return null;
   return {
     dutiesSummary: normalizeNullableText(record.dutiesSummary),
     qualifications: qualifications.map((value) => value.trim().replace(/\s+/g, " ")),
     addressSummary: normalizeNullableText(record.addressSummary),
     specialInstructions: normalizeNullableText(record.specialInstructions),
-    expectedVersion: record.expectedVersion as number | null
+    expectedVersion: record.expectedVersion as number | null,
+    // Shift conditions and per-shift allowances are forwarded only when the form sends them. The API
+    // strips HTML and re-checks every limit; this only refuses obviously wrong shapes early.
+    ...(conditions ? { conditions } : {}),
+    ...(allowances ? { allowances } : {})
   };
+}
+
+/** Same limits as the API (apps/api/src/shiftConditions.ts). */
+export const SHIFT_CONDITION_LIMITS = { breakMinutesMax: 240, dressCode: 120, equipmentToBring: 300, arrivalInstructions: 500, workerNotes: 500 } as const;
+
+function readShiftConditionsInput(input: unknown) {
+  if (input === undefined) return null;
+  if (input === null) return { breakMinutes: null, dressCode: null, equipmentToBring: null, arrivalInstructions: null, workerNotes: null };
+  if (typeof input !== "object" || Array.isArray(input)) return "invalid" as const;
+  const record = input as Record<string, unknown>;
+  const rawBreak = record.breakMinutes;
+  const breakMinutes = rawBreak === undefined || rawBreak === null || rawBreak === "" ? null : rawBreak;
+  if (breakMinutes !== null && (!Number.isInteger(breakMinutes) || (breakMinutes as number) < 0 || (breakMinutes as number) > SHIFT_CONDITION_LIMITS.breakMinutesMax)) {
+    return "invalid" as const;
+  }
+  const text = (key: "dressCode" | "equipmentToBring" | "arrivalInstructions" | "workerNotes") => {
+    const value = record[key];
+    if (value === undefined || value === null) return null;
+    if (typeof value !== "string" || value.trim().length > SHIFT_CONDITION_LIMITS[key]) return undefined;
+    return value.trim() || null;
+  };
+  const out = {
+    breakMinutes: breakMinutes as number | null,
+    dressCode: text("dressCode"),
+    equipmentToBring: text("equipmentToBring"),
+    arrivalInstructions: text("arrivalInstructions"),
+    workerNotes: text("workerNotes")
+  };
+  return Object.values(out).some((value) => value === undefined) ? ("invalid" as const) : out;
+}
+
+const PROVISIONS = new Set(["none", "provided", "allowance"]);
+
+function readAllowancesForward(input: unknown) {
+  if (input === undefined || input === null) return null;
+  if (typeof input !== "object" || Array.isArray(input)) return "invalid" as const;
+  const record = input as Record<string, unknown>;
+  const entry = (value: unknown) => {
+    if (value === undefined || value === null) return null;
+    if (typeof value !== "object" || Array.isArray(value)) return undefined;
+    const e = value as Record<string, unknown>;
+    const provision = typeof e.provision === "string" ? e.provision : "none";
+    const amount = e.amountMinor === undefined || e.amountMinor === null ? null : e.amountMinor;
+    const note = e.note === undefined || e.note === null ? null : e.note;
+    if (!PROVISIONS.has(provision)) return undefined;
+    if (amount !== null && (!Number.isInteger(amount) || (amount as number) < 0 || (amount as number) > 1_000_000)) return undefined;
+    if (note !== null && (typeof note !== "string" || note.trim().length > 200)) return undefined;
+    return { provision, amountMinor: amount as number | null, note: typeof note === "string" ? note.trim() || null : null };
+  };
+  const out = { transport: entry(record.transport), meal: entry(record.meal), lodging: entry(record.lodging) };
+  return Object.values(out).some((value) => value === undefined) ? ("invalid" as const) : out;
 }
 
 function parseList(input: unknown, key: string) {

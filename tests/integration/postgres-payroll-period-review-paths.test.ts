@@ -4,6 +4,7 @@ import type { FastifyInstance } from "fastify";
 import { buildApi } from "../../apps/api/src/app";
 import { createPrismaClient } from "@rwos/database";
 import { createPrismaAssignmentRepository } from "@rwos/auth";
+import { contractInForce, priceJob, type FixtureContract } from "./payrollPricingFixture";
 
 /**
  * HR-6.1 Chunk 1 FINALIZATION — live PostgreSQL/API proof of the per-worker failure PATHS using
@@ -53,10 +54,12 @@ suite("HR-6.1 period review — per-worker failure paths (live PG)", () => {
   async function newPeriod(orgId: string, region: string) {
     return (await prisma.payrollPeriod.create({ data: { organizationId: orgId, jurisdictionCountry: "CA", jurisdictionRegion: region, periodStart, periodEnd, timezone: "America/Toronto", currency: "CAD", ruleProviderKey: "synthetic-fixture", ruleProviderVersion: "synthetic-2026.08", createdByUserId: ownerId } })).id;
   }
+  const contractsByOrg = new Map<string, FixtureContract[]>();
   async function seedContract(orgId: string, version: string, status: string, effFromIso: string, rateMinor: number, roleDefinitionId: string) {
     const cid = randomUUID(); const n = NOW.toISOString();
     await prisma.$executeRawUnsafe(`INSERT INTO employer_contracts (id, organization_id, version, status, currency, activated_at, effective_from, created_by_user_id, created_at, updated_at) VALUES ($1,$2,$3,$4,'CAD',$5,$5,$6,$7,$7)`, cid, orgId, version, status, effFromIso, ownerId, n);
     await prisma.$executeRawUnsafe(`INSERT INTO contract_role_rates (id, contract_id, work_group_id, role_definition_id, hourly_rate_minor, created_at) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5)`, cid, wgId, roleDefinitionId, rateMinor, n);
+    contractsByOrg.set(orgId, [...(contractsByOrg.get(orgId) ?? []), { id: cid, version, effectiveFrom: new Date(effFromIso), rateMinor }]);
   }
   async function makeAssignment(workerId: string, scope: Record<string, string>, s: Date, e: Date) {
     const job = await prisma.jobRequest.create({ data: { jobRequestNumber: `JR-${randomUUID().slice(0, 10)}`, ...scope, creatorUserId: ownerId, title: "Shift", numberOfWorkers: 1, requestType: "single_day", timezone: "America/Toronto", startAt: s, endAt: e, status: "approved_for_dispatch", createdByUserId: ownerId } });
@@ -77,6 +80,8 @@ suite("HR-6.1 period review — per-worker failure paths (live PG)", () => {
   async function addShift(workerId: string, orgId: string, r: { residenceId: string; departmentId: string }, roleDefinitionId: string, s: Date, e: Date) {
     const base = { organizationId: orgId, residenceId: r.residenceId, departmentId: r.departmentId, workGroupId: wgId, roleDefinitionId };
     const a = await makeAssignment(workerId, base, s, e);
+    const contract = contractInForce(contractsByOrg.get(orgId) ?? [], s);
+    if (contract) await priceJob(prisma, { jobRequestId: a.jobId, organizationId: orgId, contract, capturedByUserId: ownerId });
     await seedApprovedTimesheet(workerId, { ...base, assignmentId: a.assignmentId }, a.jobId, s, e, 480);
   }
 
@@ -114,7 +119,7 @@ suite("HR-6.1 period review — per-worker failure paths (live PG)", () => {
       await addShift(w, org, on, roleId, new Date("2026-08-06T13:00:00Z"), new Date("2026-08-06T21:00:00Z"));
       S.ambiguous = { period: await newPeriod(org, "QC"), worker: w };
     }
-    // INTRA_SHIFT_RATE_BOUNDARY: a shift whose start reads v1 and end reads v2 (eff mid-shift).
+    // A contract change mid-shift: the job is priced from v1, and v2 takes effect during the shift.
     {
       const org = await newOrg(); const qc = await newResidence(org, "QC");
       await seedContract(org, "v1", "superseded", "2026-07-01T00:00:00Z", 3000, roleId);
@@ -163,15 +168,18 @@ suite("HR-6.1 period review — per-worker failure paths (live PG)", () => {
     expect(await prisma.payrollCalculation.count()).toBe(before);
   });
 
-  it("INTRA_SHIFT_RATE_BOUNDARY → flag + calculate() fails rate_boundary (parity, no split/guess, no write)", async () => {
-    const before = await prisma.payrollCalculation.count();
+  // The rate is frozen on the job, so a contract change mid-shift is not a boundary: review must not
+  // block it, and calculation must pay the frozen rate. The flag itself stays unit-tested in
+  // packages/auth/src/payrollPeriodReview.test.ts.
+  it("a contract change mid-shift → no false boundary flag; calculate() pays the frozen rate (parity)", async () => {
     const w = workerView((await review(S.boundary.period)).json(), S.boundary.worker);
-    expect(w!.flags.some((f) => f.code === "INTRA_SHIFT_RATE_BOUNDARY")).toBe(true);
-    expect(w!.blocked).toBe(true);
+    expect(w!.flags.some((f) => f.code === "INTRA_SHIFT_RATE_BOUNDARY")).toBe(false);
+    expect(w!.blocked).toBe(false);
     const calc = await calculate(S.boundary.period, S.boundary.worker);
-    expect(calc.statusCode).toBe(400);
-    expect(String(calc.json().reason)).toMatch(/rate_boundary_inside_approved_shift/);
-    expect(await prisma.payrollCalculation.count()).toBe(before);
+    expect(calc.statusCode).toBe(201);
+    const row = await prisma.payrollWorkedTimeReference.findFirstOrThrow({ where: { payrollCalculationId: calc.json().calculation.id } });
+    expect(row.appliedHourlyRateMinor).toBe(3000);
+    expect(row.contractVersion).toBe("v1");
   });
 
   it("IMMUTABILITY: the review endpoint itself mutates no authoritative state", async () => {

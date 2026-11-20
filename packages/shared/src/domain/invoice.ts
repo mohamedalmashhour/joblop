@@ -117,6 +117,7 @@ export type InvoiceLineKind =
   | "adjustment"
   | "marketplace_fee"
   | "transfer_fee"
+  | "bonus"
   | "gst"
   | "qst"
   | "credit";
@@ -165,6 +166,10 @@ export type InvoiceCalculationInput = Readonly<{
   marketplaceFees: ContractMoney;
   /** Optional upfront card payment surcharge (employer's share). Omitted/zero -> no surcharge line. */
   transferFee?: ContractMoney;
+  /** Optional employer-funded job bonus (accepted by the employer). Omitted/zero -> no bonus line. */
+  bonus?: ContractMoney;
+  /** Optional label for the regular labour line (e.g. a late-cancellation charge). Default "Regular labour". */
+  regularLabourDescription?: string;
   credits: ContractMoney;
   lineRuleVersions: Readonly<
     Record<
@@ -177,7 +182,7 @@ export type InvoiceCalculationInput = Readonly<{
       | "credit",
       string
     > &
-      Partial<Record<"transfer_fee", string>>
+      Partial<Record<"transfer_fee" | "bonus", string>>
   >;
 }>;
 
@@ -219,7 +224,7 @@ export function calculateInvoiceSnapshot(
   const untaxedLines: InvoiceLineSnapshot[] = [
     line(
       "regular_labour",
-      "Regular labour",
+      input.regularLabourDescription?.trim() || "Regular labour",
       input.regularLabour,
       input.lineRuleVersions.regular_labour
     ),
@@ -254,6 +259,13 @@ export function calculateInvoiceSnapshot(
         input.transferFee,
         input.lineRuleVersions.transfer_fee ?? "transfer-fee-v1"
       )
+    );
+  }
+  // Employer-funded job bonus (accepted by the employer). Taxed like the labour it rewards (in the
+  // GST/QST subtotal). Platform-funded bonuses are never billed, so no line is passed for them.
+  if (input.bonus && input.bonus.amountMinor > 0) {
+    untaxedLines.push(
+      line("bonus", "Job bonus", input.bonus, input.lineRuleVersions.bonus ?? "bonus-v1")
     );
   }
   const subtotal = sumInvoiceMoney(untaxedLines.map((item) => item.amount));

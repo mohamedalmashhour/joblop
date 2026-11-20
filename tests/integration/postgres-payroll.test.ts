@@ -4,6 +4,7 @@ import { buildApi } from "../../apps/api/src/app";
 import { createPrismaClient } from "@rwos/database";
 import { createPrismaAssignmentRepository } from "@rwos/auth";
 import type { FastifyInstance } from "fastify";
+import { contractInForce, priceJob, repriceOrganizationJobs, type FixtureContract } from "./payrollPricingFixture";
 
 // HR-5 Payroll / Finance FOUNDATION (TEST / SYNTHETIC — no execution). Proves the payroll domain
 // end to end over real Postgres: it consumes approved/locked worked time only, produces a governed
@@ -53,6 +54,7 @@ suite("HR-5 payroll foundation", () => {
     return { attId, tsId };
   }
 
+  const contracts: FixtureContract[] = [];
   let augScope: Record<string, string> = {};
   let sepScope: Record<string, string> = {};
   let baseScope: { organizationId: string; residenceId: string; departmentId: string; workGroupId: string; roleDefinitionId: string };
@@ -65,6 +67,8 @@ suite("HR-5 payroll foundation", () => {
 
   async function makeAssignment(ownerUserId: string, scope: { organizationId: string; residenceId: string; departmentId: string; workGroupId: string; roleDefinitionId: string }, start: Date, end: Date) {
     const job = await prisma.jobRequest.create({ data: { jobRequestNumber: `JR-PR-${randomUUID().slice(0, 10)}`, ...scope, creatorUserId: ownerUserId, title: "Payroll shift", numberOfWorkers: 1, requestType: "single_day", timezone: "America/Toronto", startAt: start, endAt: end, status: "approved_for_dispatch", createdByUserId: ownerUserId } });
+    const contract = contractInForce(contracts, start);
+    if (contract) await priceJob(prisma, { jobRequestId: job.id, organizationId: scope.organizationId, contract, capturedByUserId: ownerUserId });
     const review = await prisma.dispatchReview.create({ data: { jobRequestId: job.id, ...scope, state: "offer_preparation", priority: "normal", requiredWorkerCount: 1, createdByUserId: ownerUserId } });
     const offer = await prisma.workerOffer.create({ data: { dispatchReviewId: review.id, jobRequestId: job.id, organizationId: scope.organizationId, residenceId: scope.residenceId, departmentId: scope.departmentId, workerIdentityId: workerId, status: "accepted", expiresAt: new Date(NOW.getTime() + 24 * 3_600_000), approvedAt: NOW, sentAt: NOW, respondedAt: NOW, createdByUserId: ownerUserId } });
     const terms = await prisma.workerOfferTermsVersion.create({ data: { workerOfferId: offer.id, versionNumber: 1, workerVisibleTitle: job.title, timezone: "America/Toronto", startAt: start, endAt: end, workGroupId: scope.workGroupId, roleDefinitionId: scope.roleDefinitionId, createdByUserId: ownerUserId } });
@@ -100,13 +104,14 @@ suite("HR-5 payroll foundation", () => {
     await prisma.organizationMembership.create({ data: { organizationId: otherOrg.id, userId: otherEmployerUserId, status: "active", acceptedAt: NOW } });
 
     // Governed AUTHORITATIVE rate history: contract v1 ($30/h) effective Jul 1; contract v2 ($35/h)
-    // effective Aug 20 00:00Z (supersedes v1). Aug 5 work reads v1; Sep 5 work reads v2 — historical
-    // rate. Seeded via raw SQL so the effective instant is exact (a typed prisma Date write shifts
+    // effective Aug 20 00:00Z (supersedes v1). The Aug 5 job is priced from v1 and the Sep 5 job from
+    // v2, and each keeps that frozen rate. Seeded via raw SQL so the effective instant is exact (a typed prisma Date write shifts
     // Timestamptz by the local offset in this pg-adapter setup, which would blur the boundary test).
     async function seedContract(version: string, status: string, effFromIso: string, rateMinor: number) {
       const cid = randomUUID(); const n = NOW.toISOString();
       await prisma.$executeRawUnsafe(`INSERT INTO employer_contracts (id, organization_id, version, status, currency, activated_at, effective_from, created_by_user_id, created_at, updated_at) VALUES ($1,$2,$3,$4,'CAD',$5,$5,$6,$7,$7)`, cid, org.id, version, status, effFromIso, ownerId, n);
       await prisma.$executeRawUnsafe(`INSERT INTO contract_role_rates (id, contract_id, work_group_id, role_definition_id, hourly_rate_minor, created_at) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5)`, cid, wg.id, role.id, rateMinor, n);
+      contracts.push({ id: cid, version, effectiveFrom: new Date(effFromIso), rateMinor });
     }
     await seedContract("v1", "superseded", "2026-07-01T00:00:00Z", 3000);
     await seedContract("v2", "active", "2026-08-20T00:00:00Z", 3500);
@@ -267,7 +272,7 @@ suite("HR-5 payroll foundation", () => {
     await prisma.$executeRawUnsafe(`UPDATE timesheets SET payable_minutes = 480, version = version + 1 WHERE id = $1`, augTimesheetId);
   });
 
-  it("historical rate: Aug 5 work reads contract v1 ($30); Sep 5 work reads contract v2 ($35) — never 'current' rate", async () => {
+  it("historical rate: the Aug 5 job pays its frozen v1 rate ($30); the Sep 5 job its frozen v2 rate ($35) — never 'current' rate", async () => {
     const augP = await createPeriod(payrollToken, "QC", "2026-08-01T00:00:00Z", "2026-08-10T00:00:00Z");
     const sepP = await createPeriod(payrollToken, "QC", "2026-09-01T00:00:00Z", "2026-09-10T00:00:00Z");
     const augCalc = (await calculate(payrollToken, augP.json().period.id)).json().calculation;
@@ -281,15 +286,20 @@ suite("HR-5 payroll foundation", () => {
     expect(sepCalc.grossPayMinor).toBeGreaterThan(augCalc.grossPayMinor); // $35 > $30 for the same hours
   });
 
-  it("a shift straddling a contract rate boundary is detected and fails with a governed reason", async () => {
+  // The rate is frozen on the job, so a contract change mid-shift cannot split it. The guard for a
+  // real boundary still lives in the engine and is unit-tested in packages/auth/src/payroll.test.ts.
+  it("a shift straddling a contract change pays its one frozen rate, with no split and no failure", async () => {
     // shift Aug 19 22:00 -> Aug 20 02:00 crosses contract v2's effective instant (Aug 20 00:00)
     const crossAssignment = await makeAssignment(ownerId, baseScope, new Date("2026-08-19T22:00:00Z"), new Date("2026-08-20T02:00:00Z"));
     const crossScope = { ...baseScope, assignmentId: crossAssignment.assignmentId };
     await seedApprovedTimesheet(crossScope, crossAssignment.jobId, ownerId, new Date("2026-08-19T22:00:00Z"), new Date("2026-08-20T02:00:00Z"), 240);
     const p = await createPeriod(payrollToken, "QC", "2026-08-19T12:00:00Z", "2026-08-20T12:00:00Z");
     const res = await calculate(payrollToken, p.json().period.id);
-    expect(res.statusCode).toBe(400);
-    expect(res.json().reason).toMatch(/rate_boundary_inside_approved_shift/);
+    expect(res.statusCode).toBe(201);
+    const detail = (await app.inject({ method: "GET", url: `/platform/payroll/calculations/${res.json().calculation.id}`, headers: auth(payrollToken) })).json().calculation;
+    expect(detail.workedTimeRefs).toHaveLength(1);
+    expect(detail.workedTimeRefs[0].contractVersion).toBe("v1");
+    expect(detail.workedTimeRefs[0].appliedHourlyRateMinor).toBe(3000);
   });
 
   it("replay/verify recomputes the stored snapshot byte-for-byte; a later rate change does not alter it", async () => {
@@ -300,9 +310,10 @@ suite("HR-5 payroll foundation", () => {
     expect(verify1.json().ok).toBe(true);
     expect(verify1.json().totalsMatch).toBe(true);
 
-    // activate a NEW contract later — the stored calculation and its replay stay identical
+    // move the job onto a NEW contract later — the stored calculation and its replay stay identical
     await prisma.employerContract.updateMany({ where: { organizationId: orgId, status: "active" }, data: { status: "superseded" } });
-    await prisma.employerContract.create({ data: { organizationId: orgId, version: "v99", status: "active", currency: "CAD", activatedAt: new Date("2026-08-25T00:00:00Z"), effectiveFrom: new Date("2026-08-25T00:00:00Z"), createdByUserId: ownerId, roleRates: { create: [{ workGroupId: (await prisma.workGroup.findFirstOrThrow()).id, roleDefinitionId: (await prisma.roleDefinition.findFirstOrThrow()).id, hourlyRateMinor: 99999 }] } } });
+    const v99 = await prisma.employerContract.create({ data: { organizationId: orgId, version: "v99", status: "active", currency: "CAD", activatedAt: new Date("2026-08-25T00:00:00Z"), effectiveFrom: new Date("2026-08-25T00:00:00Z"), createdByUserId: ownerId, roleRates: { create: [{ workGroupId: (await prisma.workGroup.findFirstOrThrow()).id, roleDefinitionId: (await prisma.roleDefinition.findFirstOrThrow()).id, hourlyRateMinor: 99999 }] } } });
+    await repriceOrganizationJobs(prisma, orgId, { id: v99.id, version: "v99", effectiveFrom: new Date("2026-08-25T00:00:00Z"), rateMinor: 4200 });
     const verify2 = await app.inject({ method: "POST", url: `/platform/payroll/calculations/${calc.id}/verify`, headers: auth(payrollToken) });
     expect(verify2.json().ok).toBe(true);
   });

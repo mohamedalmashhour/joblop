@@ -1,25 +1,28 @@
 import { EmployerShell } from "../EmployerShell";
 import { styles } from "../employerStyles";
+import { serverLang } from "../../i18n/serverLang";
+import { attendanceText } from "../recordListText";
 import { EmployerAttendancePanel } from "./EmployerAttendancePanel";
 
-export default function EmployerAttendancePage() {
+export default async function EmployerAttendancePage() {
+  const tx = attendanceText[await serverLang()];
   return (
     <EmployerShell
       currentRoute="/employer/attendance"
-      eyebrow="Connected attendance / Client"
-      title="See the attendance for your organization's confirmed shifts."
-      lede="Authenticated, org-scoped attendance records connect directly to the platform — persisted data only, never fixture substitutes."
+      eyebrow={tx.pageEyebrow}
+      title={tx.pageTitle}
+      lede={tx.pageLede}
       mode="authenticated"
       actions={
         <a href="/employer/assignments" style={styles.primaryButton}>
-          Back to assignments
+          {tx.backAction}
         </a>
       }
     >
       <section style={styles.section}>
         <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>Attendance</p>
-          <h2 style={styles.sectionTitle}>Presence stays truthful from check-in to completion.</h2>
+          <p style={styles.eyebrowDark}>{tx.sectionEyebrow}</p>
+          <h2 style={styles.sectionTitle}>{tx.sectionTitle}</h2>
         </div>
         <EmployerAttendancePanel />
       </section>

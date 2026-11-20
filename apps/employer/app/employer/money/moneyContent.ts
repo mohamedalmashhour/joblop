@@ -6,6 +6,6 @@ export const moneyWorkflow = [
     title: "Money",
     route: "/employer/money",
     status: "Accountant summary",
-    boundary: "Summarizes invoiced / paid / outstanding and links to the detail; never moves money or exposes worker pay or platform margin."
+    boundary: "Summarizes invoiced / paid / outstanding and links to the detail; never moves money."
   }
 ] as const;

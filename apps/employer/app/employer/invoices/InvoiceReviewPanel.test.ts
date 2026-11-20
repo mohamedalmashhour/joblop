@@ -8,8 +8,8 @@ const truthfulStatements = [
   "Loading invoice records",
   "Invoice records could not be loaded",
   "No invoices are available for this organization",
-  "Read-only governed view",
-  "This view cannot charge a payment"
+  "Governed invoice record",
+  "Joblop never sees your card details"
 ];
 
 const boundaryKeys = [
@@ -21,7 +21,7 @@ const boundaryKeys = [
 ];
 
 describe("durable invoice review panel", () => {
-  it("keeps the truthful loading, error, empty, and read-only boundaries in the English catalog", () => {
+  it("keeps the truthful loading, error, empty, and card-safety boundaries in the English catalog", () => {
     const values = Object.values(en);
     for (const statement of truthfulStatements) {
       expect(values.some((value) => value.includes(statement))).toBe(true);

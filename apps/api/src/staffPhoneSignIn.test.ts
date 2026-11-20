@@ -1,0 +1,194 @@
+import { createHash } from "node:crypto";
+import { describe, expect, it, vi } from "vitest";
+import {
+  MAX_CODE_ATTEMPTS,
+  normalizeStaffPhone,
+  requestStaffPhoneCode,
+  setStaffPhone,
+  verifyStaffPhoneCode
+} from "./staffPhoneSignIn";
+
+const phone = "+15144624457";
+const now = new Date("2026-11-07T12:00:00Z");
+const hash = (code: string) => createHash("sha256").update(`u:${code}`).digest("hex");
+const row = (over = {}) => ({ id: "c", codeHash: hash("123456"), attempts: 0, expiresAt: new Date(now.getTime() + 60_000), createdAt: now, ...over });
+
+function fake(over: { users?: unknown[]; grant?: unknown; recent?: unknown; code?: unknown } = {}) {
+  return {
+    user: {
+      findMany: vi.fn(async () => over.users ?? [{ id: "u", emailNormalized: "staff@example.test" }]),
+      updateMany: vi.fn(async () => ({ count: 1 }))
+    },
+    platformAccessGrant: { findFirst: vi.fn(async () => ("grant" in over ? over.grant : { userId: "u" })) },
+    staffPhoneSignInCode: {
+      findFirst: vi.fn(async () => ("code" in over ? over.code : "recent" in over ? over.recent : null)),
+      create: vi.fn(async () => ({})),
+      updateMany: vi.fn(async () => ({ count: 1 }))
+    }
+  };
+}
+const sms = () => ({ send: vi.fn(async () => ({ status: "sent" as const, id: "s" })) });
+
+describe("normalizeStaffPhone", () => {
+  it("accepts the usual ways of writing a number", () => {
+    for (const value of ["001-514-462-4457", "(514) 462-4457", "+1 514 462 4457", "15144624457", "514.462.4457"]) {
+      expect(normalizeStaffPhone(value)).toBe(phone);
+    }
+  });
+
+  it("refuses anything else", () => {
+    for (const value of ["", "abc", "12345", 5144624457, null]) expect(normalizeStaffPhone(value)).toBeNull();
+  });
+});
+
+describe("requestStaffPhoneCode", () => {
+  it("texts a code and stores only its hash", async () => {
+    const prisma = fake();
+    const sender = sms();
+    expect(await requestStaffPhoneCode(prisma, sender, { phone, now, generateCode: () => "123456" })).toBe("sent");
+    expect(sender.send).toHaveBeenCalledWith({ to: phone, text: expect.stringContaining("123456") });
+    expect(JSON.stringify(prisma.staffPhoneSignInCode.create.mock.calls)).not.toContain("123456");
+  });
+
+  it("sends nothing to a number that is not staff", async () => {
+    const sender = sms();
+    expect(await requestStaffPhoneCode(fake({ users: [] }), sender, { phone, now })).toBe("not_staff");
+    expect(await requestStaffPhoneCode(fake({ grant: null }), sender, { phone, now })).toBe("not_staff");
+    expect(sender.send).not.toHaveBeenCalled();
+  });
+
+  it("waits a minute between texts", async () => {
+    const sender = sms();
+    expect(await requestStaffPhoneCode(fake({ recent: { id: "c" } }), sender, { phone, now })).toBe("throttled");
+    expect(sender.send).not.toHaveBeenCalled();
+  });
+
+  it("reports a text that did not go out", async () => {
+    const sender = { send: vi.fn(async () => ({ status: "error" as const })) };
+    expect(await requestStaffPhoneCode(fake(), sender, { phone, now })).toBe("not_sent");
+  });
+});
+
+describe("email backup for phone codes", () => {
+  const failingSms = () => ({ send: vi.fn(async () => ({ status: "skipped" as const, reason: "disabled" as const })) });
+  const mailer = (status: "sent" | "error" = "sent") => ({ send: vi.fn(async () => (status === "sent" ? { status: "sent" as const, id: "m" } : { status: "error" as const })) });
+
+  it("emails the same code to the account when SMS cannot go out", async () => {
+    const email = mailer();
+    expect(await requestStaffPhoneCode(fake(), failingSms(), { phone, now, generateCode: () => "246810", email })).toBe("sent");
+    expect(email.send).toHaveBeenCalledTimes(1);
+    const msg = (email.send.mock.calls[0] as unknown[])[0] as { to: string; text: string };
+    expect(msg.to).toBe("staff@example.test");
+    expect(msg.text).toContain("246810");
+  });
+
+  it("still reports not_sent when neither SMS nor email went out", async () => {
+    expect(await requestStaffPhoneCode(fake(), failingSms(), { phone, now, email: mailer("error") })).toBe("not_sent");
+  });
+
+  it("emails nothing to a number that is not staff", async () => {
+    const email = mailer();
+    expect(await requestStaffPhoneCode(fake({ users: [] }), failingSms(), { phone, now, email })).toBe("not_staff");
+    expect(email.send).not.toHaveBeenCalled();
+  });
+});
+
+describe("Twilio Verify for phone codes", () => {
+  const tw = (approve = "777777") => ({ configured: true, start: vi.fn(async () => true), check: vi.fn(async (_p: string, c: string) => c === approve) });
+
+  it("uses Twilio (not Brevo SMS) and still emails the backup code", async () => {
+    const brevo = sms(); const twilio = tw(); const email = { send: vi.fn(async () => ({ status: "sent" as const, id: "m" })) };
+    expect(await requestStaffPhoneCode(fake(), brevo, { phone, now, email, twilio })).toBe("sent");
+    expect(brevo.send).not.toHaveBeenCalled();
+    expect(twilio.start).toHaveBeenCalledWith(phone);
+    expect(email.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts Twilio's code at verify time", async () => {
+    const prisma = fake({ code: row() });
+    expect(await verifyStaffPhoneCode(prisma, { phone, code: "777777", now, twilio: tw() })).toEqual({ emailNormalized: "staff@example.test" });
+  });
+
+  it("refuses a code neither we nor Twilio issued", async () => {
+    expect(await verifyStaffPhoneCode(fake({ code: row() }), { phone, code: "999999", now, twilio: tw() })).toBeNull();
+  });
+});
+
+describe("store review sign-in", () => {
+  const review = { phone, code: "424242" };
+  const worker = { users: [{ id: "u", emailNormalized: "demo@example.test", workerIdentity: { id: "w" } }] };
+
+  it("stores the fixed code for the demo worker number and texts nothing", async () => {
+    const prisma = fake(worker);
+    const sender = sms();
+    expect(await requestStaffPhoneCode(prisma, sender, { phone, now, audience: "worker", storeReview: review })).toBe("sent");
+    expect(sender.send).not.toHaveBeenCalled();
+    expect(JSON.stringify(prisma.staffPhoneSignInCode.create.mock.calls)).toContain(hash("424242"));
+    expect(JSON.stringify(prisma.staffPhoneSignInCode.create.mock.calls)).not.toContain('"424242"');
+  });
+
+  it("then signs in through the usual one-time check", async () => {
+    const prisma = fake({ ...worker, code: row({ codeHash: hash("424242") }) });
+    expect(await verifyStaffPhoneCode(prisma, { phone, code: "424242", now, audience: "worker" })).toEqual({ emailNormalized: "demo@example.test" });
+    expect(await verifyStaffPhoneCode(fake({ ...worker, code: row({ codeHash: hash("424242") }) }), { phone, code: "000000", now, audience: "worker" })).toBeNull();
+  });
+
+  it("never applies to staff or employer sign-in, another number, or a number with no worker account", async () => {
+    for (const audience of ["staff", "employer"] as const) {
+      const prisma = fake({ users: [{ id: "u", emailNormalized: "x@example.test", memberships: [{ id: "m" }] }] });
+      const sender = sms();
+      await requestStaffPhoneCode(prisma, sender, { phone, now, audience, generateCode: () => "111111", storeReview: review });
+      expect(sender.send).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(prisma.staffPhoneSignInCode.create.mock.calls)).not.toContain(hash("424242"));
+    }
+    const other = fake(worker);
+    const sender = sms();
+    await requestStaffPhoneCode(other, sender, { phone, now, audience: "worker", generateCode: () => "111111", storeReview: { phone: "+15145550100", code: "424242" } });
+    expect(sender.send).toHaveBeenCalledTimes(1);
+    expect(await requestStaffPhoneCode(fake({ users: [] }), sms(), { phone, now, audience: "worker", storeReview: review })).toBe("not_staff");
+  });
+
+  it("is off when nothing is configured or the code is malformed", async () => {
+    for (const storeReview of [null, { phone, code: "12" }]) {
+      const sender = sms();
+      await requestStaffPhoneCode(fake(worker), sender, { phone, now, audience: "worker", storeReview });
+      expect(sender.send).toHaveBeenCalledTimes(1);
+    }
+  });
+});
+
+describe("verifyStaffPhoneCode", () => {
+  it("accepts the right code once", async () => {
+    const prisma = fake({ code: row() });
+    expect(await verifyStaffPhoneCode(prisma, { phone, code: "123456", now })).toEqual({ emailNormalized: "staff@example.test" });
+    expect(prisma.staffPhoneSignInCode.updateMany).toHaveBeenCalledTimes(2);
+  });
+
+  it("refuses a wrong code and still counts the try", async () => {
+    const prisma = fake({ code: row() });
+    expect(await verifyStaffPhoneCode(prisma, { phone, code: "000000", now })).toBeNull();
+    expect(prisma.staffPhoneSignInCode.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses once the tries are used up", async () => {
+    expect(await verifyStaffPhoneCode(fake({ code: row({ attempts: MAX_CODE_ATTEMPTS }) }), { phone, code: "123456", now })).toBeNull();
+  });
+
+  it("refuses when no code is waiting or the number is not staff", async () => {
+    expect(await verifyStaffPhoneCode(fake({ code: null }), { phone, code: "123456", now })).toBeNull();
+    expect(await verifyStaffPhoneCode(fake({ users: [] }), { phone, code: "123456", now })).toBeNull();
+  });
+});
+
+describe("setStaffPhone", () => {
+  it("saves a normalized number on a staff account", async () => {
+    const prisma = fake();
+    expect(await setStaffPhone(prisma, { email: "staff@example.test", phone: "001-514-462-4457" })).toBe("saved");
+    expect(prisma.user.updateMany).toHaveBeenCalledWith({ where: { id: "u" }, data: { phone } });
+  });
+
+  it("refuses a bad number or an account without staff access", async () => {
+    expect(await setStaffPhone(fake(), { email: "a", phone: "nope" })).toBe("invalid_phone");
+    expect(await setStaffPhone(fake({ grant: null }), { email: "a", phone })).toBe("not_staff");
+  });
+});

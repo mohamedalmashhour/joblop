@@ -43,9 +43,9 @@ export async function seedLocalE2e(databaseUrl: string, env: NodeJS.ProcessEnv =
     const passwordHash = await hashPassword(LOCAL_E2E_PASSWORD);
     const now = new Date();
 
-    const platformRole = await prisma.accessRoleDefinition.create({ data: { key: "PLATFORM_ADMINISTRATOR", scope: "platform", status: "active", description: "local-e2e" } });
-    const payrollRole = await prisma.accessRoleDefinition.create({ data: { key: "PAYROLL_ADMINISTRATOR", scope: "platform", status: "active", description: "local-e2e" } });
-    const ownerRole = await prisma.accessRoleDefinition.create({ data: { key: "ORGANIZATION_OWNER", scope: "organization", status: "active", description: "local-e2e" } });
+    const platformRole = await prisma.accessRoleDefinition.upsert({ where: { key: "PLATFORM_ADMINISTRATOR" }, update: {}, create: { key: "PLATFORM_ADMINISTRATOR", scope: "platform", status: "active", description: "local-e2e" } });
+    const payrollRole = await prisma.accessRoleDefinition.upsert({ where: { key: "PAYROLL_ADMINISTRATOR" }, update: {}, create: { key: "PAYROLL_ADMINISTRATOR", scope: "platform", status: "active", description: "local-e2e" } });
+    const ownerRole = await prisma.accessRoleDefinition.upsert({ where: { key: "ORGANIZATION_OWNER" }, update: {}, create: { key: "ORGANIZATION_OWNER", scope: "organization", status: "active", description: "local-e2e" } });
 
     const mkUser = (email: string, status: "active" | "disabled" = "active") =>
       prisma.user.create({

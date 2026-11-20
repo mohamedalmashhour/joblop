@@ -162,6 +162,55 @@ describe("admin dispatch Assignment mutation boundary", () => {
       message: "Assignment source is unavailable."
     });
   });
+
+  it("forwards the shift-overlap refusal so staff see which shift is in the way", async () => {
+    process.env.RWOS_ENV = "test";
+    process.env.ASSIGNMENT_HANDOFF_ENABLED = "enabled";
+    const conflict = {
+      error: "RWOS_SHIFT_OVERLAP",
+      message: "You already have a shift at that time (Tue, Nov 10, 9:00–17:00).",
+      messages: { en: "You already have a shift at that time (Tue, Nov 10, 9:00–17:00)." }
+    };
+    request.mockResolvedValue({ status: "stale", conflict });
+
+    const response = await POST(
+      new Request(`https://admin.example.test/api/dispatches/${dispatchReviewId}/assignments`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "https://admin.example.test",
+          "sec-fetch-site": "same-origin"
+        },
+        body: JSON.stringify({ workerOfferId, expectedOfferVersion: 2 })
+      }),
+      { params: Promise.resolve({ dispatchReviewId }) }
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ status: "shift_overlap", ...conflict });
+  });
+
+  it("keeps the generic conflict answer for any other 409", async () => {
+    process.env.RWOS_ENV = "test";
+    process.env.ASSIGNMENT_HANDOFF_ENABLED = "enabled";
+    request.mockResolvedValue({ status: "stale" });
+
+    const response = await POST(
+      new Request(`https://admin.example.test/api/dispatches/${dispatchReviewId}/assignments`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "https://admin.example.test",
+          "sec-fetch-site": "same-origin"
+        },
+        body: JSON.stringify({ workerOfferId, expectedOfferVersion: 2 })
+      }),
+      { params: Promise.resolve({ dispatchReviewId }) }
+    );
+
+    expect(response.status).toBe(409);
+    expect((await response.json()).status).toBe("conflict");
+  });
 });
 
 function restore(key: string, value: string | undefined) {

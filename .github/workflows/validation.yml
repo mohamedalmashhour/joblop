@@ -2,10 +2,21 @@ name: Foundation Validation
 
 on:
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
   push:
     branches:
       - main
       - "foundation/**"
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+
+# A new push to a pull request replaces its unfinished run. Runs on main always finish.
+concurrency:
+  group: validation-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   validate:
@@ -24,6 +35,44 @@ jobs:
         run: pnpm --filter @rwos/database prisma:generate
       - run: pnpm validate
       - run: pnpm validate:containers:static
+
+  # `pnpm validate` skips every suite that needs a database, so this job runs them against a real
+  # one. The version matches production. The database exists only for this job.
+  postgres-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: rwos_validation_admin
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # The fake local payment provider, so the invoice-to-close suite runs. It moves no money.
+      LOCAL_PAYMENT_ENABLED: enabled
+      LOCAL_PAYMENT_WEBHOOK_SECRET: local-fake-webhook-secret-0123456789abcdef
+      RWOS_POSTGRES_TEST_MODE: local-disposable
+      RWOS_TEST_DATABASE_CONFIRMATION: disposable-test-target
+      RWOS_TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/rwos_validation_admin
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+        with:
+          version: 10.33.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20.20.2
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Generate Prisma Client
+        run: pnpm --filter @rwos/database prisma:generate
+      - run: pnpm test:postgres:required
 
   terraform-validate:
     runs-on: ubuntu-latest
@@ -58,10 +107,21 @@ jobs:
           node-version: 20.20.2
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Dependency advisory audit
-        run: pnpm audit && pnpm audit --prod
+      # Blocking gate: fail the build on any HIGH/CRITICAL advisory in a production
+      # (runtime-reachable) dependency. Known mobile/Expo/React-Native-only advisories
+      # are baselined in package.json -> pnpm.auditConfig.ignoreGhsas and documented in
+      # docs/security/dependency-audit-baseline.md (they are not in any deployed server
+      # image). A new runtime-reachable high/critical therefore breaks CI at PR time.
+      - name: Dependency advisory gate (production, high+)
+        run: pnpm audit --prod --audit-level=high
+      # Informational only: the full approved advisory disclosure across all severities and dev deps
+      # (matches the `audit:dependencies` script), then production-only. Never blocks.
+      - name: Dependency advisory report (informational)
+        run: pnpm audit && pnpm audit --prod || true
 
+  # The slowest job. It runs on every push to main, so each image is proven before a deploy.
   container-runtime:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -70,6 +130,7 @@ jobs:
           - api
           - employer
           - admin
+          - crm
           - worker
           - auth-limiter
           - candidate-source

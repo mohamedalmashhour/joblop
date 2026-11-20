@@ -3,7 +3,7 @@ import { createStripeTestClient, type StripeTestEnvironment } from "./stripeTest
 // Worker Pro card payment via Stripe hosted Checkout — TEST MODE ONLY. Reuses the shared Stripe test
 // provider, which refuses any non-`sk_test_` secret, so no live charge can ever be created here. The
 // worker is redirected to Stripe's hosted test page (enter card 4242 4242 4242 4242), then returns to
-// JobLop where we verify the session was paid before granting Pro. No card data touches JobLop.
+// Joblop where we verify the session was paid before granting Pro. No card data touches Joblop.
 
 /** Read the Stripe TEST environment from process env (same shape the shared provider validates). */
 export function stripeTestEnvFromProcess(): StripeTestEnvironment {
@@ -15,8 +15,17 @@ export function stripeTestEnvFromProcess(): StripeTestEnvironment {
   };
 }
 
-/** True when the Stripe TEST keys are present and enabled, so a checkout can actually be created. */
+/**
+ * True when the Stripe TEST keys are present and enabled, so a checkout can actually be created.
+ * Always false when the API runs in production (RWOS_ENV="production") or on Render (RENDER=true): a TEST-mode checkout there
+ * would let anyone "pay" with the public test card and get a plan, listing, Pro month or invoice for
+ * free. Every "Pay by card" button (cardEnabled) and every test checkout/payout reads this one gate.
+ */
 export function isStripeTestConfigured(): boolean {
+  if (process.env.RWOS_ENV === "production") return false;
+  // The live Render services run as RWOS_ENV="test" during the soft launch, but they serve real
+  // people. Render sets RENDER=true on every service, so a TEST checkout is never offered there.
+  if (process.env.RENDER === "true") return false;
   const env = stripeTestEnvFromProcess();
   return (
     env.enabled === true &&
@@ -48,7 +57,7 @@ export async function createCvProCheckoutSession(input: {
           price_data: {
             currency: input.currency.toLowerCase(),
             unit_amount: input.priceMinor,
-            product_data: { name: "JobLop Worker Pro — 1 month (test)" }
+            product_data: { name: "Joblop Worker Pro — 1 month (test)" }
           }
         }
       ],

@@ -4,14 +4,64 @@ import {
   urgencyPremiumMinor,
   emergencyClientSurchargeMinor,
   distanceSurchargeMinor,
-  splitDistanceSurchargeMinor
+  splitDistanceSurchargeMinor,
+  applyEmployerPlan,
+  applyPlanToUrgentSurchargeMinor,
+  isPaidEmployerPlanCode,
+  resolveJobLength,
+  LONG_TERM_LISTING_MARKER,
+  type EmployerPlanCode,
+  type JobLength
 } from "@rwos/shared";
 import {
   createPrismaEmployerContractRepository,
-  type RequestPricingSnapshotCapture
+  type RequestPricingSnapshotCapture,
+  type ResolvedRequestPricing
 } from "@rwos/auth";
+import { getEffectiveEmployerPlan, isEmployerPlansEnabled } from "./employerPlanRepository";
 
 type ContractsRepository = ReturnType<typeof createPrismaEmployerContractRepository>;
+
+/** Marker stored in employer_plan_code on a long-term listing snapshot. */
+export const LONG_TERM_LISTING_PLAN_MARKER = LONG_TERM_LISTING_MARKER;
+const NO_CONTRACT_ID = "00000000-0000-0000-0000-000000000000";
+
+/** Zero-money pricing for a long-term listing job: Joblop bills no hours and pays no worker for it. */
+export function longTermListingPricing(
+  jobRequestId: string,
+  organizationId: string,
+  contract: Readonly<{ id: string; version: string; currency: string }> | null
+): ResolvedRequestPricing {
+  const none = { employerMinor: 0, workerMinor: 0, platformMarginMinor: 0 };
+  return {
+    jobRequestId,
+    organizationId,
+    contractId: contract?.id ?? NO_CONTRACT_ID,
+    contractVersion: contract?.version ?? "listing",
+    currency: contract?.currency ?? "CAD",
+    snapshot: {
+      marginPpm: 0,
+      employerHourlyRateMinor: 0,
+      workerHourlyRateMinor: 0,
+      platformHourlyMarginMinor: 0,
+      transport: none,
+      meal: none,
+      lodging: none
+    },
+    variable: { emergencySurchargePerHourMinor: 0, distanceSurchargeMinor: 0, distanceWorkerMinor: 0, distancePlatformMinor: 0 },
+    employerPlan: { jobLength: "long_term", planCode: LONG_TERM_LISTING_PLAN_MARKER, discountPpm: 0 }
+  };
+}
+
+/** Looks up the plan in force for an organization's track. Injected so tests need no database. */
+export type EmployerPlanLookup = (organizationId: string, track: JobLength, now: Date) => Promise<EmployerPlanCode>;
+
+export type RequestPricingSnapshotOptions = Readonly<{
+  /** Defaults to EMPLOYER_PLANS_ENABLED === "enabled". When false the maths is exactly today's. */
+  plansEnabled?: () => boolean;
+  planLookup?: EmployerPlanLookup;
+  now?: () => Date;
+}>;
 
 // AUTHORITATIVE capture of the per-request hidden-markup snapshot (slice 4C-2). At admin approval it
 // reads the employer rate (E) from the EmployerContract in force at the shift's start and the funded
@@ -21,8 +71,14 @@ type ContractsRepository = ReturnType<typeof createPrismaEmployerContractReposit
 // request can never be approved.
 export function createPrismaRequestPricingSnapshotCapture(
   prisma: PrismaClient,
-  contracts: ContractsRepository = createPrismaEmployerContractRepository(prisma)
+  contracts: ContractsRepository = createPrismaEmployerContractRepository(prisma),
+  options: RequestPricingSnapshotOptions = {}
 ): RequestPricingSnapshotCapture {
+  const plansEnabled = options.plansEnabled ?? isEmployerPlansEnabled;
+  const planLookup: EmployerPlanLookup =
+    options.planLookup ??
+    (async (organizationId, track, now) => (await getEffectiveEmployerPlan(prisma, organizationId, track, now)).plan);
+  const now = options.now ?? (() => new Date());
   return {
     async resolveAtApproval(input) {
       const jobRequest = await prisma.jobRequest.findUnique({
@@ -33,6 +89,7 @@ export function createPrismaRequestPricingSnapshotCapture(
           workGroupId: true,
           roleDefinitionId: true,
           urgency: true,
+          jobLength: true,
           worksiteDistanceKm: true,
           startAt: true,
           calendarProfile: {
@@ -49,6 +106,15 @@ export function createPrismaRequestPricingSnapshotCapture(
       });
       if (!jobRequest) {
         throw new Error("RWOS_PRICING_JOB_REQUEST_NOT_FOUND");
+      }
+
+      // Long-term job = paid LISTING (flag on only). The employer hires and pays the worker directly,
+      // so Joblop prices nothing: a zero-money snapshot marked job_length "long_term" / plan
+      // "listing". Invoice generation and payroll skip any job with this marker. No contract needed.
+      const plansOn = plansEnabled();
+      if (plansOn && resolveJobLength(jobRequest.jobLength) === "long_term") {
+        const contract = await contracts.findContractEffectiveAt(jobRequest.organizationId, jobRequest.startAt);
+        return longTermListingPricing(jobRequest.id, jobRequest.organizationId, contract);
       }
 
       const contract = await contracts.findContractEffectiveAt(
@@ -71,7 +137,12 @@ export function createPrismaRequestPricingSnapshotCapture(
       const funded = (provision: string | undefined, amountMinor: number | null | undefined) =>
         provision === "allowance" ? (amountMinor ?? 0) : 0;
 
-      const snapshot = computeRequestPricingSnapshot({
+      // Employer fixed plans (short-term jobs). Flag OFF (default): none of this runs and the maths below
+      // is exactly today's. Flag ON: the org's short-term plan discounts the employer rate out of the
+      // platform share only — the worker rate is never touched.
+      const jobLength = plansOn ? resolveJobLength(jobRequest.jobLength) : null;
+
+      let snapshot = computeRequestPricingSnapshot({
         employerHourlyRateMinor: roleRate.hourlyRateMinor,
         marginPpm: input.marginPpm,
         urgencyPremiumMinor: urgencyPremiumMinor(jobRequest.urgency),
@@ -84,10 +155,35 @@ export function createPrismaRequestPricingSnapshotCapture(
       // PLATFORM keeps (a % of the base employer labour rate, scales with billable hours). Distance
       // (gas + travel time beyond the home-base free radius) is a flat per-shift surcharge split 50/50
       // worker/platform. Demand uplift is intentionally NOT captured here (it's a matching-time signal).
-      const emergencySurchargePerHourMinor = emergencyClientSurchargeMinor({
+      let emergencySurchargePerHourMinor = emergencyClientSurchargeMinor({
         labourClientMinor: roleRate.hourlyRateMinor,
         urgency: jobRequest.urgency
       });
+
+      let employerPlan: { jobLength: string; planCode: string | null; discountPpm: number } | undefined;
+      if (jobLength !== null) {
+        const plan = await planLookup(jobRequest.organizationId, jobLength, now());
+        employerPlan = { jobLength, planCode: null, discountPpm: 0 };
+        if (isPaidEmployerPlanCode(plan)) {
+          const applied = applyEmployerPlan({
+            employerHourlyRateMinor: roleRate.hourlyRateMinor,
+            marginPpm: snapshot.marginPpm,
+            plan
+          });
+          const premium = urgencyPremiumMinor(jobRequest.urgency);
+          // Hard guard on the owner's rule: a plan must never move the worker's pay.
+          if (applied.workerHourlyRateMinor + premium !== snapshot.workerHourlyRateMinor) {
+            throw new Error("RWOS_PRICING_PLAN_WORKER_RATE_MISMATCH");
+          }
+          snapshot = {
+            ...snapshot,
+            employerHourlyRateMinor: applied.employerHourlyRateMinor + premium,
+            platformHourlyMarginMinor: applied.platformHourlyMarginMinor
+          };
+          emergencySurchargePerHourMinor = applyPlanToUrgentSurchargeMinor(emergencySurchargePerHourMinor, plan);
+          employerPlan = { jobLength, planCode: plan, discountPpm: applied.discountPpm };
+        }
+      }
       const distance = distanceSurchargeMinor({ distanceKm: jobRequest.worksiteDistanceKm ?? 0 });
       const distanceSplit = splitDistanceSurchargeMinor(distance.totalMinor);
 
@@ -103,7 +199,8 @@ export function createPrismaRequestPricingSnapshotCapture(
           distanceSurchargeMinor: distance.totalMinor,
           distanceWorkerMinor: distanceSplit.workerMinor,
           distancePlatformMinor: distanceSplit.platformMinor
-        }
+        },
+        ...(employerPlan ? { employerPlan } : {})
       };
     },
 
@@ -129,6 +226,13 @@ export function createPrismaRequestPricingSnapshotCapture(
         distanceSurchargeMinor: resolved.variable?.distanceSurchargeMinor ?? 0,
         distanceWorkerMinor: resolved.variable?.distanceWorkerMinor ?? 0,
         distancePlatformMinor: resolved.variable?.distancePlatformMinor ?? 0,
+        ...(resolved.employerPlan
+          ? {
+              jobLength: resolved.employerPlan.jobLength,
+              employerPlanCode: resolved.employerPlan.planCode,
+              employerPlanDiscountPpm: resolved.employerPlan.discountPpm
+            }
+          : {}),
         capturedByUserId,
         capturedAt: occurredAt
       };

@@ -4,6 +4,7 @@ import {
   sessionBoundary,
   sessionFailure
 } from "../../../sessionBoundary";
+import { publicOrigin } from "../../../auth/google/state";
 
 // Money-flow Phase 1 — start a Stripe TEST hosted-checkout for an issued invoice. BFF only forwards the
 // session's organization + the invoice id to the API, which fail-closes unless INVOICE_TEST_MODE is on.
@@ -23,7 +24,9 @@ export async function POST(
     );
   }
   if (organization.status !== "ok") return sessionFailure(organization.status);
-  const origin = new URL(request.url).origin;
+  // Stripe sends the employer back here after paying, so it needs the public address. Behind the host's
+  // proxy, the request's own URL is the server's internal one (http://0.0.0.0:10000).
+  const origin = publicOrigin(request);
   const result = await gateway.request(
     `/organizations/${encodeURIComponent(organization.organizationId)}/invoices/${encodeURIComponent(invoiceId)}/checkout`,
     "POST",

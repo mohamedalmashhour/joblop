@@ -32,6 +32,17 @@ export interface CountryProfile {
   };
   /** True ONLY for the non-market local/test fixture. Never activatable. */
   readonly isNeutralFixture?: boolean;
+  /** Descriptive: interface languages offered in this market (BCP 47 primary tags). Not a gate. */
+  readonly languages?: readonly string[];
+  /** Descriptive: sales taxes charged in this market, in parts per million. Not a gate; the money
+   *  engine keeps its own rates and a country test asserts the two agree. */
+  readonly salesTaxes?: readonly Readonly<{ code: string; ratePartsPerMillion: number }>[];
+  /**
+   * Default for the production feature flags when their env var is unset (RWOS_ENV=production only).
+   * Absent = both default OFF, which is the historical production behaviour. An explicit env value
+   * (`enabled` / `disabled`) always wins over this default.
+   */
+  readonly productionDefaults?: Readonly<{ jobFlow: boolean; publicSignup: boolean }>;
 }
 
 /**
@@ -47,6 +58,9 @@ export interface CountryAddressPort {
   isPostalCodeFormat(input: string): boolean;
   /** Human name for a region (province/state/…) code, or null if unknown. */
   regionNameFromCode(code: string): string | null;
+  /** Whether the input is a valid region (province/state/governorate) code for this country.
+   *  Accepts a possibly-null/undefined value (mirrors the permissive guard it replaces). */
+  isRegionCode(code: string | null | undefined): boolean;
   /** Best-effort region code inferred from a postal code, or null. */
   regionHintFromPostalCode(postalCode: string): string | null;
   /** Whether a coordinate falls within this country's geographic bounds. */

@@ -2,18 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { SignedOut } from "../shared/SignedOut";
+import { shiftWhen, sortRowsBySoonestShift, type DispatchRow } from "./dispatchListRows";
+
+const SIGNED_OUT = "signed-out";
 
 // Dispatch reviews index — a live list (from /api/dispatches/list), each row opening its
 // dispatch detail workspace. Read-only; additive.
-type Row = {
-  id: string;
-  jobRequestId: string;
-  state: string;
-  priority: string;
-  requiredWorkerCount: number;
-  createdAt: string;
-  jobRequestNumber?: string | null;
-};
+type Row = DispatchRow;
 type Load =
   | { state: "loading" }
   | { state: "ready"; rows: Row[] }
@@ -25,10 +21,10 @@ const stateColor = (s: string): string => {
   if (v.includes("assign") || v.includes("complete") || v.includes("closed")) return "#1a7f4b";
   if (v.includes("offer") || v.includes("shortlist")) return "#8a6414";
   if (v.includes("cancel") || v.includes("paused")) return "#9a1f2b";
-  return "#1f5fae";
+  return "#171511";
 };
 const fmt = (s: string) => {
-  try { return new Date(s).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" }); } catch { return s; }
+  try { return new Date(s).toLocaleString("en-CA", { timeZone: "America/Toronto", dateStyle: "medium", timeStyle: "short" }); } catch { return s; }
 };
 
 export default function DispatchReviewsPage() {
@@ -37,15 +33,15 @@ export default function DispatchReviewsPage() {
 
   useEffect(() => {
     fetch("/api/dispatches/list")
-      .then(async (r) => (r.ok ? r.json() : Promise.reject(r.status === 401 ? "Sign in to view dispatch reviews." : `Could not load dispatch reviews (HTTP ${r.status}).`)))
+      .then(async (r) => (r.ok ? r.json() : Promise.reject(r.status === 401 || r.status === 403 ? SIGNED_OUT : `Could not load dispatch reviews (HTTP ${r.status}).`)))
       .then((j) => {
         const rows: Row[] = Array.isArray(j?.dispatches) ? j.dispatches : [];
-        setLoad(rows.length ? { state: "ready", rows } : { state: "empty" });
+        setLoad(rows.length ? { state: "ready", rows: sortRowsBySoonestShift(rows) } : { state: "empty" });
       })
       .catch((reason) => setLoad({ state: "error", reason: String(reason) }));
   }, []);
 
-  const C = { bg: "#f4f7fb", fg: "#10233f", muted: "#5a6b85", line: "#dbe3ee", card: "#ffffff", accent: "#1f5fae" };
+  const C = { bg: "#fbf9f4", fg: "#171511", muted: "#6b6356", line: "#ece3d2", card: "#ffffff", accent: "#e0a500" };
 
   return (
     <main style={{ background: C.bg, color: C.fg, minHeight: "100vh", fontFamily: "'IBM Plex Sans', system-ui, sans-serif" }}>
@@ -56,7 +52,8 @@ export default function DispatchReviewsPage() {
         </p>
 
         {load.state === "loading" && <div style={{ color: C.muted, fontSize: 14, padding: "10px 0" }}>Loading dispatch reviews…</div>}
-        {load.state === "error" && <div style={{ color: "#9a1f2b", fontSize: 14, padding: "10px 0" }}>{load.reason}</div>}
+        {load.state === "error" && load.reason === SIGNED_OUT && <SignedOut compact />}
+        {load.state === "error" && load.reason !== SIGNED_OUT && <div style={{ color: "#9a1f2b", fontSize: 14, padding: "10px 0" }}>{load.reason}</div>}
         {load.state === "empty" && <div style={{ color: C.muted, fontSize: 14, padding: "10px 0" }}>No dispatch reviews yet. Approve a request in the calendar to start one.</div>}
 
         {load.state === "ready" && (
@@ -70,7 +67,8 @@ export default function DispatchReviewsPage() {
                     {r.priority !== "normal" && <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", color: "#9a1f2b" }}>{r.priority}</span>}
                   </div>
                   <div style={{ fontSize: 13.5, marginTop: 4 }}>Request <span style={{ fontFamily: "ui-monospace, monospace" }}>{r.jobRequestNumber ?? `${r.jobRequestId.slice(0, 8)}…`}</span></div>
-                  <div style={{ color: C.muted, fontSize: 11.5, marginTop: 2 }}>{fmt(r.createdAt)} · needs {r.requiredWorkerCount} worker(s)</div>
+                  <div style={{ fontSize: 13, marginTop: 2, fontWeight: 600 }}>Shift: {shiftWhen(r) ?? "date unknown"}</div>
+                  <div style={{ color: C.muted, fontSize: 11.5, marginTop: 2 }}>Review opened {fmt(r.createdAt)} · needs {r.requiredWorkerCount} {r.requiredWorkerCount === 1 ? "worker" : "workers"}</div>
                 </div>
                 <span style={{ color: C.accent, fontWeight: 600, fontSize: 13 }}>Open review →</span>
               </button>

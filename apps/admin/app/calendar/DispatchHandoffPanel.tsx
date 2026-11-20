@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AdminDispatchReview } from "../api/dispatches/dispatchBoundary";
+import { usePageText } from "../i18n/pageText";
+import { calendarText } from "./text";
+import { SignedOut } from "../shared/SignedOut";
 
 type DispatchState =
   | Readonly<{ status: "loading" }>
@@ -9,6 +12,7 @@ type DispatchState =
   | Readonly<{ status: "denied" | "unavailable" | "error" }>;
 
 export function DispatchHandoffPanel({ jobRequestId }: Readonly<{ jobRequestId: string }>) {
+  const t = usePageText(calendarText).dispatch;
   const [state, setState] = useState<DispatchState>({ status: "loading" });
   const [priority, setPriority] = useState<AdminDispatchReview["priority"]>("normal");
   const [confirming, setConfirming] = useState(false);
@@ -70,7 +74,7 @@ export function DispatchHandoffPanel({ jobRequestId }: Readonly<{ jobRequestId: 
     if (createGuard.current) return;
     createGuard.current = true;
     setCreating(true);
-    setMessage("Creating the persisted dispatch review.");
+    setMessage(t.creatingMessage);
     try {
       const response = await fetch("/api/dispatches", {
         method: "POST",
@@ -80,13 +84,13 @@ export function DispatchHandoffPanel({ jobRequestId }: Readonly<{ jobRequestId: 
       if (!response.ok) {
         setConfirming(false);
         if (response.status === 401) {
-          setMessage("Administrator authorization is required.");
+          setMessage(t.authRequired);
           return;
         }
         setMessage(
           response.status === 409
-            ? "A dispatch review changed or may already exist. Checking the current record."
-            : "Creation did not return a confirmed result. Checking for an existing review."
+            ? t.conflict
+            : t.notConfirmed
         );
         await load();
         return;
@@ -95,10 +99,10 @@ export function DispatchHandoffPanel({ jobRequestId }: Readonly<{ jobRequestId: 
       if (!payload.dispatchReview) throw new Error("RWOS_MISSING_DISPATCH");
       setState({ status: "ready", dispatch: payload.dispatchReview });
       setConfirming(false);
-      setMessage("Dispatch review created. No worker has been contacted or assigned.");
+      setMessage(t.created);
     } catch {
       setConfirming(false);
-      setMessage("The create result is unknown. Checking for an existing review before retry.");
+      setMessage(t.unknown);
       await load();
     } finally {
       createGuard.current = false;
@@ -107,18 +111,15 @@ export function DispatchHandoffPanel({ jobRequestId }: Readonly<{ jobRequestId: 
   }
 
   if (state.status === "loading") {
-    return <p aria-live="polite">Checking for an existing persisted dispatch review…</p>;
+    return <p aria-live="polite">{t.checking}</p>;
   }
+  if (state.status === "denied") return <SignedOut compact />;
   if (state.status !== "ready") {
     return (
       <>
-        <p role={state.status === "denied" ? "alert" : "status"}>
-          {state.status === "denied"
-            ? "Administrator authorization is required to access dispatch."
-            : "Dispatch review is unavailable. No fixture record is substituted."}
-        </p>
+        <p role="status">{t.unavailable}</p>
         <button onClick={() => void load()} style={button.secondary} type="button">
-          Retry dispatch check
+          {t.retry}
         </button>
       </>
     );
@@ -127,16 +128,10 @@ export function DispatchHandoffPanel({ jobRequestId }: Readonly<{ jobRequestId: 
     return (
       <>
         <p aria-live="polite" role="status">
-          {message || "Dispatch review already exists."}
-        </p>
-        <p>
-          State: <strong>{state.dispatch.state.replaceAll("_", " ")}</strong> · Priority:{" "}
-          <strong>{state.dispatch.priority}</strong> · Required:{" "}
-          <strong>{state.dispatch.requiredWorkerCount}</strong> · Still requested:{" "}
-          <strong>{state.dispatch.remainingWorkerCount}</strong>
+          {message || t.exists}
         </p>
         <a href={dispatchHref(state.dispatch.id)} style={button.link}>
-          Open dispatch review
+          {t.open}
         </a>
       </>
     );
@@ -145,20 +140,19 @@ export function DispatchHandoffPanel({ jobRequestId }: Readonly<{ jobRequestId: 
   return (
     <>
       <p aria-live="polite">
-        {message ||
-          "No dispatch review exists. Creating one opens an operational review only; it does not contact or assign workers."}
+        {message || t.none}
       </p>
       <label style={button.label}>
-        Dispatch priority
+        {t.priorityLabel}
         <select
           disabled={creating || confirming}
           onChange={(event) => setPriority(event.target.value as AdminDispatchReview["priority"])}
           style={button.select}
           value={priority}
         >
-          <option value="normal">Normal</option>
-          <option value="urgent">Urgent</option>
-          <option value="emergency">Emergency</option>
+          <option value="normal">{t.priorities.normal}</option>
+          <option value="urgent">{t.priorities.urgent}</option>
+          <option value="emergency">{t.priorities.emergency}</option>
         </select>
       </label>
       <button
@@ -168,7 +162,7 @@ export function DispatchHandoffPanel({ jobRequestId }: Readonly<{ jobRequestId: 
         style={button.primary}
         type="button"
       >
-        Create dispatch review
+        {t.create}
       </button>
       {confirming ? (
         <dialog
@@ -178,10 +172,9 @@ export function DispatchHandoffPanel({ jobRequestId }: Readonly<{ jobRequestId: 
           ref={dialog}
           style={button.confirmation}
         >
-          <h3 id="confirm-dispatch">Confirm dispatch handoff</h3>
+          <h3 id="confirm-dispatch">{t.confirmTitle}</h3>
           <p id="confirm-dispatch-copy">
-            Create one {priority} dispatch review for this approved request. This does not contact,
-            shortlist, offer work to, or assign any worker.
+            {t.confirmCopy(t.priorityNames[priority] ?? priority)}
           </p>
           <div style={button.actions}>
             <button
@@ -191,7 +184,7 @@ export function DispatchHandoffPanel({ jobRequestId }: Readonly<{ jobRequestId: 
               style={button.secondary}
               type="button"
             >
-              Cancel
+              {t.cancel}
             </button>
             <button
               disabled={creating}
@@ -199,7 +192,7 @@ export function DispatchHandoffPanel({ jobRequestId }: Readonly<{ jobRequestId: 
               style={button.primary}
               type="button"
             >
-              {creating ? "Creating…" : "Confirm creation"}
+              {creating ? t.creating : t.confirm}
             </button>
           </div>
         </dialog>
@@ -215,29 +208,29 @@ function dispatchHref(dispatchReviewId: string) {
 const button = {
   actions: { display: "flex", flexWrap: "wrap" as const, gap: 10 },
   confirmation: {
-    background: "#fff8d8",
+    background: "#0c0c0c",
     border: "1px solid #e8d782",
     borderRadius: 12,
     marginTop: 18,
     padding: 18
   },
   label: { display: "grid", fontWeight: 800, gap: 8, margin: "16px 0", maxWidth: 260 },
-  select: { border: "1px solid #91a5bf", borderRadius: 8, font: "inherit", padding: 12 },
+  select: { border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, font: "inherit", padding: 12 },
   primary: {
-    background: "#0f7f78",
+    background: "#F8B808",
     border: 0,
     borderRadius: 8,
-    color: "#fff",
+    color: "#000000",
     cursor: "pointer",
     fontWeight: 800,
     minHeight: 44,
     padding: "0 18px"
   },
   secondary: {
-    background: "#fff",
-    border: "1px solid #91a5bf",
+    background: "#0c0c0c",
+    border: "1px solid rgba(248, 184, 8, 0.3)",
     borderRadius: 8,
-    color: "#061b41",
+    color: "#f4efe4",
     cursor: "pointer",
     fontWeight: 800,
     minHeight: 44,
@@ -245,9 +238,9 @@ const button = {
   },
   link: {
     alignItems: "center",
-    background: "#0f7f78",
+    background: "#F8B808",
     borderRadius: 8,
-    color: "#fff",
+    color: "#000000",
     display: "inline-flex",
     fontWeight: 800,
     minHeight: 44,

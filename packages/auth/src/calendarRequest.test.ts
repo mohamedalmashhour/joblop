@@ -87,7 +87,8 @@ describe("calendar request persistence service", () => {
         getForOrganization: async () => request,
         listForOrganization: async () => [request],
         getForAdmin: async () => request,
-        listAdminIntake: async () => [request]
+        listAdminIntake: async () => [request],
+        listAdminLifecycle: async () => [request]
       },
       workerOfferAccess: unavailableWorkerOfferAccess
     });
@@ -137,7 +138,8 @@ describe("calendar request persistence service", () => {
         getForOrganization: async () => request,
         listForOrganization: async () => [request],
         getForAdmin: async () => request,
-        listAdminIntake: async () => [request]
+        listAdminIntake: async () => [request],
+        listAdminLifecycle: async () => [request]
       },
       workerOfferAccess: unavailableWorkerOfferAccess
     });
@@ -179,7 +181,8 @@ describe("calendar request persistence service", () => {
         getForOrganization: async () => informationRequired,
         listForOrganization: async () => [informationRequired],
         getForAdmin: async () => informationRequired,
-        listAdminIntake: async () => [informationRequired]
+        listAdminIntake: async () => [informationRequired],
+        listAdminLifecycle: async () => [informationRequired]
       },
       workerOfferAccess: unavailableWorkerOfferAccess
     });
@@ -205,7 +208,8 @@ describe("calendar request persistence service", () => {
         getForOrganization: async () => ({ ...request, status: "submitted" }),
         listForOrganization: async () => [],
         getForAdmin: async () => request,
-        listAdminIntake: async () => []
+        listAdminIntake: async () => [],
+        listAdminLifecycle: async () => []
       },
       workerOfferAccess: unavailableWorkerOfferAccess
     });
@@ -236,7 +240,8 @@ describe("calendar request persistence service", () => {
         getForOrganization: async () => request,
         listForOrganization: async () => [],
         getForAdmin: async () => request,
-        listAdminIntake: async () => []
+        listAdminIntake: async () => [],
+        listAdminLifecycle: async () => []
       },
       workerOfferAccess: unavailableWorkerOfferAccess
     });
@@ -281,7 +286,8 @@ describe("calendar request persistence service", () => {
         getForOrganization: async () => request,
         listForOrganization: async () => [request],
         getForAdmin: async () => request,
-        listAdminIntake: async () => []
+        listAdminIntake: async () => [],
+        listAdminLifecycle: async () => []
       },
       workerOfferAccess: unavailableWorkerOfferAccess
     });
@@ -327,7 +333,8 @@ describe("calendar request persistence service", () => {
         getForOrganization: async () => request,
         listForOrganization: async () => [],
         getForAdmin: async () => request,
-        listAdminIntake: async () => []
+        listAdminIntake: async () => [],
+        listAdminLifecycle: async () => []
       },
       workerOfferAccess: {
         workerCalendarReference: async () =>
@@ -391,7 +398,8 @@ describe("calendar request persistence service", () => {
           adminRead = true;
           return request;
         },
-        listAdminIntake: async () => []
+        listAdminIntake: async () => [],
+        listAdminLifecycle: async () => []
       },
       workerOfferAccess: unavailableWorkerOfferAccess
     });
@@ -444,7 +452,8 @@ describe("calendar request persistence service", () => {
         getForOrganization: async () => request,
         listForOrganization: async () => [],
         getForAdmin: async () => request,
-        listAdminIntake: async () => []
+        listAdminIntake: async () => [],
+        listAdminLifecycle: async () => []
       },
       workerOfferAccess: unavailableWorkerOfferAccess
     });
@@ -474,7 +483,8 @@ describe("calendar request persistence service", () => {
         getForOrganization: async () => request,
         listForOrganization: async () => [],
         getForAdmin: async () => request,
-        listAdminIntake: async () => []
+        listAdminIntake: async () => [],
+        listAdminLifecycle: async () => []
       },
       workerOfferAccess: unavailableWorkerOfferAccess
     });
@@ -502,7 +512,8 @@ describe("calendar request persistence service", () => {
         getForOrganization: async () => request,
         listForOrganization: async () => [],
         getForAdmin: async () => request,
-        listAdminIntake: async () => []
+        listAdminIntake: async () => [],
+        listAdminLifecycle: async () => []
       },
       workerOfferAccess: unavailableWorkerOfferAccess
     });

@@ -19,6 +19,18 @@ const runtimeConfigSchema = z
       .string()
       .regex(/^rwos:authrl:(?:local|test|staging|production):v1$/)
       .optional(),
+    // Which sign-in rate limiter backs the API. Unset keeps the historical choice (remote limiter in
+    // production, in-memory elsewhere). "postgres" keeps the shared buckets in the API's own database
+    // (table auth_rate_limit_buckets), so production needs no separate limiter service or Redis; it
+    // needs only DATABASE_URL, AUTH_RATE_LIMITER_KEY_SECRET and AUTH_RATE_LIMITER_NAMESPACE.
+    AUTH_RATE_LIMITER_BACKEND: z.enum(["remote", "postgres"]).optional(),
+    // Production-only feature flags (read only when RWOS_ENV=production; every other environment
+    // keeps these features on, as before). Unset = the selected country profile's default
+    // (Canada/Québec: ON); a profile without defaults keeps them OFF, the historical production
+    // behaviour. RWOS_JOB_FLOW_ENABLED opens the worker and staff job-flow write routes (offers,
+    // assignments, attendance, timesheets, dispatch); RWOS_PUBLIC_SIGNUP_ENABLED opens /auth/register.
+    RWOS_JOB_FLOW_ENABLED: z.enum(["disabled", "enabled"]).optional(),
+    RWOS_PUBLIC_SIGNUP_ENABLED: z.enum(["disabled", "enabled"]).optional(),
     CANDIDATE_SOURCE_ORIGIN: z.string().url().optional(),
     CANDIDATE_SOURCE_TOKEN: z.string().min(32).optional(),
     OFFER_DELIVERY_ORIGIN: z.string().url().optional(),
@@ -44,16 +56,12 @@ const runtimeConfigSchema = z
     // When absent, the test execution records a synthetic reference instead of attempting a transfer.
     STRIPE_TEST_PAYOUT_CONNECTED_ACCOUNT: z.string().min(1).optional(),
     SESSION_SECRET: z.string().optional(),
-    // Transactional email (Resend) for email-verification / resend-code. Optional and inert until
-    // both are set: without them the mailer is a no-op (dev surfaces the code locally instead of
-    // sending). Mirrors the STR gating model — the feature ships dark until the owner provisions keys.
-    RESEND_API_KEY: z.string().min(1).optional(),
-    // Brevo (formerly Sendinblue) is the owner's chosen provider. Set BREVO_API_KEY (api-key header)
-    // and EMAIL_FROM; EMAIL_PROVIDER selects which HTTP API the mailer talks to (default brevo).
+    // Transactional email through Brevo (formerly Sendinblue), the owner's chosen provider. Optional
+    // and inert until BREVO_API_KEY and EMAIL_FROM are both set: without them the mailer is a no-op
+    // (dev surfaces the code locally instead of sending).
     BREVO_API_KEY: z.string().min(1).optional(),
-    EMAIL_PROVIDER: z.enum(["brevo", "resend"]).default("brevo"),
     // Accept either a bare address (user@domain) or an RFC-5322 display-name form
-    // ("JobLop <user@domain>"), which mail "From" headers use and Resend expects for branding.
+    // ("Joblop <user@domain>"), which mail "From" headers use.
     EMAIL_FROM: z
       .string()
       .refine(
@@ -67,6 +75,30 @@ const runtimeConfigSchema = z
       )
       .optional(),
     PASSWORD_RESET_PUBLIC_ORIGIN: z.string().url().optional(),
+    // Transactional SMS (Brevo) — reuses BREVO_API_KEY. SMS_SENDER is the alphanumeric sender id shown
+    // on the recipient's phone (max 11 chars, e.g. "Joblop"). SMS costs money per message, so it is
+    // double-gated: it only sends when SMS_ENABLED=enabled AND the key + sender are present. Defaults OFF.
+    SMS_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
+    SMS_SENDER: z.string().min(1).max(32).optional(),
+    // Twilio Verify (SMS codes via Twilio's pre-approved senders; works in Canada without our own
+    // toll-free approval). Active only when all three are set.
+    TWILIO_ACCOUNT_SID: z.string().min(1).optional(),
+    TWILIO_AUTH_TOKEN: z.string().min(1).optional(),
+    TWILIO_VERIFY_SERVICE_SID: z.string().min(1).optional(),
+    // Twilio Messaging sender for non-code texts (reminders): an approved Twilio number or MG... service.
+    TWILIO_FROM: z.string().min(1).optional(),
+    // App-store review sign-in: ONE demo worker number whose sign-in code is fixed and never texted,
+    // because a store reviewer cannot receive our text. Off unless BOTH are set. The number must
+    // belong to a demo worker account with no real person's data.
+    STORE_REVIEW_PHONE: z.string().regex(/^\+[1-9]\d{7,14}$/).optional(),
+    STORE_REVIEW_CODE: z.string().regex(/^\d{6}$/).optional(),
+    // Shared secret for the pre-shift reminder sweep trigger (a scheduled cron calls the internal
+    // endpoint with this token). Fail-closed: when unset, the sweep endpoint is disabled (404).
+    SHIFT_REMINDER_SWEEP_TOKEN: z.string().min(16).optional(),
+    // Marketing contact sync (Brevo, CASL step 2) — reuses BREVO_API_KEY. BREVO_MARKETING_LIST_ID is the
+    // numeric Brevo list opted-in contacts are synced into. Gated: only syncs when MARKETING_SYNC_ENABLED.
+    MARKETING_SYNC_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
+    BREVO_MARKETING_LIST_ID: z.coerce.number().int().positive().optional(),
     STRIPE_TEST_MODE_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
     STRIPE_TEST_SECRET_KEY: z.string().min(1).optional(),
     STRIPE_TEST_WEBHOOK_SECRET: z.string().min(1).optional(),
@@ -201,6 +233,22 @@ const runtimeConfigSchema = z
         message: "AUTH_RATE_LIMITER_NAMESPACE must match RWOS_ENV."
       });
     }
+    if (config.AUTH_RATE_LIMITER_BACKEND === "postgres") {
+      if (!config.DATABASE_URL) {
+        context.addIssue({
+          code: "custom",
+          path: ["DATABASE_URL"],
+          message: "AUTH_RATE_LIMITER_BACKEND=postgres requires DATABASE_URL."
+        });
+      }
+      if (!config.AUTH_RATE_LIMITER_KEY_SECRET) {
+        context.addIssue({
+          code: "custom",
+          path: ["AUTH_RATE_LIMITER_KEY_SECRET"],
+          message: "AUTH_RATE_LIMITER_BACKEND=postgres requires AUTH_RATE_LIMITER_KEY_SECRET."
+        });
+      }
+    }
     if (config.DOCUMENT_LOCAL_UPLOAD_ENABLED === "enabled") {
       if (config.RWOS_ENV !== "local" && config.RWOS_ENV !== "test") {
         context.addIssue({
@@ -290,7 +338,9 @@ const runtimeConfigSchema = z
         message: "INTERNAL_API_ORIGIN must use HTTPS when RWOS_ENV is production."
       });
     }
-    if (!config.AUTH_RATE_LIMITER_ORIGIN?.startsWith("https://")) {
+    // The Postgres limiter lives inside the API, so it needs no origin, token or key id.
+    const remoteLimiter = config.AUTH_RATE_LIMITER_BACKEND !== "postgres";
+    if (remoteLimiter && !config.AUTH_RATE_LIMITER_ORIGIN?.startsWith("https://")) {
       context.addIssue({
         code: "custom",
         path: ["AUTH_RATE_LIMITER_ORIGIN"],
@@ -307,7 +357,7 @@ const runtimeConfigSchema = z
         message: "PASSWORD_RESET_PUBLIC_ORIGIN must use HTTPS when RWOS_ENV is production."
       });
     }
-    if (!config.AUTH_RATE_LIMITER_TOKEN) {
+    if (remoteLimiter && !config.AUTH_RATE_LIMITER_TOKEN) {
       context.addIssue({
         code: "custom",
         path: ["AUTH_RATE_LIMITER_TOKEN"],
@@ -321,7 +371,7 @@ const runtimeConfigSchema = z
         message: "AUTH_RATE_LIMITER_KEY_SECRET is required when RWOS_ENV is production."
       });
     }
-    if (!config.AUTH_RATE_LIMITER_KEY_ID) {
+    if (remoteLimiter && !config.AUTH_RATE_LIMITER_KEY_ID) {
       context.addIssue({
         code: "custom",
         path: ["AUTH_RATE_LIMITER_KEY_ID"],
@@ -407,6 +457,11 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
     authRateLimiterKeySecret: parsed.AUTH_RATE_LIMITER_KEY_SECRET,
     authRateLimiterKeyId: parsed.AUTH_RATE_LIMITER_KEY_ID,
     authRateLimiterNamespace: parsed.AUTH_RATE_LIMITER_NAMESPACE,
+    // null = the historical choice (remote in production, memory elsewhere).
+    authRateLimiterBackend: parsed.AUTH_RATE_LIMITER_BACKEND ?? null,
+    // Production-only feature flags as set (null = unset; the API applies the country default).
+    jobFlowFlag: parsed.RWOS_JOB_FLOW_ENABLED ?? null,
+    publicSignupFlag: parsed.RWOS_PUBLIC_SIGNUP_ENABLED ?? null,
     candidateSourceOrigin: parsed.CANDIDATE_SOURCE_ORIGIN,
     candidateSourceToken: parsed.CANDIDATE_SOURCE_TOKEN,
     offerDeliveryOrigin: parsed.OFFER_DELIVERY_ORIGIN,
@@ -445,17 +500,28 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
     hasOfferDelivery: Boolean(parsed.OFFER_DELIVERY_ORIGIN && parsed.OFFER_DELIVERY_TOKEN),
     hasDatabaseUrl: Boolean(parsed.DATABASE_URL),
     hasSessionSecret: Boolean(parsed.SESSION_SECRET),
-    resendApiKey: parsed.RESEND_API_KEY,
-    emailProvider: parsed.EMAIL_PROVIDER,
-    // The API key for the selected provider — Brevo by default, Resend when EMAIL_PROVIDER=resend.
-    emailApiKey: parsed.EMAIL_PROVIDER === "resend" ? parsed.RESEND_API_KEY : parsed.BREVO_API_KEY,
+    emailApiKey: parsed.BREVO_API_KEY,
     emailFrom: parsed.EMAIL_FROM,
     passwordResetPublicOrigin: parsed.PASSWORD_RESET_PUBLIC_ORIGIN,
-    // True only when the selected provider's key + from-address are present; otherwise a no-op.
-    hasEmailDelivery: Boolean(
-      (parsed.EMAIL_PROVIDER === "resend" ? parsed.RESEND_API_KEY : parsed.BREVO_API_KEY) &&
-        parsed.EMAIL_FROM
-    ),
+    // True only when the Brevo key + from-address are present; otherwise a no-op.
+    hasEmailDelivery: Boolean(parsed.BREVO_API_KEY && parsed.EMAIL_FROM),
+    // Transactional SMS (Brevo): reuses the Brevo key. Enabled only when SMS_ENABLED=enabled.
+    smsEnabled: parsed.SMS_ENABLED === "enabled",
+    smsSender: parsed.SMS_SENDER,
+    twilioAccountSid: parsed.TWILIO_ACCOUNT_SID,
+    twilioAuthToken: parsed.TWILIO_AUTH_TOKEN,
+    twilioVerifyServiceSid: parsed.TWILIO_VERIFY_SERVICE_SID,
+    twilioFrom: parsed.TWILIO_FROM,
+    storeReviewSignIn:
+      parsed.STORE_REVIEW_PHONE && parsed.STORE_REVIEW_CODE
+        ? { phone: parsed.STORE_REVIEW_PHONE, code: parsed.STORE_REVIEW_CODE }
+        : null,
+    smsApiKey: parsed.BREVO_API_KEY,
+    // True only when the key + sender are present; the enable flag is a separate money gate.
+    hasSmsDelivery: Boolean(parsed.BREVO_API_KEY && parsed.SMS_SENDER),
+    shiftReminderSweepToken: parsed.SHIFT_REMINDER_SWEEP_TOKEN,
+    marketingSyncEnabled: parsed.MARKETING_SYNC_ENABLED === "enabled",
+    marketingListId: parsed.BREVO_MARKETING_LIST_ID,
     stripeTestModeEnabled: parsed.STRIPE_TEST_MODE_ENABLED === "enabled",
     stripeTestSecretKey: parsed.STRIPE_TEST_SECRET_KEY,
     stripeTestWebhookSecret: parsed.STRIPE_TEST_WEBHOOK_SECRET,

@@ -17,17 +17,16 @@ DB="rwos_local_dev_$(date +%s)"
 export DATABASE_URL="postgresql://${PGUSER_NAME}@${PGHOST}:${PGPORT}/${DB}"
 export INTERNAL_API_ORIGIN="http://127.0.0.1:${API_PORT}"
 export RWOS_ENV="local"; export NODE_ENV="development"
-# Worker offer notifications — REUSE the shared SYBNB Resend capsule (key + verified sender).
-# Secret lives in the gitignored .resend.capsule.local (NEVER committed). When present, the API
-# selects the Resend worker-offer delivery provider (hasEmailDelivery = RESEND_API_KEY && EMAIL_FROM).
-if [ -f "$ROOT/.resend.capsule.local" ]; then . "$ROOT/.resend.capsule.local"; echo "  Resend capsule loaded (offer emails enabled)"; else echo "  Resend capsule absent (offer emails stay in dev exposeLocalCode mode)"; fi
+# Worker offer notifications use Brevo. Secret lives in the gitignored .brevo.capsule.local (NEVER
+# committed), which exports BREVO_API_KEY and EMAIL_FROM; without it offer emails stay off locally.
+if [ -f "$ROOT/.brevo.capsule.local" ]; then . "$ROOT/.brevo.capsule.local"; echo "  Brevo capsule loaded (offer emails enabled)"; else echo "  Brevo capsule absent (offer emails stay in dev exposeLocalCode mode)"; fi
 # Enable the LOCAL FAKE payment provider so the full capture/close runs in the running apps
 # (no Stripe). Fail-closed elsewhere: this only takes effect in local/test (see @rwos/config).
 export LOCAL_PAYMENT_ENABLED="enabled"
 export LOCAL_PAYMENT_WEBHOOK_SECRET="local-fake-webhook-secret-0123456789abcdef"
 # Legal version display (draft ids) so /terms and /privacy show a configured version in local flow.
-export TERMS_VERSION="ca-terms-draft-2026-10"
-export PRIVACY_NOTICE_VERSION="ca-privacy-draft-2026-10"
+export TERMS_VERSION="2026-11-09"
+export PRIVACY_NOTICE_VERSION="2026-11-09"
 # Enable signed Control Room share links locally (min 32 chars). Local/test demo secret only.
 export CONTROL_ROOM_SHARE_SECRET="local-e2e-control-room-share-secret-0123456789"
 # Activate the synthetic test-mode country so country-dependent flows work locally

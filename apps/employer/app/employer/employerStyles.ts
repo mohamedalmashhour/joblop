@@ -1,13 +1,16 @@
 import type { CSSProperties } from "react";
 import { colors, elevation, radii, spacing, statusColors, touch } from "@rwos/design-system";
 
-const navy = colors.navy;
-const teal = colors.actionTeal;
-const surface = colors.surface;
-const surfaceSubtle = colors.surfaceSubtle;
-const border = colors.border;
-const text = colors.text;
-const muted = colors.muted;
+// Dark-first workspace: black canvas, dark-raised panels, cream text, gold accent + hairline.
+const navy = colors.navy; // #000000 brand black (dark panels)
+const teal = colors.actionTeal; // gold accent
+const surface = "#0c0c0c"; // dark-raised panel
+const surfaceSubtle = "#141210"; // slightly higher raise
+const border = "rgba(248, 184, 8, 0.16)"; // gold hairline
+const inputBorder = "rgba(248, 184, 8, 0.6)"; // form fields must be easy to find
+const text = "#f4efe4"; // cream body
+const muted = "#b3a894"; // warm secondary
+const warning = "#e8c46b"; // readable amber on dark
 
 export const baseButton: CSSProperties = {
   alignItems: "center",
@@ -40,20 +43,25 @@ export const styles: Record<string, CSSProperties> = {
     display: "grid",
     flex: "0 0 280px",
     gap: 20,
-    gridTemplateRows: "auto 1fr auto",
-    minHeight: "100vh",
+    // logo, menu (takes the free space), benefits card (desktop only), "Secure workspace" note.
+    gridTemplateRows: "auto 1fr auto auto",
+    // No forced 100vh: on a flex row it stretches to the workspace height anyway; forcing it full
+    // height pushed the workspace a whole screen down whenever the row wrapped (narrow/tablet),
+    // leaving the employer looking at a blank page.
     padding: 20
   },
   workspace: {
     background: surface,
-    flex: "1 1 680px",
+    // A smaller flex-basis so the workspace sits BESIDE the 280px sidebar at tablet/pane widths
+    // instead of wrapping below it; it still stacks under the sidebar on true mobile.
+    flex: "1 1 360px",
     minWidth: 0
   },
   stagingBanner: {
     alignItems: "center",
-    background: "#fff8d8",
+    background: "#0c0c0c",
     borderBottom: "2px solid #e8d782",
-    color: "#5f4000",
+    color: warning,
     display: "flex",
     flexWrap: "wrap",
     fontSize: 12,
@@ -66,7 +74,8 @@ export const styles: Record<string, CSSProperties> = {
   },
   header: {
     alignItems: "center",
-    background: "rgba(255, 255, 255, 0.97)",
+    background: "#000000", // solid: this bar stays on screen, so see-through mixed it with page text
+
     borderBottom: `1px solid ${border}`,
     display: "flex",
     flexWrap: "wrap",
@@ -88,9 +97,9 @@ export const styles: Record<string, CSSProperties> = {
   },
   brandMark: {
     alignItems: "center",
-    background: "#ffffff",
+    background: "#000000",
     borderRadius: radii.sm,
-    color: navy,
+    color: text,
     display: "inline-flex",
     fontSize: 12,
     height: 36,
@@ -108,7 +117,7 @@ export const styles: Record<string, CSSProperties> = {
     background: "rgba(255,255,255,0.06)",
     border: "1px solid rgba(255,255,255,0.12)",
     borderRadius: radii.sm,
-    color: "#d6e5f8",
+    color: "#f0e8d8",
     display: "grid",
     fontSize: 13,
     fontWeight: 700,
@@ -118,10 +127,10 @@ export const styles: Record<string, CSSProperties> = {
     textDecoration: "none"
   },
   navLinkActive: {
-    background: "#ffffff",
-    border: "1px solid #ffffff",
+    background: "#000000",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: radii.sm,
-    color: navy,
+    color: text,
     display: "grid",
     fontSize: 13,
     fontWeight: 900,
@@ -141,7 +150,7 @@ export const styles: Record<string, CSSProperties> = {
     background: "rgba(255,255,255,0.08)",
     border: "1px solid rgba(255,255,255,0.14)",
     borderRadius: radii.sm,
-    color: "#d6e5f8",
+    color: "#f0e8d8",
     display: "grid",
     fontSize: 12,
     gap: 6,
@@ -157,7 +166,7 @@ export const styles: Record<string, CSSProperties> = {
     textTransform: "uppercase"
   },
   topbarTitle: {
-    color: navy,
+    color: text,
     display: "block",
     fontSize: 18,
     marginTop: 2
@@ -166,13 +175,13 @@ export const styles: Record<string, CSSProperties> = {
     ...baseButton,
     background: teal,
     boxShadow: "0 10px 24px rgba(15, 127, 120, 0.18)",
-    color: "#ffffff"
+    color: "#000000"
   },
   secondaryButton: {
     ...baseButton,
-    background: "#ffffff",
+    background: "#000000",
     border: `1px solid ${border}`,
-    color: navy
+    color: text
   },
   disabledAction: {
     ...baseButton,
@@ -180,7 +189,7 @@ export const styles: Record<string, CSSProperties> = {
     color: statusColors.disabled.foreground
   },
   hero: {
-    background: `linear-gradient(135deg, ${navy} 0%, #082a66 100%)`,
+    background: `linear-gradient(135deg, ${navy} 0%, #2a2114 100%)`,
     borderBottom: `1px solid ${border}`,
     color: "#ffffff",
     display: "grid",
@@ -196,7 +205,7 @@ export const styles: Record<string, CSSProperties> = {
     textTransform: "uppercase"
   },
   eyebrowDark: {
-    color: "#123b78",
+    color: "#f4efe4",
     fontSize: 12,
     fontWeight: 900,
     letterSpacing: 0,
@@ -210,7 +219,7 @@ export const styles: Record<string, CSSProperties> = {
     maxWidth: 940
   },
   lede: {
-    color: "#d6e5f8",
+    color: "#f0e8d8",
     fontSize: 18,
     lineHeight: 1.6,
     margin: 0,
@@ -220,7 +229,7 @@ export const styles: Record<string, CSSProperties> = {
     padding: "48px clamp(16px, 4vw, 40px)"
   },
   whiteSection: {
-    background: "#ffffff",
+    background: "#000000",
     borderBottom: `1px solid ${border}`,
     borderTop: `1px solid ${border}`,
     padding: "48px clamp(16px, 4vw, 40px)"
@@ -232,7 +241,7 @@ export const styles: Record<string, CSSProperties> = {
     maxWidth: 900
   },
   sectionTitle: {
-    color: navy,
+    color: text,
     fontSize: "clamp(26px, 4vw, 42px)",
     lineHeight: 1.12,
     margin: 0
@@ -255,14 +264,14 @@ export const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))"
   },
   card: {
-    background: "#ffffff",
+    background: "#000000",
     border: `1px solid ${border}`,
     borderRadius: radii.sm,
     boxShadow: elevation.raised,
     padding: 18
   },
   panel: {
-    background: "#ffffff",
+    background: "#000000",
     border: `1px solid ${border}`,
     borderRadius: radii.md,
     boxShadow: elevation.raised,
@@ -272,13 +281,13 @@ export const styles: Record<string, CSSProperties> = {
   },
   tintedCard: {
     background: surfaceSubtle,
-    border: "1px solid #c9ddff",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: radii.sm,
     boxShadow: elevation.raised,
     padding: 18
   },
   cardTitle: {
-    color: navy,
+    color: text,
     fontSize: 18,
     margin: 0
   },
@@ -290,7 +299,7 @@ export const styles: Record<string, CSSProperties> = {
     margin: "8px 0 0"
   },
   metaLabel: {
-    color: "#123b78",
+    color: "#f4efe4",
     display: "block",
     fontSize: 11,
     fontWeight: 900,
@@ -299,10 +308,10 @@ export const styles: Record<string, CSSProperties> = {
   },
   statusBadge: {
     alignItems: "center",
-    background: "#eefbf6",
+    background: "#000000",
     border: "1px solid #9fd8bc",
     borderRadius: 999,
-    color: "#0f5f54",
+    color: "#f4efe4",
     display: "inline-flex",
     fontSize: 12,
     fontWeight: 900,
@@ -311,10 +320,10 @@ export const styles: Record<string, CSSProperties> = {
   },
   statusBadgeWarning: {
     alignItems: "center",
-    background: "#fff8d8",
+    background: "#0c0c0c",
     border: "1px solid #e8d782",
     borderRadius: 999,
-    color: "#7a5200",
+    color: warning,
     display: "inline-flex",
     fontSize: 12,
     fontWeight: 900,
@@ -347,7 +356,7 @@ export const styles: Record<string, CSSProperties> = {
     borderColor: "#9fd8bc"
   },
   calendarCardUrgent: {
-    background: "#fff8d8",
+    background: "#0c0c0c",
     borderColor: "#e8d782"
   },
   calendarGrid: {
@@ -357,17 +366,17 @@ export const styles: Record<string, CSSProperties> = {
     marginTop: 14
   },
   calendarMetric: {
-    color: "#071f4d",
+    color: "#f4efe4",
     display: "block",
     fontSize: 24,
     fontWeight: 900,
     marginTop: 4
   },
   calendarState: {
-    background: "#ffffff",
+    background: "#000000",
     border: `1px solid ${border}`,
     borderRadius: 999,
-    color: "#123b78",
+    color: "#f4efe4",
     display: "inline-flex",
     fontSize: 12,
     fontWeight: 900,
@@ -378,7 +387,7 @@ export const styles: Record<string, CSSProperties> = {
     background: "rgba(255,255,255,0.76)",
     border: `1px solid ${border}`,
     borderRadius: 8,
-    color: "#0b1f3a",
+    color: "#f4efe4",
     display: "block",
     minHeight: 142,
     padding: 12,
@@ -390,10 +399,10 @@ export const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))"
   },
   pill: {
-    background: "#ffffff",
+    background: "#000000",
     border: `1px solid ${border}`,
     borderRadius: radii.sm,
-    color: navy,
+    color: text,
     fontWeight: 900,
     padding: 14
   },
@@ -404,7 +413,7 @@ export const styles: Record<string, CSSProperties> = {
     paddingLeft: 22
   },
   stepItem: {
-    color: "#0b1f3a",
+    color: "#f4efe4",
     fontWeight: 800,
     lineHeight: 1.45
   },
@@ -413,19 +422,57 @@ export const styles: Record<string, CSSProperties> = {
     gap: 12,
     gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))"
   },
+  // Sign-in / sign-up: one field per row, buttons on their own row (never squeezed into a grid column).
+  authForm: {
+    display: "grid",
+    gap: 16,
+    gridTemplateColumns: "minmax(0, 1fr)",
+    maxWidth: 520
+  },
+  authActions: {
+    alignItems: "stretch",
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 12
+  },
+  checkboxLabel: {
+    alignItems: "start",
+    color: "#f4efe4",
+    display: "grid",
+    fontSize: 14,
+    fontWeight: 700,
+    gap: 12,
+    gridTemplateColumns: "auto minmax(0, 1fr)",
+    lineHeight: 1.5
+  },
+  checkbox: {
+    accentColor: "#f8b808",
+    height: 22,
+    margin: 0,
+    width: 22
+  },
+  inlineLink: {
+    color: "#f8b808",
+    fontWeight: 800,
+    textDecoration: "underline",
+    textUnderlineOffset: 3
+  },
   fieldLabel: {
-    color: "#0b1f3a",
+    alignContent: "start",
+    color: "#f4efe4",
     display: "grid",
     fontSize: 14,
     fontWeight: 800,
     gap: 6
   },
   input: {
-    background: "#ffffff",
-    border: `1px solid ${border}`,
+    background: "#000000",
+    border: `1px solid ${inputBorder}`,
     borderRadius: radii.sm,
     color: text,
     font: "inherit",
+    // Labels are bold; the typed text and placeholders should not be.
+    fontWeight: 500,
     minHeight: 44,
     padding: "0 12px"
   },
@@ -435,7 +482,7 @@ export const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))"
   },
   routeCard: {
-    background: "#ffffff",
+    background: "#000000",
     border: `1px solid ${border}`,
     borderRadius: radii.sm,
     boxShadow: elevation.raised,
@@ -445,15 +492,15 @@ export const styles: Record<string, CSSProperties> = {
     textDecoration: "none"
   },
   routeStatus: {
-    color: "#123b78",
+    color: "#f4efe4",
     fontSize: 12,
     fontWeight: 900,
     textTransform: "uppercase"
   },
   warning: {
-    background: "#fff8d8",
+    background: "#0c0c0c",
     borderRadius: 8,
-    color: "#071f4d",
+    color: "#f4efe4",
     fontSize: 14,
     fontWeight: 900,
     lineHeight: 1.5,
@@ -461,7 +508,7 @@ export const styles: Record<string, CSSProperties> = {
   },
   footer: {
     alignItems: "center",
-    background: "#071f4d",
+    background: "#1b160e",
     color: "#ffffff",
     display: "flex",
     flexWrap: "wrap",
@@ -470,6 +517,12 @@ export const styles: Record<string, CSSProperties> = {
     padding: "28px clamp(16px, 4vw, 40px)"
   },
   footerLinks: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 12
+  },
+  headerActions: {
+    alignItems: "center",
     display: "flex",
     flexWrap: "wrap",
     gap: 12

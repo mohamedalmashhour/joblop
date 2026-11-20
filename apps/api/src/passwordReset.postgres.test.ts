@@ -12,6 +12,36 @@ const prisma = createPrismaClient(databaseUrl ?? "postgresql://unused:unused@127
 const suite = databaseUrl ? describe : describe.skip;
 
 suite("password reset PostgreSQL transaction", () => {
+  it("adds a password to an account that signed up with Google", async () => {
+    const suffix = randomUUID().replaceAll("-", "");
+    const email = `google-${suffix}@example.test`;
+    const now = new Date("2026-07-30T16:00:00.000Z");
+    const user = await prisma.user.create({
+      data: {
+        publicId: `usr_google_${suffix}`,
+        emailNormalized: email,
+        status: "active",
+        identities: { create: { provider: "future_oauth", providerSubject: `google:${suffix}` } }
+      }
+    });
+    const repository = createPrismaPasswordResetRepository(prisma);
+    const tokenHash = suffix.padEnd(64, "b").slice(0, 64);
+    await repository.createToken({ userId: user.id, tokenHash, expiresAt: new Date("2026-07-30T16:30:00.000Z"), now });
+
+    const completed = await repository.complete({
+      tokenHash,
+      passwordHash: await hashPassword("ReplacementPassword123"),
+      now
+    });
+
+    expect(completed).toEqual({ userId: user.id });
+    const identities = await prisma.userIdentity.findMany({ where: { userId: user.id } });
+    const local = identities.find((identity) => identity.provider === "local_password");
+    expect(local?.providerSubject).toBe(email);
+    expect(await verifyPassword("ReplacementPassword123", local?.passwordHash)).toBe(true);
+    expect(identities.some((identity) => identity.provider === "future_oauth")).toBe(true);
+  });
+
   it("consumes once, updates the local identity, revokes sessions, and audits atomically", async () => {
     const suffix = randomUUID().replaceAll("-", "");
     const now = new Date("2026-07-30T16:00:00.000Z");

@@ -51,6 +51,7 @@ services:
       RWOS_COUNTRY: ${RWOS_COUNTRY}
       # Real secrets come from deploy/.env — never commit them.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AI_OUTSIDE_CALLS: ${AI_OUTSIDE_CALLS:-}
       ADZUNA_APP_ID: ${ADZUNA_APP_ID:-}
       ADZUNA_APP_KEY: ${ADZUNA_APP_KEY:-}
       ADZUNA_COUNTRY: ${ADZUNA_COUNTRY:-ca}

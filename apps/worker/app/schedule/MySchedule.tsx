@@ -1,26 +1,50 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useLocale, useT } from "../i18n/LocaleProvider";
+import { calendarDayKey } from "@rwos/shared";
+import { appendUnique, nextCursorOf } from "../pagination";
+import { useLocale, useT, fmtLocale } from "../i18n/LocaleProvider";
 import type { RwosLocale } from "../i18n/config";
 import type { MessageKey } from "../i18n/messages";
 import type { Translate } from "../i18n/LocaleProvider";
+import { resolveDeniedKind } from "../resolveDenied";
+import { ShiftAddressMap } from "../ShiftAddressMap";
+import { checkInOpensAt, isCheckInOpen } from "../shiftLocation";
+import { CancelShiftControl } from "./CancelShift";
+import { ReportHoursControl } from "./ReportHours";
+import { formatReportDeadline, reportHoursView } from "./reportHoursView";
+import { shiftPageHref } from "../shiftPage";
 
 type Shift = Readonly<{
   attendanceRecordId: string;
   assignmentId: string;
+  /** The job; a booked shift opens its shift page (/jobs/<id>) from the calendar. */
+  jobRequestId?: string;
   status: string;
   scheduledStartAt: string;
   scheduledEndAt: string;
   timezone: string;
   checkInAt: string | null;
   checkOutAt: string | null;
-  exceptionCategory: string | null;
+  /** Who cancelled the shift; the internal reason text is never sent to the worker. */
+  cancelledBy?: "joblop" | "employer" | "worker" | null;
   version: number;
   employerName: string;
+  /** The job (e.g. "Farm worker"); shown as the card title, with the company under it. */
+  roleLabel?: string | null;
   areaLabel: string | null;
+  worksiteAddress: string | null;
+  safetyNotes: string | null;
+  // Long-term job (employer plans flag): false = no check-in / check-out (the employer pays directly).
+  clockInAllowed?: boolean;
+  // "Report my hours" (a shift worked with no check-in): offered while canReportHours, until
+  // reportHoursUntil; hoursReport is the latest report ("pending" = waiting for Joblop).
+  canReportHours?: boolean;
+  reportHoursUntil?: string | null;
+  hoursReport?: Readonly<{ status: string }> | null;
 }>;
-type State = { status: "loading" } | { status: "signed_out" } | { status: "error" } | { status: "ready"; items: readonly Shift[] };
+type PendingOffer = Readonly<{ workerOfferId: string; jobRequestId: string; title: string | null; startAt: string | null }>;
+type State = { status: "loading" } | { status: "signed_out" } | { status: "needs_setup" } | { status: "error" } | { status: "ready"; items: readonly Shift[] };
 
 const STATUS_COPY_KEY: Record<string, MessageKey> = {
   pending_start: "sched.statusScheduled",
@@ -32,29 +56,77 @@ const STATUS_COPY_KEY: Record<string, MessageKey> = {
   exception: "sched.statusException"
 };
 
+// A plain label by who cancelled; never the free-text reason staff or the employer typed.
+const CANCELLED_BY_KEY: Record<"joblop" | "employer" | "worker", MessageKey> = {
+  joblop: "sched.cancelledByJoblop",
+  employer: "sched.cancelledByEmployer",
+  worker: "sched.cancelledByWorker"
+};
+
 export function MySchedule() {
   const t = useT();
-  const locale = useLocale();
+  const locale = fmtLocale(useLocale());
   const [state, setState] = useState<State>({ status: "loading" });
+  const [pending, setPending] = useState<readonly PendingOffer[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "calendar">("list");
   const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  // "Load more": older shifts come 25 at a time (the API's next-page cursor).
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const r = await fetch("/api/attendance?limit=25", { cache: "no-store" });
-      if (r.status === 401 || r.status === 403) return setState({ status: r.status === 401 ? "signed_out" : "error" });
+      if (r.status === 403) return setState({ status: "error" });
+      if (r.status === 401) return setState({ status: await resolveDeniedKind() });
       if (!r.ok) return setState({ status: "error" });
-      const payload = (await r.json()) as { items: Shift[] };
+      const payload = (await r.json()) as { items: Shift[]; nextCursor?: string | null };
       setState({ status: "ready", items: payload.items });
+      setCursor(nextCursorOf(payload));
     } catch {
       setState({ status: "error" });
     }
   }, []);
 
+  const loadMore = useCallback(async () => {
+    if (cursor === null) return;
+    setLoadingMore(true);
+    try {
+      const r = await fetch(`/api/attendance?limit=25&cursor=${encodeURIComponent(cursor)}`, { cache: "no-store" });
+      if (!r.ok) return;
+      const payload = (await r.json()) as { items: Shift[]; nextCursor?: string | null };
+      setState((current) =>
+        current.status === "ready"
+          ? { status: "ready", items: appendUnique(current.items, payload.items ?? [], (s) => s.attendanceRecordId) }
+          : current
+      );
+      setCursor(nextCursorOf(payload));
+    } catch {
+      /* keep what is shown; the button stays so the worker can try again */
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [cursor]);
+
+  // Accepted jobs waiting for Joblop to confirm, so a worker sees them straight after accepting.
+  useEffect(() => {
+    fetch("/api/offers?status=accepted", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((p: { workerOffers?: PendingOffer[] } | null) => setPending(p?.workerOffers ?? []))
+      .catch(() => undefined);
+  }, []);
+
   useEffect(() => { void load(); }, [load]);
+
+  // Re-render every 30 s so "Check in" turns on by itself when check-in opens.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   const act = useCallback(async (shift: Shift, action: "check-in" | "check-out") => {
     setBusy(shift.attendanceRecordId);
@@ -65,6 +137,12 @@ export function MySchedule() {
         body: JSON.stringify({ expectedVersion: shift.version })
       });
       if (!r.ok) {
+        const body = (await r.json().catch(() => null)) as { error?: string; opensAt?: string } | null;
+        if (body?.error === "RWOS_CHECK_IN_TOO_EARLY") {
+          const opens = body.opensAt ?? checkInOpensAt(shift.scheduledStartAt).toISOString();
+          setNotice(t("sched.checkInTooEarly", { time: formatClock(opens, shift.timezone, locale) }));
+          return;
+        }
         setNotice(r.status === 409 ? t("sched.changed") : t("sched.actionFailed"));
         return;
       }
@@ -73,15 +151,20 @@ export function MySchedule() {
     } finally {
       setBusy(null);
     }
-  }, [load, t]);
+  }, [load, t, locale]);
+
+  // After "Cancel this shift" (CancelShift.tsx): show the outcome and reload (the shift leaves the list).
+  const cancelShift = useCallback((message: string) => {
+    setNotice(message);
+    void load();
+  }, [load]);
 
   if (state.status === "loading") return <div className="state">{t("common.loading")}</div>;
   if (state.status === "signed_out") return <div className="state">{t("sched.signInPrompt")}<div style={{ marginTop: 12 }}><a className="btn" href="/">{t("common.goToSearch")}</a></div></div>;
+  if (state.status === "needs_setup") return <div className="state">{t("common.needsWorkerSetup")}<div style={{ marginTop: 12 }}><a className="btn" href="/onboarding">{t("common.setUpWorker")}</a></div></div>;
   if (state.status === "error") return <div className="state error" role="alert">{t("sched.loadError")}</div>;
 
-  const now = Date.now();
-  const upcoming = state.items.filter((s) => new Date(s.scheduledEndAt).getTime() >= now);
-  const past = state.items.filter((s) => new Date(s.scheduledEndAt).getTime() < now);
+  const { upcoming, past, waiting } = splitSchedule(state.items, pending, Date.now());
 
   return (
     <>
@@ -92,6 +175,19 @@ export function MySchedule() {
       <GoogleCalendarConnect />
       {notice ? <p className="notice" style={{ color: "var(--accent)" }}>{notice}</p> : null}
 
+      {waiting.length > 0 ? (
+        <div className="results" style={{ marginBottom: 16 }}>
+          {waiting.map((o) => (
+            <article key={o.workerOfferId} className="card">
+              <div className="role">{o.title ?? t("offers.shiftOffer")}</div>
+              <div className="chips"><span className="chip status-pending">{t("sched.waitingConfirm")}</span></div>
+              {o.startAt ? <div className="when">{formatShiftStart(o.startAt, locale)}</div> : null}
+              <p className="notice" style={{ margin: 0 }}>{t("sched.waitingBody")}</p>
+            </article>
+          ))}
+        </div>
+      ) : null}
+
       {state.items.length > 0 ? (
         <div className="chips" style={{ marginBottom: 12 }}>
           <button type="button" className={`chip ${view === "list" ? "status-verified" : ""}`} onClick={() => setView("list")}>{t("sched.viewList")}</button>
@@ -100,7 +196,7 @@ export function MySchedule() {
       ) : null}
 
       {state.items.length === 0 ? (
-        <div className="state">{t("sched.none")}</div>
+        waiting.length > 0 ? null : <div className="state">{t("sched.none")}</div>
       ) : view === "calendar" ? (
         <CalendarView
           items={state.items}
@@ -111,6 +207,7 @@ export function MySchedule() {
           onSelect={setSelectedDay}
           busy={busy}
           onAct={act}
+          onCancel={cancelShift}
           locale={locale}
           t={t}
         />
@@ -118,43 +215,97 @@ export function MySchedule() {
         <>
           {upcoming.length > 0 ? <div className="role" style={{ marginBottom: 6 }}>{t("sched.upcoming")}</div> : null}
           <div className="results" style={{ marginBottom: 24 }}>
-            {upcoming.map((s) => <ShiftCard key={s.attendanceRecordId} s={s} busy={busy === s.attendanceRecordId} onAct={act} t={t} locale={locale} />)}
+            {upcoming.map((s) => <ShiftCard key={s.attendanceRecordId} s={s} busy={busy === s.attendanceRecordId} onAct={act} onCancel={cancelShift} t={t} locale={locale} />)}
           </div>
           {past.length > 0 ? (
             <>
               <div className="role" style={{ marginBottom: 6 }}>{t("sched.history")}</div>
               <div className="results" style={{ paddingBottom: 48 }}>
-                {past.map((s) => <ShiftCard key={s.attendanceRecordId} s={s} busy={false} onAct={act} history t={t} locale={locale} />)}
+                {past.map((s) => <ShiftCard key={s.attendanceRecordId} s={s} busy={false} onAct={act} onCancel={cancelShift} history t={t} locale={locale} />)}
               </div>
             </>
           ) : null}
         </>
       )}
-      <p className="notice">{t("sched.footer")}</p>
+      {cursor !== null && state.items.length > 0 ? (
+        <button type="button" className="btn ghost" style={{ marginBottom: 16 }} onClick={() => void loadMore()} disabled={loadingMore}>
+          {loadingMore ? t("common.loading") : t("common.loadMore")}
+        </button>
+      ) : null}
+      <div style={{ display: "grid", gap: 10, justifyItems: "start", margin: "8px 0 32px" }}>
+        <p className="notice" style={{ margin: 0 }}>{t("sched.footer")}</p>
+        <a className="btn" href="/timesheets">{t("ts.title")}</a>
+      </div>
     </>
   );
 }
 
-function ShiftCard({ s, busy, onAct, history, t, locale }: { s: Shift; busy: boolean; onAct: (s: Shift, a: "check-in" | "check-out") => void; history?: boolean; t: Translate; locale: RwosLocale }) {
-  const canCheckIn = s.status === "pending_start";
-  const canCheckOut = s.status === "checked_in";
-  const inTime = s.checkInAt ? new Date(s.checkInAt).toLocaleTimeString(locale) : null;
-  const outTime = s.checkOutAt ? new Date(s.checkOutAt).toLocaleTimeString(locale) : null;
+function ShiftCard({ s, busy, onAct, onCancel, history, t, locale }: { s: Shift; busy: boolean; onAct: (s: Shift, a: "check-in" | "check-out") => void; onCancel: (message: string) => void; history?: boolean; t: Translate; locale: RwosLocale }) {
+  const noClock = s.clockInAllowed === false;
+  // A booked shift can be cancelled until the worker checks in (CancelShift.tsx explains the rules).
+  const canCancel = !history && !noClock && s.status === "pending_start";
+  const canCheckIn = !noClock && s.status === "pending_start";
+  const canCheckOut = !noClock && s.status === "checked_in";
+  // Check-in opens 30 minutes before the start (the API refuses earlier ones too).
+  const checkInOpen = isCheckInOpen(s.scheduledStartAt);
+  const opensAtLabel = formatClock(checkInOpensAt(s.scheduledStartAt).toISOString(), s.timezone, locale);
+  const inTime = s.checkInAt ? formatClock(s.checkInAt, s.timezone, locale) : null;
+  const outTime = s.checkOutAt ? formatClock(s.checkOutAt, s.timezone, locale) : null;
+  const title = s.roleLabel?.trim() || s.employerName;
+  // A finished shift with no check-in: "Report my hours" (or the report's state).
+  const reportView = noClock ? null : reportHoursView(s);
   return (
     <article className="card">
-      <div className="role">{s.employerName}</div>
+      <div className="role">{title}</div>
+      {title !== s.employerName ? <div className="employer">{s.employerName}</div> : null}
       <div className="chips">
         <span className={`chip status-${badgeClass(s.status)}`}>{t(STATUS_COPY_KEY[s.status] ?? "sched.statusScheduled")}</span>
         {s.areaLabel ? <span className="chip">{s.areaLabel}</span> : null}
-        {s.exceptionCategory ? <span className="chip status-rejected">{s.exceptionCategory.replaceAll("_", " ")}</span> : null}
+        {s.cancelledBy && CANCELLED_BY_KEY[s.cancelledBy] ? <span className="chip status-rejected">{t(CANCELLED_BY_KEY[s.cancelledBy])}</span> : null}
       </div>
-      <div className="when">{formatShift(s.scheduledStartAt, s.scheduledEndAt, s.timezone, locale)}</div>
+      <div className="when">{formatShift(s.scheduledStartAt, s.scheduledEndAt, s.timezone, locale, t("sched.easternTime"))}</div>
+      {s.worksiteAddress ? <div className="when">{t("sched.address", { address: s.worksiteAddress })}</div> : null}
+      {/* The exact address only comes for a confirmed shift that is not over (worksiteAddress.ts). */}
+      {!history && s.worksiteAddress ? <ShiftAddressMap address={s.worksiteAddress} /> : null}
+      {s.safetyNotes ? <div className="when">{t("sched.safetyNotes", { notes: s.safetyNotes })}</div> : null}
+      <a
+        className="sched-ask"
+        href={`/contact?topic=shift&relatedType=assignment&relatedId=${encodeURIComponent(s.assignmentId)}`}
+      >
+        {t("sched.askJoblop")}
+      </a>
       {inTime ? <div className="when">{outTime ? t("sched.inOut", { inTime, outTime }) : t("sched.in", { time: inTime })}</div> : null}
       {s.checkInAt && s.checkOutAt ? <div className="when"><strong>{t("sched.worked", { duration: workedDuration(s.checkInAt, s.checkOutAt, t) })}</strong></div> : null}
-      {!history && (canCheckIn || canCheckOut) ? (
+      {noClock ? <p className="notice" style={{ margin: 0 }}>{t("sched.longTermNoClockIn")}</p> : null}
+      {!history && canCheckIn && !checkInOpen ? (
+        <button className="btn" type="button" style={{ alignSelf: "flex-start" }} disabled aria-disabled="true">
+          {t("sched.checkInOpensAt", { time: opensAtLabel })}
+        </button>
+      ) : null}
+      {!history && ((canCheckIn && checkInOpen) || canCheckOut) ? (
         <button className="btn" type="button" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => onAct(s, canCheckIn ? "check-in" : "check-out")}>
           {busy ? "…" : canCheckIn ? t("sched.checkIn") : t("sched.checkOut")}
         </button>
+      ) : null}
+      {canCancel ? (
+        <CancelShiftControl attendanceRecordId={s.attendanceRecordId} scheduledStartAt={s.scheduledStartAt} disabled={busy} onCancelled={onCancel} />
+      ) : null}
+      {reportView === "waiting" ? <div className="chips"><span className="chip status-pending">{t("sched.reportWaiting")}</span></div> : null}
+      {reportView === "rejected" ? <p className="notice" style={{ margin: 0 }}>{t("sched.reportRejected")}</p> : null}
+      {reportView === "form" && s.reportHoursUntil ? (
+        <p className="notice" role="note" style={{ margin: 0, color: "var(--accent)" }}>
+          {t("sched.reportDeadlineNotice", { deadline: formatDeadline(s.reportHoursUntil, locale) })}
+        </p>
+      ) : null}
+      {reportView === "form" ? (
+        <ReportHoursControl
+          attendanceRecordId={s.attendanceRecordId}
+          scheduledStartAt={s.scheduledStartAt}
+          scheduledEndAt={s.scheduledEndAt}
+          timezone={s.timezone}
+          deadlineLabel={s.reportHoursUntil ? formatDeadline(s.reportHoursUntil, locale) : ""}
+          onSent={onCancel}
+        />
       ) : null}
     </article>
   );
@@ -171,19 +322,58 @@ function workedDuration(checkInAt: string, checkOutAt: string, t: Translate): st
   const totalMin = Math.max(0, Math.round(ms / 60000));
   return t("sched.durationHm", { h: Math.floor(totalMin / 60), m: totalMin % 60 });
 }
-function formatShift(startAt: string, endAt: string, tz: string, locale: RwosLocale): string {
+function formatClock(at: string, tz: string, locale: RwosLocale): string {
+  try {
+    return new Date(at).toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit", timeZone: tz });
+  } catch {
+    return new Date(at).toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
+  }
+}
+// The "Report my hours" deadline, always on Québec time (America/Toronto), wherever the device is.
+function formatDeadline(at: string, locale: RwosLocale): string {
+  return formatReportDeadline(at, locale);
+}
+// Québec shifts are on Eastern time: say so in plain words instead of "(America/Toronto)".
+const EASTERN_ZONES = new Set(["America/Toronto", "America/Montreal", "America/Nipigon", "America/Thunder_Bay", "America/Iqaluit", "America/New_York"]);
+function formatShift(startAt: string, endAt: string, tz: string, locale: RwosLocale, easternLabel: string): string {
   const opts: Intl.DateTimeFormatOptions = { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: tz };
   const start = new Date(startAt).toLocaleString(locale, opts);
   const end = new Date(endAt).toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit", timeZone: tz });
-  return `${start} – ${end} (${tz})`;
+  return EASTERN_ZONES.has(tz) ? `${start} – ${end} (${easternLabel})` : `${start} – ${end}`;
 }
 
 
-function dayKey(d: Date): string {
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+/**
+ * Upcoming shifts soonest first (the API sends newest first), past shifts most recent first, and the
+ * accepted offers still waiting for Joblop: an offer leaves that list once a shift with the same start
+ * exists (it used to show only while the worker had no shift at all).
+ */
+export function splitSchedule<S extends { scheduledStartAt: string; scheduledEndAt: string }, O extends { startAt: string | null }>(
+  items: readonly S[],
+  pending: readonly O[],
+  now: number
+): { upcoming: S[]; past: S[]; waiting: O[] } {
+  const time = (iso: string) => new Date(iso).getTime();
+  const upcoming = items.filter((s) => time(s.scheduledEndAt) >= now).sort((a, b) => time(a.scheduledStartAt) - time(b.scheduledStartAt));
+  const past = items.filter((s) => time(s.scheduledEndAt) < now).sort((a, b) => time(b.scheduledStartAt) - time(a.scheduledStartAt));
+  const starts = new Set(items.map((s) => time(s.scheduledStartAt)));
+  const waiting = pending.filter((o) => !(o.startAt && starts.has(time(o.startAt))));
+  return { upcoming, past, waiting };
 }
 
-function CalendarView({ items, month, onPrev, onNext, selected, onSelect, busy, onAct, locale, t }: {
+function formatShiftStart(at: string, locale: RwosLocale): string {
+  return new Date(at).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Toronto" });
+}
+
+// Day keys follow the Québec (America/Toronto) day, so a late shift never lands on the next day for a
+// device in another time zone. Format: year-monthIndex-day, like the grid cells.
+function dayKeyOf(iso: string): string {
+  const [y, mo, d] = calendarDayKey(iso).split("-").map(Number);
+  return `${y}-${(mo ?? 1) - 1}-${d}`;
+}
+
+
+function CalendarView({ items, month, onPrev, onNext, selected, onSelect, busy, onAct, onCancel, locale, t }: {
   items: readonly Shift[];
   month: Date;
   onPrev: () => void;
@@ -192,6 +382,7 @@ function CalendarView({ items, month, onPrev, onNext, selected, onSelect, busy, 
   onSelect: (k: string | null) => void;
   busy: string | null;
   onAct: (s: Shift, a: "check-in" | "check-out") => void;
+  onCancel: (message: string) => void;
   locale: RwosLocale;
   t: Translate;
 }) {
@@ -201,17 +392,14 @@ function CalendarView({ items, month, onPrev, onNext, selected, onSelect, busy, 
   const daysInMonth = new Date(year, m + 1, 0).getDate();
   const counts = new Map<string, number>();
   for (const s of items) {
-    const d = new Date(s.scheduledStartAt);
-    if (d.getFullYear() === year && d.getMonth() === m) {
-      const k = dayKey(d);
-      counts.set(k, (counts.get(k) ?? 0) + 1);
-    }
+    const k = dayKeyOf(s.scheduledStartAt);
+    if (k.startsWith(`${year}-${m}-`)) counts.set(k, (counts.get(k) ?? 0) + 1);
   }
   const monthLabel = new Date(year, m, 1).toLocaleDateString(locale, { month: "long", year: "numeric" });
   const weekdays = Array.from({ length: 7 }, (_, i) => new Date(2023, 0, 1 + i).toLocaleDateString(locale, { weekday: "narrow" }));
   const cells: (number | null)[] = [...Array<null>(startWeekday).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
-  const todayKey = dayKey(new Date());
-  const dayShifts = selected ? items.filter((s) => dayKey(new Date(s.scheduledStartAt)) === selected) : [];
+  const todayKey = dayKeyOf(new Date().toISOString());
+  const dayShifts = selected ? items.filter((s) => dayKeyOf(s.scheduledStartAt) === selected) : [];
   return (
     <>
       <section className="card" style={{ marginBottom: 16 }}>
@@ -260,7 +448,12 @@ function CalendarView({ items, month, onPrev, onNext, selected, onSelect, busy, 
         dayShifts.length > 0 ? (
           <div className="results" style={{ paddingBottom: 48 }}>
             {dayShifts.map((s) => (
-              <ShiftCard key={s.attendanceRecordId} s={s} busy={busy === s.attendanceRecordId} onAct={onAct} t={t} locale={locale} />
+              <div key={s.attendanceRecordId} style={{ display: "grid", gap: 6 }}>
+                <ShiftCard s={s} busy={busy === s.attendanceRecordId} onAct={onAct} onCancel={onCancel} t={t} locale={locale} />
+                {s.jobRequestId && s.status !== "cancelled" ? (
+                  <a className="btn ghost" style={{ justifySelf: "start" }} href={shiftPageHref(s.jobRequestId)}>{t("sched.openShift")}</a>
+                ) : null}
+              </div>
             ))}
           </div>
         ) : (

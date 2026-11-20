@@ -1,0 +1,30 @@
+import { describe, expect, it } from "vitest";
+import { NOTICE_CHANNELS, sendsEmail, sendsText } from "./noticeChannels";
+
+describe("notice channels", () => {
+  it("texts only codes, confirmed, late check-ins, upcoming, cancelled and changed shifts, plans ending tomorrow, and urgent staff alerts", () => {
+    const texted = (Object.keys(NOTICE_CHANNELS) as (keyof typeof NOTICE_CHANNELS)[]).filter((kind) => sendsText(kind, { urgent: true }));
+    expect(texted.sort()).toEqual(["check_in_reminder", "email_confirmation_code", "hours_report_deadline", "hours_report_rejected", "plan_ending", "shift_cancelled", "shift_changed", "shift_confirmed", "shift_reminder", "sign_in_code", "staff_needed", "worker_timesheet_reminder"]);
+    // Hours reminders to a worker are texted only when they have no email (sent as urgent then).
+    expect(sendsText("worker_timesheet_reminder")).toBe(false);
+    expect(sendsText("hours_report_rejected")).toBe(false);
+    expect(sendsText("plan_ending")).toBe(false);
+    expect(sendsText("receipt_sent", { urgent: true })).toBe(false);
+    expect(sendsEmail("receipt_sent")).toBe(true);
+    expect(sendsText("staff_needed")).toBe(false);
+    expect(sendsText("staff_needed", { urgent: true })).toBe(true);
+  });
+
+  it("always texts and emails a worker whose shift is cancelled or changed", () => {
+    for (const kind of ["shift_cancelled", "shift_changed"] as const) {
+      expect(sendsText(kind)).toBe(true);
+      expect(sendsEmail(kind)).toBe(true);
+    }
+  });
+
+  it("sends documents and information by email, and never emails a sign-in code", () => {
+    expect(sendsEmail("invoice_sent")).toBe(true);
+    expect(sendsText("invoice_sent", { urgent: true })).toBe(false);
+    expect(sendsEmail("sign_in_code")).toBe(false);
+  });
+});

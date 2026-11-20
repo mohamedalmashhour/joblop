@@ -152,6 +152,13 @@ suite("QA-reset durable PostgreSQL lifecycle", () => {
   }
 
   async function seedControlEnvelope() {
+    // Migrations now create this role with a random id, and this suite needs its fixed fixture id, so
+    // set the migrated row aside for the duration of the test. Cleanup puts it back.
+    await prisma.$executeRawUnsafe(
+      `UPDATE access_role_definitions SET key = 'ORGANIZATION_OWNER_SET_ASIDE'
+        WHERE key = 'ORGANIZATION_OWNER' AND id <> $1`,
+      testConfig.organizationOwnerAccessRoleId
+    );
     await prisma.$executeRawUnsafe(
       `INSERT INTO access_role_definitions
          (id, key, scope, status, is_system, created_at, updated_at)
@@ -228,10 +235,21 @@ suite("QA-reset durable PostgreSQL lifecycle", () => {
         .filter((r) => r.entityType === entityType && r.ownership === "manifest_owned")
         .map((r) => r.recordId);
       if (ids.length === 0) continue;
-      await prisma.$executeRawUnsafe(
-        `DELETE FROM ${approvedTableForEntity(entityType)} WHERE id = ANY($1::uuid[])`,
-        ids
-      );
+      // audit_events are append-only, so this one test teardown lifts the delete guard briefly.
+      const appendOnly = entityType === "audit_event";
+      if (appendOnly) {
+        await prisma.$executeRawUnsafe(`ALTER TABLE audit_events DISABLE TRIGGER audit_events_prevent_delete`);
+      }
+      try {
+        await prisma.$executeRawUnsafe(
+          `DELETE FROM ${approvedTableForEntity(entityType)} WHERE id = ANY($1::uuid[])`,
+          ids
+        );
+      } finally {
+        if (appendOnly) {
+          await prisma.$executeRawUnsafe(`ALTER TABLE audit_events ENABLE TRIGGER audit_events_prevent_delete`);
+        }
+      }
     }
     // qa_reset_* tables are owned exclusively by this utility, so a full wipe is
     // safe and also clears residue from any prior aborted run (ids differ per run).
@@ -260,6 +278,10 @@ suite("QA-reset durable PostgreSQL lifecycle", () => {
     await prisma.$executeRawUnsafe(
       `DELETE FROM access_role_definitions WHERE id = $1`,
       testConfig.organizationOwnerAccessRoleId
+    );
+    await prisma.$executeRawUnsafe(
+      `UPDATE access_role_definitions SET key = 'ORGANIZATION_OWNER'
+        WHERE key = 'ORGANIZATION_OWNER_SET_ASIDE'`
     );
   }
 

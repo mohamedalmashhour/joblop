@@ -1,26 +1,55 @@
 {
   "expo": {
-    "name": "RezekMe",
-    "slug": "resident-workforce-os",
+    "name": "Joblop",
+    "slug": "joblop",
     "scheme": "rwos",
     "version": "0.1.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
     "web": {
-      "bundler": "metro"
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png"
     },
     "ios": {
-      "bundleIdentifier": "app.residentworkforce.mobile"
+      "bundleIdentifier": "com.joblop.app",
+      "buildNumber": "1",
+      "supportsTablet": false,
+      "icon": "./assets/icon.png",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
-      "package": "app.residentworkforce.mobile"
+      "package": "com.joblop.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#000000"
+      }
     },
     "extra": {
-      "foundationOnly": true
+      "foundationOnly": true,
+      "eas": {
+        "projectId": "8642f7d9-97b8-4275-8d59-4adad1ae6d51"
+      }
     },
     "plugins": [
-      "expo-secure-store"
-    ]
+      "expo-secure-store",
+      "expo-notifications",
+      [
+        "expo-video",
+        {
+          "supportsBackgroundPlayback": false,
+          "supportsPictureInPicture": false
+        }
+      ]
+    ],
+    "owner": "lecipmapp"
   }
 }
