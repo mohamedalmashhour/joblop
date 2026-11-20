@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useT } from "../i18n/LocaleProvider";
 
 // Invite-a-friend panel: shows the signed-in user's shareable invite link and how many friends have
 // joined with it. The link points at THIS app's landing with ?ref=CODE; a friend who signs up there is
 // attributed to the inviter. Rendered inside the already-authenticated inbox, so no auth gate here.
 
 export function InviteFriends() {
+  const t = useT();
   const [code, setCode] = useState<string | null>(null);
   const [joined, setJoined] = useState(0);
   const [copied, setCopied] = useState(false);
@@ -29,7 +31,7 @@ export function InviteFriends() {
   };
   const share = async () => {
     const nav = navigator as Navigator & { share?: (data: { title?: string; text?: string; url?: string }) => Promise<void> };
-    if (nav.share) { try { await nav.share({ title: "Join me on Joblop", text: "Join me on Joblop", url: link }); } catch { /* cancelled */ } }
+    if (nav.share) { try { await nav.share({ title: t("invite.shareText"), text: t("invite.shareText"), url: link }); } catch { /* cancelled */ } }
     else void copy();
   };
 
@@ -37,14 +39,14 @@ export function InviteFriends() {
     <section style={styles.wrap}>
       <div style={styles.head}>
         <div>
-          <h2 style={styles.title}>🎁 Invite your friends</h2>
-          <p style={styles.sub}>Share your link. {joined > 0 ? `${joined} friend${joined === 1 ? " has" : "s have"} joined so far.` : "Be the first to invite someone."}</p>
+          <h2 style={styles.title}>{t("invite.title")}</h2>
+          <p style={styles.sub}>{t("invite.share")} {joined === 1 ? t("invite.joinedOne") : joined > 1 ? t("invite.joinedMany", { n: joined }) : t("invite.beFirst")}</p>
         </div>
       </div>
       <div style={styles.row}>
-        <input style={styles.input} readOnly value={link} onFocus={(e) => e.currentTarget.select()} aria-label="Your invite link" />
-        <button type="button" style={styles.copyBtn} onClick={() => void copy()}>{copied ? "Copied ✓" : "Copy link"}</button>
-        <button type="button" style={styles.shareBtn} onClick={() => void share()}>Share</button>
+        <input style={styles.input} readOnly value={link} onFocus={(e) => e.currentTarget.select()} aria-label={t("invite.linkLabel")} />
+        <button type="button" style={styles.copyBtn} onClick={() => void copy()}>{copied ? t("invite.copied") : t("invite.copy")}</button>
+        <button type="button" style={styles.shareBtn} onClick={() => void share()}>{t("invite.shareBtn")}</button>
       </div>
     </section>
   );

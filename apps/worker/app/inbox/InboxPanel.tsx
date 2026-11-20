@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { InviteFriends } from "./InviteFriends";
+import { useT } from "../i18n/LocaleProvider";
 
 // Recipient inbox: the signed-in worker's greeting cards and certificates. Self-gates like the CV
 // builder — a signed-out visitor is guided to sign in. Certificates are printable (new-window print view).
@@ -53,6 +54,7 @@ function printCertificate(c: Certificate) {
 }
 
 export function InboxPanel() {
+  const t = useT();
   const [authState, setAuthState] = useState<"loading" | "signed_in" | "signed_out">("loading");
   const [greetings, setGreetings] = useState<Greeting[]>([]);
   const [certs, setCerts] = useState<Certificate[]>([]);
@@ -75,14 +77,14 @@ export function InboxPanel() {
     void fetch(`/api/inbox/greetings/${id}/read`, { method: "POST", headers: { "content-type": "application/json" } }).catch(() => undefined);
   };
 
-  if (authState === "loading") return <section style={styles.wrap}><p style={styles.hint}>Loading…</p></section>;
+  if (authState === "loading") return <section style={styles.wrap}><p style={styles.hint}>{t("inbox.loading")}</p></section>;
   if (authState === "signed_out")
     return (
       <section style={styles.wrap}>
         <div style={{ textAlign: "center", padding: "36px 16px" }}>
-          <h2 style={{ margin: "0 0 8px" }}>Sign in to see your greetings &amp; awards</h2>
-          <p style={styles.hint}>Your greeting cards and certificates are part of your Joblop account.</p>
-          <a href="/" style={styles.signin}>Create / sign in</a>
+          <h2 style={{ margin: "0 0 8px" }}>{t("inbox.signedOutTitle")}</h2>
+          <p style={styles.hint}>{t("inbox.signedOutBody")}</p>
+          <a href="/" style={styles.signin}>{t("inbox.signIn")}</a>
         </div>
       </section>
     );
@@ -90,8 +92,8 @@ export function InboxPanel() {
   return (
     <section style={styles.wrap}>
       <InviteFriends />
-      <h2 style={styles.section}>Certificates</h2>
-      {certs.length === 0 ? <p style={styles.hint}>No certificates yet.</p> : (
+      <h2 style={styles.section}>{t("inbox.certificates")}</h2>
+      {certs.length === 0 ? <p style={styles.hint}>{t("inbox.noCertificates")}</p> : (
         <div style={styles.grid}>
           {certs.map((c) => (
             <article key={c.id} style={styles.certCard}>
@@ -99,15 +101,15 @@ export function InboxPanel() {
               <h3 style={styles.certTitle}>{c.title}</h3>
               <p style={styles.certName}>{c.recipientName}</p>
               {c.note ? <p style={styles.certNote}>{c.note}</p> : null}
-              <p style={styles.certMeta}>Serial {c.serial} · {new Date(c.issuedAt).toLocaleDateString()}</p>
-              <button type="button" style={styles.printBtn} onClick={() => printCertificate(c)}>Print / save PDF</button>
+              <p style={styles.certMeta}>{t("inbox.serial")} {c.serial} · {new Date(c.issuedAt).toLocaleDateString()}</p>
+              <button type="button" style={styles.printBtn} onClick={() => printCertificate(c)}>{t("inbox.print")}</button>
             </article>
           ))}
         </div>
       )}
 
-      <h2 style={{ ...styles.section, marginTop: 28 }}>Greeting cards</h2>
-      {greetings.length === 0 ? <p style={styles.hint}>No greetings yet.</p> : (
+      <h2 style={{ ...styles.section, marginTop: 28 }}>{t("inbox.greetings")}</h2>
+      {greetings.length === 0 ? <p style={styles.hint}>{t("inbox.noGreetings")}</p> : (
         <div style={styles.grid}>
           {greetings.map((g) => {
             const a = accentFor(g.templateKey);
@@ -115,7 +117,7 @@ export function InboxPanel() {
               <article key={g.id} style={{ ...styles.greetCard, background: a.bg, borderTop: `5px solid ${a.bar}` }} onMouseEnter={() => { if (!g.read) markGreetingRead(g.id); }}>
                 <div style={styles.greetHead}>
                   <span style={styles.greetEmoji}>{a.emoji}</span>
-                  {!g.read ? <span style={styles.unread}>New</span> : null}
+                  {!g.read ? <span style={styles.unread}>{t("inbox.new")}</span> : null}
                 </div>
                 <h3 style={styles.greetTitle}>{g.title}</h3>
                 <p style={styles.greetMsg}>{g.message}</p>

@@ -21,7 +21,8 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
   const [acceptedNotices, setAcceptedNotices] = useState(false);
   const [state, setState] = useState<"idle" | "submitting" | "error">("idle");
   const [verifying, setVerifying] = useState(false);
-  const [message, setMessage] = useState(() => t("auth.signUpIntro"));
+  // Null = show the intro in the CURRENT language (so switching EN/FR/ع never leaves a stale line).
+  const [message, setMessage] = useState<string | null>(null);
   // Invite-a-friend: capture ?ref=CODE once and remember it across the signup flow.
   const [referralCode, setReferralCode] = useState<string | null>(null);
   useEffect(() => {
@@ -157,7 +158,7 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
           {t("auth.acceptPost")}
         </span>
       </label>
-      <p style={state === "error" ? styles.warning : styles.sectionCopy}>{message}</p>
+      <p style={state === "error" ? styles.warning : styles.sectionCopy}>{message ?? t("auth.signUpIntro")}</p>
       <div style={styles.authActions}>
         <button type="submit" disabled={state === "submitting"} style={styles.primaryButton}>
           {state === "submitting" ? t("auth.creating") : t("auth.createEmployerAccount")}
