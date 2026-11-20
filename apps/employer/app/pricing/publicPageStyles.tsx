@@ -7,6 +7,8 @@ import { pricingCopy } from "./pricingContent";
 
 // Shared look for the plain public pages (/pricing, /faq): black page, gold #F8B808 accents.
 export const GOLD = "#F8B808";
+// Staff admin workspace (footer icon) — shown only when NEXT_PUBLIC_ADMIN_URL is set.
+const ADMIN_URL = process.env.NEXT_PUBLIC_ADMIN_URL ?? "";
 
 export async function readPublicLocale(): Promise<EmployerLocale> {
   const store = await cookies();
@@ -49,6 +51,14 @@ export function PublicFooter({ nav, children }: { nav: PublicNavLabels; children
         <a href="/terms" style={publicStyles.footerLink}>{nav.terms}</a>
         <a href="/privacy" style={publicStyles.footerLink}>{nav.privacy}</a>
       </nav>
+      {/* Same pattern as the worker site footer: staff Admin app icon (only when NEXT_PUBLIC_ADMIN_URL is set) + copyright. */}
+      {ADMIN_URL ? (
+        <a href={ADMIN_URL} style={{ ...publicStyles.footerLink, gap: 6 }}>
+          <img src="/team-admin.png" alt="" width={28} height={28} style={{ borderRadius: 7, display: "block" }} />
+          Admin
+        </a>
+      ) : null}
+      <span style={{ color: "#b3a894", fontSize: 12.5, width: "100%" }}>© {new Date().getFullYear()} Joblop</span>
       {children}
     </footer>
   );
