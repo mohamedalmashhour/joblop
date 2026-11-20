@@ -16,7 +16,8 @@ export function SignInForm() {
   const [code, setCode] = useState("");
   const [step, setStep] = useState<"phone" | "code">("phone");
   const [state, setState] = useState<"idle" | "submitting" | "error">("idle");
-  const [message, setMessage] = useState(() => t("auth.signInIntro"));
+  // Null = show the intro in the CURRENT language (so switching EN/FR/ع never leaves a stale line).
+  const [message, setMessage] = useState<string | null>(null);
   const [needsSignOut, setNeedsSignOut] = useState(false);
   const busy = state === "submitting";
 
@@ -91,7 +92,7 @@ export function SignInForm() {
       role={state === "error" ? "alert" : "status"}
       style={state === "error" ? styles.warning : styles.sectionCopy}
     >
-      {message}
+      {message ?? t("auth.signInIntro")}
     </p>
   );
 
