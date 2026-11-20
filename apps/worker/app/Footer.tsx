@@ -53,7 +53,6 @@ export function Footer({ locale }: { locale: string }) {
       </nav>
       {/* For teams: installable Employer and Admin workspaces, each with its own app icon. */}
       <nav aria-label={words.teams} style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-        <span>{words.teams}:</span>
         <a href={EMPLOYER_URL} style={teamLinkStyle}>
           <img src="/team-employer.png" alt="" width={28} height={28} style={teamIconStyle} />
           {words.employer}
